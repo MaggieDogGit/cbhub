@@ -4,7 +4,7 @@ import { queryClient, apiRequest } from "@/lib/queryClient";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { CheckCircle2, AlertCircle, XCircle, Bot, Search, ShieldCheck, Clock, Loader2, ExternalLink, Trash2, Play } from "lucide-react";
+import { CheckCircle2, AlertCircle, XCircle, Bot, Search, ShieldCheck, Clock, Loader2, ExternalLink, Trash2, Play, StopCircle, RefreshCw } from "lucide-react";
 import { useState } from "react";
 import { useToast } from "@/hooks/use-toast";
 import type { BankingGroup, LegalEntity, Bic, CorrespondentService, AgentJob } from "@shared/schema";
@@ -150,6 +150,15 @@ export default function Coverage() {
     onError: (err: any) => toast({ title: "Queue all failed", description: err.message, variant: "destructive" }),
   });
 
+  const stopQueueMutation = useMutation({
+    mutationFn: () => apiRequest("POST", "/api/jobs/stop-queue").then(r => r.json()),
+    onSuccess: (data) => {
+      queryClient.invalidateQueries({ queryKey: ["/api/jobs"] });
+      toast({ title: `Queue stopped`, description: `${data.stopped} pending job${data.stopped !== 1 ? "s" : ""} cancelled.` });
+    },
+    onError: (err: any) => toast({ title: "Could not stop queue", description: err.message, variant: "destructive" }),
+  });
+
   const loading = lg || le || lb || ls;
 
   const getStatus = (groupId: string): CoverageStatus => {
@@ -246,7 +255,7 @@ export default function Coverage() {
           </div>
           <span className="text-xs text-slate-400 italic">{SCOPE_OPTIONS.find(o => o.value === currencyScope)?.desc}</span>
         </div>
-        <div className="flex gap-2 flex-wrap mt-3 pt-3 border-t border-slate-100">
+        <div className="flex gap-2 flex-wrap mt-3 pt-3 border-t border-slate-100 items-center">
           <Button
             size="sm"
             variant="outline"
@@ -268,6 +277,19 @@ export default function Coverage() {
             <Bot className="w-3.5 h-3.5 mr-1" />
             Queue All Incomplete ({incompleteGroups.length})
           </Button>
+          {jobs.filter(j => j.status === "pending").length > 0 && (
+            <Button
+              size="sm"
+              variant="outline"
+              className="text-xs border-red-200 text-red-600 hover:bg-red-50 ml-auto"
+              data-testid="button-stop-queue"
+              disabled={stopQueueMutation.isPending}
+              onClick={() => stopQueueMutation.mutate()}
+            >
+              <StopCircle className="w-3.5 h-3.5 mr-1" />
+              Stop Queue ({jobs.filter(j => j.status === "pending").length} pending)
+            </Button>
+          )}
         </div>
       </div>
 
@@ -386,6 +408,30 @@ export default function Coverage() {
                         >
                           <Trash2 className="w-3 h-3 mr-1" />Cancel
                         </Button>
+                      ) : job?.status === "failed" ? (
+                        <>
+                          <Button
+                            size="sm" variant="outline"
+                            className="text-xs h-7 px-2 text-orange-600 border-orange-200 hover:bg-orange-50"
+                            data-testid={`button-retry-job-${group.id}`}
+                            disabled={queueMutation.isPending}
+                            onClick={() => queueMutation.mutate({ group, scope: (job.currency_scope as CurrencyScope) || currencyScope })}
+                          >
+                            <RefreshCw className="w-3 h-3 mr-1" />Retry
+                          </Button>
+                          <Button
+                            size="sm" variant="ghost"
+                            className="text-xs h-7 px-2 text-slate-500"
+                            data-testid={`button-open-chat-${group.id}`}
+                            title={`Open in agent chat (${SCOPE_LABELS[currencyScope]})`}
+                            onClick={() => {
+                              const prompt = buildCBSetupPrompt(group, entityCount, bicCount, serviceCount, currencyScope);
+                              setLocation(`/agent?prompt=${encodeURIComponent(prompt)}&conv=${encodeURIComponent(`CB Setup: ${group.group_name}`)}`);
+                            }}
+                          >
+                            <ExternalLink className="w-3 h-3" />
+                          </Button>
+                        </>
                       ) : (
                         <>
                           <Button

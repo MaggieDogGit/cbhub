@@ -4,7 +4,39 @@ import type { DataSource } from "@shared/schema";
 
 const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
 
-export type StepCallback = (toolName: string, args: any, statusText: string) => void;
+export type StepCallback = (toolName: string, args: any, statusText: string) => void | Promise<void>;
+
+// ── Retry helpers ─────────────────────────────────────────────────────────────
+
+function parseRetryAfterMs(errMsg: string): number {
+  // Parses "Please try again in 6.824s" or "Please try again in 656ms"
+  const secMatch = errMsg.match(/try again in ([\d.]+)s/i);
+  if (secMatch) return Math.ceil(parseFloat(secMatch[1]) * 1000) + 2000; // +2s buffer
+  const msMatch = errMsg.match(/try again in (\d+)ms/i);
+  if (msMatch) return parseInt(msMatch[1]) + 2000;
+  return 30_000; // fallback: 30s
+}
+
+function sleep(ms: number) {
+  return new Promise(resolve => setTimeout(resolve, ms));
+}
+
+async function withRetry<T>(fn: () => Promise<T>, maxRetries = 5, label = "OpenAI call"): Promise<T> {
+  for (let attempt = 0; attempt <= maxRetries; attempt++) {
+    try {
+      return await fn();
+    } catch (err: any) {
+      const is429 = err?.status === 429 || err?.message?.includes("429");
+      if (!is429 || attempt === maxRetries) throw err;
+      const waitMs = parseRetryAfterMs(err.message || "");
+      console.log(`[Retry] ${label}: 429 rate limit — waiting ${(waitMs / 1000).toFixed(1)}s before retry ${attempt + 1}/${maxRetries}`);
+      await sleep(waitMs);
+    }
+  }
+  throw new Error(`${label}: exceeded max retries`);
+}
+
+// ── Status text ───────────────────────────────────────────────────────────────
 
 export function getStatusText(name: string, args: any): string {
   const q = (s: string) => (s || "").length > 55 ? (s || "").slice(0, 55) + "…" : (s || "");
@@ -36,6 +68,8 @@ export function getStatusText(name: string, args: any): string {
     default:                            return `Running: ${name}…`;
   }
 }
+
+// ── Tool executor ─────────────────────────────────────────────────────────────
 
 export async function executeTool(name: string, args: any): Promise<string> {
   try {
@@ -91,10 +125,10 @@ export async function executeTool(name: string, args: any): Promise<string> {
       case "create_fmi": return JSON.stringify(await storage.createFmi(args));
       case "delete_fmi": await storage.deleteFmi(args.id); return JSON.stringify({ ok: true, id: args.id });
       case "web_search": {
-        const searchResponse = await openai.chat.completions.create({
+        const searchResponse = await withRetry(() => openai.chat.completions.create({
           model: "gpt-4o-search-preview",
           messages: [{ role: "user", content: args.query }],
-        } as any);
+        } as any), 5, `web_search: ${args.query}`);
         return searchResponse.choices[0].message.content || "No search results found.";
       }
       case "list_data_sources": return JSON.stringify(await storage.listDataSources());
@@ -107,6 +141,8 @@ export async function executeTool(name: string, args: any): Promise<string> {
     return JSON.stringify({ error: err.message });
   }
 }
+
+// ── System prompt ─────────────────────────────────────────────────────────────
 
 export function buildSystemPrompt(storedSources: DataSource[]): string {
   const knownSourcesSection = storedSources.length > 0
@@ -255,6 +291,8 @@ Always confirm actions taken. Cite web sources. Be concise but thorough on asses
 When you have proposed an action and the user responds with a short confirmation, you MUST immediately execute the action using the appropriate tool call(s). Skip straight to the tool call. The first thing you do after receiving a confirmation is call the tool, then report what you did.${knownSourcesSection}`;
 }
 
+// ── Tool definitions ──────────────────────────────────────────────────────────
+
 export function getTools(): any[] {
   return [
     { type: "function", function: { name: "list_banking_groups", description: "List all banking groups in the database", parameters: { type: "object", properties: {} } } },
@@ -279,44 +317,52 @@ export function getTools(): any[] {
     { type: "function", function: { name: "web_search", description: "Search the web for current information about banks, correspondent banking services, SWIFT codes, regulatory news, or any real-time financial data", parameters: { type: "object", required: ["query"], properties: { query: { type: "string" } } } } },
     { type: "function", function: { name: "list_data_sources", description: "List all stored data sources", parameters: { type: "object", properties: {} } } },
     { type: "function", function: { name: "create_data_source", description: "Store a new data source reference", parameters: { type: "object", required: ["name", "category"], properties: { name: { type: "string" }, category: { type: "string" }, url: { type: "string" }, publisher: { type: "string" }, description: { type: "string" }, update_frequency: { type: "string" }, notes: { type: "string" } } } } },
-    { type: "function", function: { name: "update_data_source", description: "Update an existing data source record by ID", parameters: { type: "object", required: ["id"], properties: { id: { type: "string" }, name: { type: "string" }, category: { type: "string" }, url: { type: "string" }, publisher: { type: "string" }, description: { type: "string" }, update_frequency: { type: "string" }, notes: { type: "string" } } } } },
-    { type: "function", function: { name: "delete_data_source", description: "Delete a data source record by ID", parameters: { type: "object", required: ["id"], properties: { id: { type: "string" } } } } },
+    { type: "function", function: { name: "update_data_source", description: "Update an existing data source", parameters: { type: "object", required: ["id"], properties: { id: { type: "string" }, name: { type: "string" }, category: { type: "string" }, url: { type: "string" }, publisher: { type: "string" }, description: { type: "string" }, notes: { type: "string" } } } } },
+    { type: "function", function: { name: "delete_data_source", description: "Delete a data source by ID", parameters: { type: "object", required: ["id"], properties: { id: { type: "string" } } } } },
   ];
 }
+
+// ── Agent loop ────────────────────────────────────────────────────────────────
 
 export async function runAgentLoop(
   openaiMessages: any[],
   onStep?: StepCallback,
   maxIterations = 12,
-  firstIterToolChoice: "auto" | "required" = "auto"
+  firstIterToolChoice: "auto" | "required" | "none" = "auto"
 ): Promise<string> {
+  const messages = [...openaiMessages];
   const tools = getTools();
-  let assistantContent = "";
 
   for (let i = 0; i < maxIterations; i++) {
-    const response = await openai.chat.completions.create({
-      model: "gpt-4o",
-      messages: openaiMessages,
-      tools,
-      tool_choice: i === 0 ? firstIterToolChoice : "auto",
-    });
+    const toolChoice = i === 0 ? firstIterToolChoice : "auto";
+
+    const response = await withRetry(
+      () => openai.chat.completions.create({
+        model: "gpt-4o",
+        messages,
+        tools,
+        tool_choice: toolChoice,
+      }),
+      5,
+      `runAgentLoop iteration ${i + 1}`
+    );
 
     const choice = response.choices[0];
-    openaiMessages.push(choice.message);
+    const msg = choice.message;
+    messages.push(msg);
 
-    if (choice.finish_reason === "tool_calls" && choice.message.tool_calls) {
-      for (const toolCall of choice.message.tool_calls) {
-        const args = JSON.parse(toolCall.function.arguments || "{}");
-        const statusText = getStatusText(toolCall.function.name, args);
-        if (onStep) onStep(toolCall.function.name, args, statusText);
-        const result = await executeTool(toolCall.function.name, args);
-        openaiMessages.push({ role: "tool", tool_call_id: toolCall.id, content: result });
-      }
-    } else {
-      assistantContent = choice.message.content || "Done.";
-      break;
+    if (choice.finish_reason === "stop" || !msg.tool_calls?.length) {
+      return msg.content || "";
+    }
+
+    for (const tc of msg.tool_calls) {
+      const args = JSON.parse(tc.function.arguments || "{}");
+      const statusText = getStatusText(tc.function.name, args);
+      if (onStep) await onStep(tc.function.name, args, statusText);
+      const result = await executeTool(tc.function.name, args);
+      messages.push({ role: "tool", tool_call_id: tc.id, content: result });
     }
   }
 
-  return assistantContent;
+  return "Agent reached maximum iterations without completing.";
 }

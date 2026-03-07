@@ -301,6 +301,13 @@ Only include currencies and services you found evidence for in the research.`,
     await storage.deleteJob(req.params.id);
     res.json({ ok: true });
   });
+  app.post("/api/jobs/stop-queue", async (req, res) => {
+    const jobs = await storage.listJobs();
+    const pending = jobs.filter(j => j.status === "pending");
+    for (const job of pending) await storage.deleteJob(job.id);
+    res.json({ stopped: pending.length });
+  });
+
   app.post("/api/jobs/queue-all", async (req, res) => {
     const { group_ids, currency_scope } = req.body as { group_ids: { id: string; name: string }[]; currency_scope?: string };
     if (!Array.isArray(group_ids)) return res.status(400).json({ message: "group_ids array required" });

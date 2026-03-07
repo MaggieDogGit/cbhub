@@ -3,6 +3,10 @@ import { buildSystemPrompt, runAgentLoop } from "./agentCore";
 
 let isProcessing = false;
 
+// Minimum seconds to wait between job completions before starting the next one.
+// This lets the OpenAI TPM window partially refill between jobs.
+const JOB_COOLDOWN_MS = 90_000; // 90 seconds
+
 type CurrencyScope = "home_only" | "major" | "all";
 
 function buildCurrencyInstruction(scope: CurrencyScope, primaryCurrency: string | null | undefined): string {
@@ -114,7 +118,7 @@ async function processNextJob() {
       steps_completed: stepCount,
     } as any);
 
-    console.log(`[JobRunner] Completed job ${pending.id} for ${pending.banking_group_name} (${stepCount} steps)`);
+    console.log(`[JobRunner] Completed job ${pending.id} for ${pending.banking_group_name} (${stepCount} steps). Cooling down ${JOB_COOLDOWN_MS / 1000}s before next job.`);
   } catch (err: any) {
     console.error(`[JobRunner] Job ${pending.id} failed:`, err.message);
     await storage.updateJob(pending.id, {
@@ -122,13 +126,39 @@ async function processNextJob() {
       error_message: err.message,
       completed_at: new Date(),
     } as any).catch(() => {});
+    console.log(`[JobRunner] Cooling down ${JOB_COOLDOWN_MS / 1000}s after failure before next job.`);
   } finally {
-    isProcessing = false;
+    // Cooldown before releasing the lock so the next poll can pick up the next job
+    setTimeout(() => {
+      isProcessing = false;
+    }, JOB_COOLDOWN_MS);
   }
 }
 
-export function startJobRunner() {
-  console.log("[JobRunner] Starting background job runner (30s poll interval)");
-  setTimeout(processNextJob, 5000);
+export async function startJobRunner() {
+  console.log("[JobRunner] Starting background job runner");
+
+  // On startup: reset any jobs stuck in "running" state (from a previous server crash/restart)
+  // back to "pending" so they get retried cleanly
+  try {
+    const jobs = await storage.listJobs();
+    const stuckJobs = jobs.filter(j => j.status === "running");
+    if (stuckJobs.length > 0) {
+      console.log(`[JobRunner] Resetting ${stuckJobs.length} stuck "running" job(s) to "pending"`);
+      for (const job of stuckJobs) {
+        await storage.updateJob(job.id, {
+          status: "pending",
+          started_at: null,
+          conversation_id: null,
+        } as any);
+      }
+    }
+  } catch (err: any) {
+    console.error("[JobRunner] Failed to reset stuck jobs:", err.message);
+  }
+
+  // Initial poll after 10s (let the server fully settle first)
+  setTimeout(processNextJob, 10_000);
+  // Then poll every 30 seconds (actual spacing between jobs is controlled by the cooldown in finally{})
   setInterval(processNextJob, 30_000);
 }
