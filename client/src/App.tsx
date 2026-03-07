@@ -13,7 +13,9 @@ import MarketCoverage from "@/pages/MarketCoverage";
 import ResearchAssistant from "@/pages/ResearchAssistant";
 import AgentChat from "@/pages/AgentChat";
 import DatabaseAdmin from "@/pages/DatabaseAdmin";
+import Login from "@/pages/Login";
 import NotFound from "@/pages/not-found";
+import { useAuth } from "@/hooks/useAuth";
 
 function Router() {
   return (
@@ -34,12 +36,30 @@ function Router() {
   );
 }
 
+function AuthGate() {
+  const { authenticated, isLoading, refetch } = useAuth();
+
+  if (isLoading) {
+    return (
+      <div className="min-h-screen bg-slate-950 flex items-center justify-center">
+        <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-500" />
+      </div>
+    );
+  }
+
+  if (!authenticated) {
+    return <Login onLogin={refetch} />;
+  }
+
+  return <Router />;
+}
+
 function App() {
   return (
     <QueryClientProvider client={queryClient}>
       <TooltipProvider>
         <Toaster />
-        <Router />
+        <AuthGate />
       </TooltipProvider>
     </QueryClientProvider>
   );

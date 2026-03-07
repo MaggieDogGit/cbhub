@@ -1,4 +1,4 @@
-import type { Express } from "express";
+import type { Express, Request, Response, NextFunction } from "express";
 import { createServer, type Server } from "http";
 import { storage } from "./storage";
 import { insertBankingGroupSchema, insertLegalEntitySchema, insertBicSchema, insertCorrespondentServiceSchema, insertClsProfileSchema, insertFmiSchema, insertConversationSchema, insertMessageSchema } from "@shared/schema";
@@ -6,7 +6,44 @@ import OpenAI from "openai";
 
 const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
 
+const requireAuth = (req: Request, res: Response, next: NextFunction) => {
+  if (req.session?.authenticated) return next();
+  res.status(401).json({ message: "Unauthorized" });
+};
+
 export async function registerRoutes(httpServer: Server, app: Express): Promise<Server> {
+
+  // Auth endpoints (not protected)
+  app.get("/api/auth/me", (req, res) => {
+    if (req.session?.authenticated) {
+      res.json({ authenticated: true });
+    } else {
+      res.status(401).json({ authenticated: false });
+    }
+  });
+
+  app.post("/api/auth/login", (req, res) => {
+    const { username, password } = req.body;
+    const validUsername = process.env.AUTH_USERNAME;
+    const validPassword = process.env.AUTH_PASSWORD;
+    if (!validUsername || !validPassword) {
+      return res.status(500).json({ message: "Auth credentials not configured. Set AUTH_USERNAME and AUTH_PASSWORD secrets." });
+    }
+    if (username === validUsername && password === validPassword) {
+      req.session.authenticated = true;
+      res.json({ ok: true });
+    } else {
+      res.status(401).json({ message: "Invalid credentials" });
+    }
+  });
+
+  app.post("/api/auth/logout", (req, res) => {
+    req.session.destroy(() => {});
+    res.json({ ok: true });
+  });
+
+  // Protect all remaining API routes
+  app.use("/api", requireAuth);
 
   // Banking Groups
   app.get("/api/banking-groups", async (_req, res) => {

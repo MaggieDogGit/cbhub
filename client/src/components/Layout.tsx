@@ -1,9 +1,10 @@
 import { useState } from "react";
 import { Link, useLocation } from "wouter";
 import {
-  LayoutDashboard, Building2, Globe, MapPin, Bot, Database, Menu, X, Search, MessageSquare
+  LayoutDashboard, Building2, Globe, MapPin, Bot, Database, Menu, Search, MessageSquare, LogOut
 } from "lucide-react";
 import { Input } from "@/components/ui/input";
+import { useAuth } from "@/hooks/useAuth";
 
 const navItems = [
   { name: "Dashboard", path: "/", icon: LayoutDashboard },
@@ -21,6 +22,7 @@ export default function Layout({ children }: { children: React.ReactNode }) {
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const [searchQuery, setSearchQuery] = useState("");
   const [location, navigate] = useLocation();
+  const { logout } = useAuth();
 
   return (
     <div className="min-h-screen bg-background flex">
@@ -56,8 +58,15 @@ export default function Layout({ children }: { children: React.ReactNode }) {
             );
           })}
         </nav>
-        <div className="p-4 border-t border-slate-700 text-xs text-slate-500">
-          Correspondent Banking Intelligence
+        <div className="p-4 border-t border-slate-700 flex items-center justify-between">
+          <span className="text-xs text-slate-500">CB Intelligence</span>
+          <button
+            onClick={logout}
+            data-testid="button-logout"
+            className="flex items-center gap-1.5 text-xs text-slate-400 hover:text-white transition-colors"
+          >
+            <LogOut className="w-3.5 h-3.5" /> Sign out
+          </button>
         </div>
       </aside>
 
