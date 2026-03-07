@@ -830,15 +830,30 @@ When you have proposed an action and the user responds with a short confirmation
         try {
           switch (name) {
             case "list_banking_groups": return JSON.stringify(await storage.listBankingGroups());
-            case "create_banking_group": return JSON.stringify(await storage.createBankingGroup(args));
+            case "create_banking_group": {
+              const existing = await storage.listBankingGroups();
+              const duplicate = existing.find(g => g.group_name.toLowerCase() === (args.group_name || "").toLowerCase());
+              if (duplicate) return JSON.stringify({ duplicate: true, existing_id: duplicate.id, message: `Banking group "${duplicate.group_name}" already exists (id=${duplicate.id}). Use update_banking_group instead.` });
+              return JSON.stringify(await storage.createBankingGroup(args));
+            }
             case "update_banking_group": { const { id, ...data } = args; return JSON.stringify(await storage.updateBankingGroup(id, data)); }
             case "delete_banking_group": await storage.deleteBankingGroup(args.id); return JSON.stringify({ ok: true, id: args.id });
             case "list_legal_entities": return JSON.stringify(await storage.listLegalEntities());
-            case "create_legal_entity": return JSON.stringify(await storage.createLegalEntity(args));
+            case "create_legal_entity": {
+              const existing = await storage.listLegalEntities();
+              const duplicate = existing.find(e => e.legal_name.toLowerCase() === (args.legal_name || "").toLowerCase() && e.group_id === args.group_id);
+              if (duplicate) return JSON.stringify({ duplicate: true, existing_id: duplicate.id, message: `Legal entity "${duplicate.legal_name}" already exists under this banking group (id=${duplicate.id}). Use update_legal_entity instead.` });
+              return JSON.stringify(await storage.createLegalEntity(args));
+            }
             case "update_legal_entity": { const { id, ...data } = args; return JSON.stringify(await storage.updateLegalEntity(id, data)); }
             case "delete_legal_entity": await storage.deleteLegalEntity(args.id); return JSON.stringify({ ok: true, id: args.id });
             case "list_bics": return JSON.stringify(await storage.listBics());
-            case "create_bic": return JSON.stringify(await storage.createBic(args));
+            case "create_bic": {
+              const existing = await storage.listBics();
+              const duplicate = existing.find(b => b.bic_code.toLowerCase() === (args.bic_code || "").toLowerCase());
+              if (duplicate) return JSON.stringify({ duplicate: true, existing_id: duplicate.id, message: `BIC "${duplicate.bic_code}" already exists (id=${duplicate.id}). Use update_bic instead.` });
+              return JSON.stringify(await storage.createBic(args));
+            }
             case "update_bic": { const { id, ...data } = args; return JSON.stringify(await storage.updateBic(id, data)); }
             case "delete_bic": await storage.deleteBic(args.id); return JSON.stringify({ ok: true, id: args.id });
             case "list_correspondent_services": return JSON.stringify(await storage.listCorrespondentServices(args.currency));
