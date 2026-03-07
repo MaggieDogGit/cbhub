@@ -353,6 +353,8 @@ Only include currencies and services you found evidence for in the research.`,
 Records are structured hierarchically: BankingGroup → LegalEntity → BIC → CorrespondentService.
 When creating a new CB Provider, always follow this order: create BankingGroup first, then LegalEntity linked to it, then BIC linked to the entity, then CorrespondentServices linked to the BIC.
 
+**Duplicate prevention (MANDATORY):** Before creating any BankingGroup, LegalEntity, or BIC record, you MUST first call the relevant list tool (list_banking_groups, list_legal_entities, list_bics) and check whether a record with the same name or BIC code already exists. If a match is found, use the existing record's ID rather than creating a new one. Only create a new record if no matching entry exists.
+
 ---
 ## CB PROVIDER QUALIFICATION FRAMEWORK
 Whenever you are asked to add, research, or assess a Banking Group as a CB Provider, you MUST evaluate ALL FOUR criteria below using web_search BEFORE creating any database records.
