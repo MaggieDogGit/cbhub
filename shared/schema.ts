@@ -1,5 +1,5 @@
 import { sql } from "drizzle-orm";
-import { pgTable, text, varchar, boolean, date, pgEnum, timestamp } from "drizzle-orm/pg-core";
+import { pgTable, text, varchar, boolean, date, pgEnum, timestamp, integer } from "drizzle-orm/pg-core";
 import { createInsertSchema } from "drizzle-zod";
 import { z } from "zod";
 
@@ -159,6 +159,23 @@ export type InsertConversation = z.infer<typeof insertConversationSchema>;
 export type Conversation = typeof conversations.$inferSelect;
 export type InsertMessage = z.infer<typeof insertMessageSchema>;
 export type ChatMessage = typeof chatMessages.$inferSelect;
+
+export const agentJobs = pgTable("agent_jobs", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  banking_group_id: varchar("banking_group_id").notNull(),
+  banking_group_name: text("banking_group_name").notNull(),
+  status: text("status").notNull().default("pending"),
+  conversation_id: varchar("conversation_id"),
+  queued_at: timestamp("queued_at").defaultNow(),
+  started_at: timestamp("started_at"),
+  completed_at: timestamp("completed_at"),
+  error_message: text("error_message"),
+  steps_completed: integer("steps_completed").default(0),
+});
+
+export const insertAgentJobSchema = createInsertSchema(agentJobs).omit({ id: true, queued_at: true });
+export type InsertAgentJob = z.infer<typeof insertAgentJobSchema>;
+export type AgentJob = typeof agentJobs.$inferSelect;
 
 export const insertUserSchema = z.object({ username: z.string(), password: z.string() });
 export type InsertUser = z.infer<typeof insertUserSchema>;

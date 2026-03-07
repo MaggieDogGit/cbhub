@@ -2,7 +2,7 @@ import { eq, and } from "drizzle-orm";
 import { db } from "./db";
 import {
   bankingGroups, legalEntities, bics, correspondentServices,
-  clsProfiles, fmis, dataSources, conversations, chatMessages,
+  clsProfiles, fmis, dataSources, conversations, chatMessages, agentJobs,
   type BankingGroup, type InsertBankingGroup,
   type LegalEntity, type InsertLegalEntity,
   type Bic, type InsertBic,
@@ -12,6 +12,7 @@ import {
   type DataSource, type InsertDataSource,
   type Conversation, type InsertConversation,
   type ChatMessage, type InsertMessage,
+  type AgentJob, type InsertAgentJob,
   type User, type InsertUser,
 } from "@shared/schema";
 import { randomUUID } from "crypto";
@@ -75,6 +76,13 @@ export interface IStorage {
   // ChatMessages
   listMessages(conversationId: string): Promise<ChatMessage[]>;
   createMessage(data: InsertMessage): Promise<ChatMessage>;
+
+  // AgentJobs
+  listJobs(): Promise<AgentJob[]>;
+  getJob(id: string): Promise<AgentJob | undefined>;
+  createJob(data: InsertAgentJob): Promise<AgentJob>;
+  updateJob(id: string, data: Partial<InsertAgentJob>): Promise<AgentJob>;
+  deleteJob(id: string): Promise<void>;
 }
 
 export class DatabaseStorage implements IStorage {
@@ -146,6 +154,13 @@ export class DatabaseStorage implements IStorage {
     return db.select().from(chatMessages).where(eq(chatMessages.conversation_id, conversationId)).orderBy(chatMessages.created_at);
   }
   async createMessage(data: InsertMessage) { const [r] = await db.insert(chatMessages).values(data).returning(); return r; }
+
+  // AgentJobs
+  async listJobs() { return db.select().from(agentJobs).orderBy(agentJobs.queued_at); }
+  async getJob(id: string) { const [r] = await db.select().from(agentJobs).where(eq(agentJobs.id, id)); return r; }
+  async createJob(data: InsertAgentJob) { const [r] = await db.insert(agentJobs).values(data).returning(); return r; }
+  async updateJob(id: string, data: Partial<InsertAgentJob>) { const [r] = await db.update(agentJobs).set(data).where(eq(agentJobs.id, id)).returning(); return r; }
+  async deleteJob(id: string) { await db.delete(agentJobs).where(eq(agentJobs.id, id)); }
 }
 
 export const storage = new DatabaseStorage();
