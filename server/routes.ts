@@ -434,7 +434,7 @@ Do NOT skip the database update step even if the user has not explicitly asked y
 ## OTHER AGENT CAPABILITIES
 - LIST / UPDATE / DELETE any entity (always list first to find the correct ID before updating or deleting)
 - SEARCH the web for current market data, news, SWIFT information, regulatory changes
-- DATA SOURCES: When asked to find an authoritative source for any dataset, use web_search to identify it, then save it with create_data_source (name, category, URL, publisher, update_frequency)
+- DATA SOURCES: Whenever a web_search returns a result that cites a specific authoritative source (an official registry, member list, central bank page, industry directory, regulator publication, etc.) that is relevant to your findings, automatically save it using create_data_source with name, category, url, publisher, and update_frequency — even if the user did not ask you to. Also save sources when explicitly asked to find them. Do NOT save a source that is already present in the KNOWN REFERENCE SOURCES list above.
 
 Always confirm actions taken. Cite web sources. Be concise but thorough on assessments.${knownSourcesSection}`;
 
