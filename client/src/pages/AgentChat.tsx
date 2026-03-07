@@ -1,6 +1,6 @@
 import { useState, useEffect, useRef } from "react";
 import { useQuery, useMutation } from "@tanstack/react-query";
-import { queryClient, apiRequest } from "@/lib/queryClient";
+import { queryClient, apiRequest, getAuthToken } from "@/lib/queryClient";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
@@ -19,6 +19,7 @@ const suggestedQuestions = [
 export default function AgentChat() {
   const [activeConversation, setActiveConversation] = useState<Conversation | null>(null);
   const [input, setInput] = useState("");
+  const [statusText, setStatusText] = useState("");
   const bottomRef = useRef<HTMLDivElement>(null);
 
   const { data: conversations = [], isLoading: loadingConvs } = useQuery<Conversation[]>({
@@ -35,7 +36,7 @@ export default function AgentChat() {
 
   useEffect(() => {
     bottomRef.current?.scrollIntoView({ behavior: "smooth" });
-  }, [messages]);
+  }, [messages, statusText]);
 
   const createConvMutation = useMutation({
     mutationFn: (name: string) => apiRequest("POST", "/api/conversations", { name }).then(r => r.json()) as Promise<Conversation>,
@@ -57,12 +58,48 @@ export default function AgentChat() {
     mutationFn: async ({ conversationId, message }: { conversationId: string; message: string }) => {
       await apiRequest("POST", `/api/conversations/${conversationId}/messages`, { role: "user", content: message });
       queryClient.invalidateQueries({ queryKey: ["/api/conversations", conversationId, "messages"] });
-      const assistantMsg = await apiRequest("POST", "/api/chat", { conversationId, message }).then(r => r.json());
+
+      const token = getAuthToken();
+      const response = await fetch("/api/chat", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          ...(token ? { "x-auth-token": token } : {}),
+        },
+        body: JSON.stringify({ conversationId, message }),
+      });
+
+      if (!response.ok || !response.body) throw new Error(`${response.status}: request failed`);
+
+      const reader = response.body.getReader();
+      const decoder = new TextDecoder();
+      let buffer = "";
+      let assistantMsg = null;
+
+      while (true) {
+        const { done, value } = await reader.read();
+        if (done) break;
+        buffer += decoder.decode(value, { stream: true });
+        const lines = buffer.split("\n");
+        buffer = lines.pop() ?? "";
+        for (const line of lines) {
+          if (!line.startsWith("data: ")) continue;
+          try {
+            const event = JSON.parse(line.slice(6));
+            if (event.type === "status") setStatusText(event.text);
+            else if (event.type === "done") assistantMsg = event.message;
+            else if (event.type === "error") throw new Error(event.message);
+          } catch {}
+        }
+      }
+
       return assistantMsg;
     },
     onSuccess: () => {
+      setStatusText("");
       queryClient.invalidateQueries({ queryKey: ["/api/conversations", activeConversation?.id, "messages"] });
     },
+    onError: () => setStatusText(""),
   });
 
   const sendMessage = async () => {
@@ -162,15 +199,22 @@ export default function AgentChat() {
 
           {sendMutation.isPending && (
             <div className="flex gap-3">
-              <div className="h-7 w-7 rounded-lg bg-slate-100 flex items-center justify-center mt-0.5">
+              <div className="h-7 w-7 rounded-lg bg-slate-100 flex items-center justify-center mt-0.5 shrink-0">
                 <div className="h-1.5 w-1.5 rounded-full bg-slate-400" />
               </div>
-              <div className="bg-white border border-slate-200 rounded-2xl px-4 py-2.5">
-                <div className="flex gap-1 items-center h-5">
-                  <div className="w-1.5 h-1.5 bg-slate-400 rounded-full animate-bounce" style={{ animationDelay: "0ms" }} />
-                  <div className="w-1.5 h-1.5 bg-slate-400 rounded-full animate-bounce" style={{ animationDelay: "150ms" }} />
-                  <div className="w-1.5 h-1.5 bg-slate-400 rounded-full animate-bounce" style={{ animationDelay: "300ms" }} />
-                </div>
+              <div className="bg-white border border-slate-200 rounded-2xl px-4 py-2.5 max-w-sm">
+                {statusText ? (
+                  <div className="flex items-center gap-2">
+                    <div className="w-1.5 h-1.5 bg-blue-500 rounded-full animate-pulse shrink-0" />
+                    <span className="text-xs text-slate-500 leading-relaxed">{statusText}</span>
+                  </div>
+                ) : (
+                  <div className="flex gap-1 items-center h-5">
+                    <div className="w-1.5 h-1.5 bg-slate-400 rounded-full animate-bounce" style={{ animationDelay: "0ms" }} />
+                    <div className="w-1.5 h-1.5 bg-slate-400 rounded-full animate-bounce" style={{ animationDelay: "150ms" }} />
+                    <div className="w-1.5 h-1.5 bg-slate-400 rounded-full animate-bounce" style={{ animationDelay: "300ms" }} />
+                  </div>
+                )}
               </div>
             </div>
           )}

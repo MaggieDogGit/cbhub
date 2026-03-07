@@ -279,10 +279,49 @@ Only include currencies and services you found evidence for in the research.`,
     }
   });
 
-  // AI Chat with full database tool calling
+  // AI Chat with full database tool calling (streaming SSE)
   app.post("/api/chat", async (req, res) => {
     const { conversationId, message } = req.body;
     if (!conversationId || !message) return res.status(400).json({ message: "conversationId and message required" });
+
+    res.setHeader("Content-Type", "text/event-stream");
+    res.setHeader("Cache-Control", "no-cache");
+    res.setHeader("Connection", "keep-alive");
+    res.flushHeaders();
+
+    const emit = (data: object) => res.write(`data: ${JSON.stringify(data)}\n\n`);
+
+    const getStatusText = (name: string, args: any): string => {
+      const q = (s: string) => (s || "").length > 55 ? (s || "").slice(0, 55) + "…" : (s || "");
+      switch (name) {
+        case "list_banking_groups":         return "Reviewing banking groups in database…";
+        case "create_banking_group":        return `Creating banking group: ${q(args.group_name)}`;
+        case "update_banking_group":        return `Updating banking group record…`;
+        case "delete_banking_group":        return `Removing banking group record…`;
+        case "list_legal_entities":         return "Reviewing legal entities…";
+        case "create_legal_entity":         return `Creating legal entity: ${q(args.legal_name)}`;
+        case "update_legal_entity":         return `Updating legal entity record…`;
+        case "delete_legal_entity":         return `Removing legal entity record…`;
+        case "list_bics":                   return "Reviewing BIC codes…";
+        case "create_bic":                  return `Adding BIC: ${q(args.bic_code)}`;
+        case "update_bic":                  return `Updating BIC record…`;
+        case "delete_bic":                  return `Removing BIC record…`;
+        case "list_correspondent_services": return "Reviewing correspondent services…";
+        case "create_correspondent_service":return `Adding service: ${q(args.currency)} ${q(args.service_type)}`;
+        case "update_correspondent_service":return "Updating correspondent service…";
+        case "delete_correspondent_service":return "Removing correspondent service…";
+        case "list_fmis":                   return "Checking FMI memberships…";
+        case "create_fmi":                  return `Adding FMI membership: ${q(args.fmi_type || args.fmi_name)}`;
+        case "delete_fmi":                  return "Removing FMI membership…";
+        case "web_search":                  return `Searching: ${q(args.query)}`;
+        case "list_data_sources":           return "Checking data sources library…";
+        case "create_data_source":          return `Saving data source: ${q(args.name)}`;
+        case "update_data_source":          return "Updating data source…";
+        case "delete_data_source":          return "Removing data source…";
+        default:                            return `Running: ${name}…`;
+      }
+    };
+
     try {
       const history = await storage.listMessages(conversationId);
 
@@ -804,7 +843,7 @@ Always confirm actions taken. Cite web sources. Be concise but thorough on asses
         { role: "user", content: message },
       ];
 
-      // Agentic loop — keep calling until no more tool calls
+      // Agentic loop — keep calling until no more tool calls, streaming status events
       let assistantContent = "";
       for (let i = 0; i < 10; i++) {
         const response = await openai.chat.completions.create({
@@ -820,6 +859,7 @@ Always confirm actions taken. Cite web sources. Be concise but thorough on asses
         if (choice.finish_reason === "tool_calls" && choice.message.tool_calls) {
           for (const toolCall of choice.message.tool_calls) {
             const args = JSON.parse(toolCall.function.arguments || "{}");
+            emit({ type: "status", text: getStatusText(toolCall.function.name, args) });
             const result = await executeTool(toolCall.function.name, args);
             messages.push({
               role: "tool",
@@ -838,9 +878,11 @@ Always confirm actions taken. Cite web sources. Be concise but thorough on asses
         role: "assistant",
         content: assistantContent,
       });
-      res.json(assistantMsg);
+      emit({ type: "done", message: assistantMsg });
+      res.end();
     } catch (err: any) {
-      res.status(500).json({ message: err.message });
+      emit({ type: "error", message: err.message });
+      res.end();
     }
   });
 
