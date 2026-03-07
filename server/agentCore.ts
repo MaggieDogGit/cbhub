@@ -122,7 +122,19 @@ export async function executeTool(name: string, args: any): Promise<string> {
       case "update_correspondent_service": { const { id, ...data } = args; return JSON.stringify(await storage.updateCorrespondentService(id, data)); }
       case "delete_correspondent_service": await storage.deleteCorrespondentService(args.id); return JSON.stringify({ ok: true, id: args.id });
       case "list_fmis": return JSON.stringify(await storage.listFmis());
-      case "create_fmi": return JSON.stringify(await storage.createFmi(args));
+      case "create_fmi": {
+        const uuidPattern = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+        if (!args.legal_entity_id || !uuidPattern.test(args.legal_entity_id))
+          return JSON.stringify({ error: `legal_entity_id must be a valid UUID — call list_legal_entities first to find the correct ID. Received: "${args.legal_entity_id}"` });
+        const allFmiEntities = await storage.listLegalEntities();
+        const fmiEntity = allFmiEntities.find(e => e.id === args.legal_entity_id);
+        if (!fmiEntity) return JSON.stringify({ error: `legal_entity_id "${args.legal_entity_id}" does not match any legal entity in the database. Call list_legal_entities first.` });
+        args.legal_entity_name = fmiEntity.legal_name;
+        const existingFmis = await storage.listFmis();
+        const fmiDuplicate = existingFmis.find(f => f.legal_entity_id === args.legal_entity_id && f.fmi_name === args.fmi_name);
+        if (fmiDuplicate) return JSON.stringify({ duplicate: true, existing_id: fmiDuplicate.id, message: `FMI membership "${args.fmi_name}" already exists for this entity (id=${fmiDuplicate.id}). No action needed.` });
+        return JSON.stringify(await storage.createFmi(args));
+      }
       case "delete_fmi": await storage.deleteFmi(args.id); return JSON.stringify({ ok: true, id: args.id });
       case "web_search": {
         const searchResponse = await withRetry(() => openai.chat.completions.create({
@@ -246,7 +258,7 @@ After completing the 4-criterion assessment, ALWAYS call update_banking_group wi
 - headquarters_country: update if you found a more accurate country
 - gsib_status: update to "G-SIB", "D-SIB", or "N/A" if you found evidence
 
-Additionally, if you discover that a legal entity is a member of a Financial Market Infrastructure, create an FMI record using create_fmi. Use the correct fmi_type category and the specific fmi_name:
+Additionally, if you discover that a legal entity is a member of a Financial Market Infrastructure, create an FMI record using create_fmi. **IMPORTANT: Before calling create_fmi, you MUST first call list_legal_entities and confirm the entity exists in the database with a valid UUID. Never invent or guess a legal_entity_id. Only create FMI records for entities already stored in the database.** Use the correct fmi_type category and the specific fmi_name:
 - Payment Systems → TARGET2, Fedwire, CHAPS, BOJ-NET, SIC, Lynx, RITS, MEPS+, CHATS, RIX
 - Instant Payment Systems → Faster Payments, SEPA Instant, UPI, RTP, FedNow
 - Securities Settlement Systems → Euroclear, Clearstream, DTC
@@ -312,7 +324,7 @@ export function getTools(): any[] {
     { type: "function", function: { name: "update_correspondent_service", description: "Update an existing correspondent service by ID", parameters: { type: "object", required: ["id"], properties: { id: { type: "string" }, currency: { type: "string" }, service_type: { type: "string" }, clearing_model: { type: "string" }, rtgs_membership: { type: "boolean" }, instant_scheme_access: { type: "boolean" }, nostro_accounts_offered: { type: "boolean" }, vostro_accounts_offered: { type: "boolean" }, cls_member: { type: "boolean" }, target_clients: { type: "string" }, notes: { type: "string" }, source: { type: "string" } } } } },
     { type: "function", function: { name: "delete_correspondent_service", description: "Delete a correspondent service by ID", parameters: { type: "object", required: ["id"], properties: { id: { type: "string" } } } } },
     { type: "function", function: { name: "list_fmis", description: "List all FMI memberships", parameters: { type: "object", properties: {} } } },
-    { type: "function", function: { name: "create_fmi", description: "Create a new FMI membership record for a legal entity", parameters: { type: "object", required: ["legal_entity_id", "fmi_type", "fmi_name"], properties: { legal_entity_id: { type: "string" }, legal_entity_name: { type: "string" }, fmi_type: { type: "string", enum: ["Payment Systems","Instant Payment Systems","Securities Settlement Systems","Central Securities Depositories","Central Counterparties","Trade Repositories","FX Settlement Systems","Messaging Networks"] }, fmi_name: { type: "string" }, member_since: { type: "string" }, notes: { type: "string" } } } } },
+    { type: "function", function: { name: "create_fmi", description: "Create a new FMI membership record. IMPORTANT: legal_entity_id must be a real UUID from list_legal_entities — call list_legal_entities first to confirm the entity exists before calling this tool.", parameters: { type: "object", required: ["legal_entity_id", "fmi_type", "fmi_name"], properties: { legal_entity_id: { type: "string" }, legal_entity_name: { type: "string" }, fmi_type: { type: "string", enum: ["Payment Systems","Instant Payment Systems","Securities Settlement Systems","Central Securities Depositories","Central Counterparties","Trade Repositories","FX Settlement Systems","Messaging Networks"] }, fmi_name: { type: "string" }, member_since: { type: "string" }, notes: { type: "string" } } } } },
     { type: "function", function: { name: "delete_fmi", description: "Delete an FMI membership record by ID", parameters: { type: "object", required: ["id"], properties: { id: { type: "string" } } } } },
     { type: "function", function: { name: "web_search", description: "Search the web for current information about banks, correspondent banking services, SWIFT codes, regulatory news, or any real-time financial data", parameters: { type: "object", required: ["query"], properties: { query: { type: "string" } } } } },
     { type: "function", function: { name: "list_data_sources", description: "List all stored data sources", parameters: { type: "object", properties: {} } } },
