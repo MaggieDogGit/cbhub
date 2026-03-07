@@ -7,7 +7,7 @@ export function useAuth() {
   const { data, isLoading } = useQuery<{ authenticated: boolean }>({
     queryKey: ["/api/auth/me"],
     retry: false,
-    staleTime: 5 * 60 * 1000,
+    staleTime: 0,
   });
 
   const logout = async () => {
@@ -16,10 +16,14 @@ export function useAuth() {
     window.location.reload();
   };
 
+  const refetch = async () => {
+    await queryClient.refetchQueries({ queryKey: ["/api/auth/me"] });
+  };
+
   return {
     authenticated: data?.authenticated === true,
     isLoading,
     logout,
-    refetch: () => queryClient.invalidateQueries({ queryKey: ["/api/auth/me"] }),
+    refetch,
   };
 }
