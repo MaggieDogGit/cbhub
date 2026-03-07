@@ -118,7 +118,9 @@ export default function LegalEntities() {
                       {group?.gsib_status === "G-SIB" && <Badge className="bg-purple-100 text-purple-700 border-purple-200 text-xs"><ShieldCheck className="w-3 h-3 mr-1" />G-SIB</Badge>}
                       {entity.country && <Badge variant="outline" className="text-xs">{entity.country}</Badge>}
                       {entity.entity_type && <Badge variant="outline" className="text-xs">{entity.entity_type}</Badge>}
-                      {fmis.some(f => f.legal_entity_id === entity.id && f.fmi_type === "CLS_Settlement_Member") && <Badge className="bg-blue-100 text-blue-700 border-blue-200 text-xs">CLS Member</Badge>}
+                      {fmis.filter(f => f.legal_entity_id === entity.id).map(f => (
+                        <Badge key={f.id} className="bg-teal-100 text-teal-700 border-teal-200 text-xs">{f.fmi_name || f.fmi_type}</Badge>
+                      ))}
                       {entity.group_name && <span className="text-xs text-slate-400">· {entity.group_name}</span>}
                     </div>
                     <div className="flex flex-wrap gap-1 mt-2">

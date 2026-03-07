@@ -169,8 +169,19 @@ function ServiceForm({ initial, bics, onSave, onCancel }: { initial?: Partial<Co
   );
 }
 
+const FMI_CATEGORIES = [
+  "Payment Systems",
+  "Instant Payment Systems",
+  "Securities Settlement Systems",
+  "Central Securities Depositories",
+  "Central Counterparties",
+  "Trade Repositories",
+  "FX Settlement Systems",
+  "Messaging Networks",
+] as const;
+
 function FMIForm({ initial, entities, onSave, onCancel }: { initial?: Partial<Fmi>; entities: LegalEntity[]; onSave: (d: any) => void; onCancel: () => void }) {
-  const [form, setForm] = useState<any>(initial || { legal_entity_id: "", legal_entity_name: "", fmi_type: "CLS_Settlement_Member", member_since: "", notes: "", last_verified: "" });
+  const [form, setForm] = useState<any>(initial || { legal_entity_id: "", legal_entity_name: "", fmi_type: "", fmi_name: "", member_since: "", notes: "", last_verified: "" });
   return (
     <div className="space-y-3 p-4 bg-slate-50 rounded-lg">
       <div className="grid grid-cols-2 gap-3">
@@ -182,11 +193,15 @@ function FMIForm({ initial, entities, onSave, onCancel }: { initial?: Partial<Fm
           </Select>
         </div>
         <div>
-          <Label className="text-xs">FMI Type *</Label>
+          <Label className="text-xs">FMI Category *</Label>
           <Select value={form.fmi_type} onValueChange={v => setForm((p: any) => ({ ...p, fmi_type: v }))}>
-            <SelectTrigger className="mt-1"><SelectValue /></SelectTrigger>
-            <SelectContent><SelectItem value="CLS_Settlement_Member">CLS Settlement Member</SelectItem></SelectContent>
+            <SelectTrigger className="mt-1"><SelectValue placeholder="Select category" /></SelectTrigger>
+            <SelectContent>{FMI_CATEGORIES.map(t => <SelectItem key={t} value={t}>{t}</SelectItem>)}</SelectContent>
           </Select>
+        </div>
+        <div className="col-span-2">
+          <Label className="text-xs">FMI Name * <span className="text-slate-400 font-normal">(e.g. TARGET2, CLS, LCH, Euroclear, SWIFT)</span></Label>
+          <Input value={form.fmi_name || ""} onChange={e => setForm((p: any) => ({ ...p, fmi_name: e.target.value }))} className="mt-1" placeholder="Specific FMI name" data-testid="input-fmi-name" />
         </div>
         <div><Label className="text-xs">Member Since</Label><Input type="date" value={form.member_since || ""} onChange={e => setForm((p: any) => ({ ...p, member_since: e.target.value }))} className="mt-1" /></div>
         <div><Label className="text-xs">Last Verified</Label><Input type="date" value={form.last_verified || ""} onChange={e => setForm((p: any) => ({ ...p, last_verified: e.target.value }))} className="mt-1" /></div>
@@ -384,12 +399,13 @@ export default function DatabaseAdmin() {
               {showForm === "fmi" && <FMIForm initial={editing} entities={entities.data} onSave={d => handleSave(fmisData, d)} onCancel={() => setShowForm(null)} />}
               <div className="overflow-x-auto">
                 <table className="w-full text-sm">
-                  <thead><tr className="border-b bg-slate-50 text-slate-600"><th className="text-left p-3">Legal Entity</th><th className="text-left p-3">FMI Type</th><th className="text-left p-3">Member Since</th><th className="text-left p-3">Last Verified</th><th className="p-3"></th></tr></thead>
+                  <thead><tr className="border-b bg-slate-50 text-slate-600"><th className="text-left p-3">Legal Entity</th><th className="text-left p-3">FMI Name</th><th className="text-left p-3">Category</th><th className="text-left p-3">Member Since</th><th className="text-left p-3">Last Verified</th><th className="p-3"></th></tr></thead>
                   <tbody>
                     {fmisData.data.map(f => (
                       <tr key={f.id} className="border-b hover:bg-slate-50" data-testid={`row-fmi-${f.id}`}>
                         <td className="p-3 font-medium">{f.legal_entity_name}</td>
-                        <td className="p-3"><Badge className="text-xs bg-teal-50 text-teal-700 border-teal-200">{f.fmi_type}</Badge></td>
+                        <td className="p-3 font-semibold text-slate-800">{f.fmi_name || "—"}</td>
+                        <td className="p-3"><Badge className="text-xs bg-teal-50 text-teal-700 border-teal-200">{f.fmi_type || "—"}</Badge></td>
                         <td className="p-3 text-slate-600">{f.member_since || "—"}</td>
                         <td className="p-3 text-slate-600">{f.last_verified || "—"}</td>
                         <td className="p-3 flex gap-1 justify-end">

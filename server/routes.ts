@@ -428,7 +428,15 @@ After completing the 4-criterion assessment, ALWAYS call update_banking_group wi
 - headquarters_country: update if you found a more accurate country
 - gsib_status: update to "G-SIB", "D-SIB", or "N/A" if you found evidence
 
-Additionally, if you discover that a Banking Group is a member of a Financial Market Infrastructure (e.g. CLS, SWIFT, STEP2, EBA Clearing, TARGET2-Securities), create an FMI record using create_fmi linked to the relevant Legal Entity.
+Additionally, if you discover that a legal entity is a member of a Financial Market Infrastructure, create an FMI record using create_fmi. Use the correct fmi_type category and the specific fmi_name:
+- Payment Systems → TARGET2 / T2, Fedwire, CHAPS, BOJ-NET, SIC, Lynx, RITS, MEPS+, CHATS, RIX
+- Instant Payment Systems → Faster Payments, SEPA Instant, UPI, RTP, FedNow
+- Securities Settlement Systems → Euroclear, Clearstream, DTC
+- Central Securities Depositories → Euroclear Bank, Clearstream Banking Luxembourg
+- Central Counterparties → LCH, CME Clearing, Eurex Clearing
+- Trade Repositories → DTCC Repository, UnaVista
+- FX Settlement Systems → CLS
+- Messaging Networks → SWIFT
 
 **Correspondent Service recording (MANDATORY when CB probability is High or Medium):**
 After updating the banking group record, you MUST also ensure a CorrespondentService record exists for the home currency under the primary BIC of the main legal entity. Follow these steps exactly:
@@ -743,14 +751,31 @@ When you have proposed an action and the user responds with a short confirmation
           type: "function",
           function: {
             name: "create_fmi",
-            description: "Create a new FMI membership record",
+            description: "Create a new FMI membership record for a legal entity",
             parameters: {
               type: "object",
-              required: ["legal_entity_id", "fmi_type"],
+              required: ["legal_entity_id", "fmi_type", "fmi_name"],
               properties: {
                 legal_entity_id: { type: "string" },
                 legal_entity_name: { type: "string" },
-                fmi_type: { type: "string", enum: ["CLS_Settlement_Member"] },
+                fmi_type: {
+                  type: "string",
+                  enum: [
+                    "Payment Systems",
+                    "Instant Payment Systems",
+                    "Securities Settlement Systems",
+                    "Central Securities Depositories",
+                    "Central Counterparties",
+                    "Trade Repositories",
+                    "FX Settlement Systems",
+                    "Messaging Networks",
+                  ],
+                  description: "The category of FMI",
+                },
+                fmi_name: {
+                  type: "string",
+                  description: "The specific FMI name, e.g. TARGET2, Fedwire, CHAPS, CLS, LCH, Euroclear, SWIFT, DTCC",
+                },
                 member_since: { type: "string" },
                 notes: { type: "string" },
               },

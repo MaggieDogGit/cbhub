@@ -8,7 +8,17 @@ export const entityTypeEnum = pgEnum("entity_type", ["Bank", "Branch", "Subsidia
 export const currencyEnum = pgEnum("currency", ["EUR","USD","GBP","JPY","CHF","CAD","AUD","SGD","HKD","CNH","SEK","NOK","DKK","PLN","CZK","HUF","RON","TRY","ZAR","BRL","MXN","INR"]);
 export const clearingModelEnum = pgEnum("clearing_model", ["Onshore", "Offshore"]);
 export const serviceTypeEnum = pgEnum("service_type", ["Correspondent Banking","Currency Clearing","RTGS Participation","Instant Payments Access","FX Liquidity","CLS Settlement","CLS Third Party Settlement","CLS Nostro Payments","Custody Services","Transaction Banking","Liquidity Services"]);
-export const fmiTypeEnum = pgEnum("fmi_type", ["CLS_Settlement_Member"]);
+export const FMI_CATEGORIES = [
+  "Payment Systems",
+  "Instant Payment Systems",
+  "Securities Settlement Systems",
+  "Central Securities Depositories",
+  "Central Counterparties",
+  "Trade Repositories",
+  "FX Settlement Systems",
+  "Messaging Networks",
+] as const;
+export type FmiCategory = typeof FMI_CATEGORIES[number];
 export const messageRoleEnum = pgEnum("message_role", ["user", "assistant"]);
 
 export const bankingGroups = pgTable("banking_groups", {
@@ -87,7 +97,8 @@ export const fmis = pgTable("fmis", {
   id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
   legal_entity_id: varchar("legal_entity_id").notNull(),
   legal_entity_name: text("legal_entity_name"),
-  fmi_type: fmiTypeEnum("fmi_type").default("CLS_Settlement_Member"),
+  fmi_type: text("fmi_type"),
+  fmi_name: text("fmi_name"),
   member_since: date("member_since"),
   notes: text("notes"),
   last_verified: date("last_verified"),

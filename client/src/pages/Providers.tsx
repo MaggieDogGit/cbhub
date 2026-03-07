@@ -46,7 +46,7 @@ export default function Providers() {
     if (filterServiceType !== "all") svcs = svcs.filter(s => s.service_type === filterServiceType);
     return svcs;
   };
-  const isEntityClsMember = (entityId: string) => fmis.some(f => f.legal_entity_id === entityId && f.fmi_type === "CLS_Settlement_Member");
+  const isEntityClsMember = (entityId: string) => fmis.some(f => f.legal_entity_id === entityId && (f.fmi_name === "CLS" || f.fmi_type === "FX Settlement Systems"));
   const groupHasClsMember = (groupId: string) => getEntitiesForGroup(groupId).some(e => isEntityClsMember(e.id));
 
   const groupMatchesFilters = (group: BankingGroup) => {
