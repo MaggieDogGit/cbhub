@@ -4,9 +4,10 @@ import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { Label } from "@/components/ui/label";
 import { Lock } from "lucide-react";
+import { setAuthToken } from "@/lib/queryClient";
 
 interface Props {
-  onLogin: () => void;
+  onLogin: () => Promise<void>;
 }
 
 export default function Login({ onLogin }: Props) {
@@ -26,7 +27,9 @@ export default function Login({ onLogin }: Props) {
         body: JSON.stringify({ username, password }),
       });
       if (res.ok) {
-        onLogin();
+        const data = await res.json();
+        if (data.token) setAuthToken(data.token);
+        await onLogin();
       } else {
         setError("Invalid username or password.");
       }

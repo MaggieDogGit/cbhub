@@ -1,25 +1,45 @@
 import type { Express, Request, Response, NextFunction } from "express";
 import { createServer, type Server } from "http";
 import { storage } from "./storage";
+import { pool } from "./db";
 import { insertBankingGroupSchema, insertLegalEntitySchema, insertBicSchema, insertCorrespondentServiceSchema, insertClsProfileSchema, insertFmiSchema, insertConversationSchema, insertMessageSchema } from "@shared/schema";
 import OpenAI from "openai";
 
 const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
 
-const requireAuth = (req: Request, res: Response, next: NextFunction) => {
+async function isValidToken(token: string): Promise<boolean> {
+  try {
+    const result = await pool.query(
+      "SELECT sess FROM session WHERE sid = $1 AND expire > NOW()",
+      [token]
+    );
+    if (result.rows.length === 0) return false;
+    const sess = result.rows[0].sess;
+    return sess?.authenticated === true;
+  } catch {
+    return false;
+  }
+}
+
+const requireAuth = async (req: Request, res: Response, next: NextFunction) => {
   if (req.session?.authenticated) return next();
+  const token = req.headers["x-auth-token"] as string | undefined;
+  if (token && await isValidToken(token)) return next();
   res.status(401).json({ message: "Unauthorized" });
 };
 
 export async function registerRoutes(httpServer: Server, app: Express): Promise<Server> {
 
   // Auth endpoints (not protected)
-  app.get("/api/auth/me", (req, res) => {
+  app.get("/api/auth/me", async (req, res) => {
     if (req.session?.authenticated) {
-      res.json({ authenticated: true });
-    } else {
-      res.status(401).json({ authenticated: false });
+      return res.json({ authenticated: true });
     }
+    const token = req.headers["x-auth-token"] as string | undefined;
+    if (token && await isValidToken(token)) {
+      return res.json({ authenticated: true });
+    }
+    res.status(401).json({ authenticated: false });
   });
 
   app.post("/api/auth/login", (req, res) => {
@@ -33,7 +53,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
       req.session.authenticated = true;
       req.session.save((err) => {
         if (err) return res.status(500).json({ message: "Session save failed" });
-        res.json({ ok: true });
+        res.json({ ok: true, token: req.session.id });
       });
     } else {
       res.status(401).json({ message: "Invalid credentials" });

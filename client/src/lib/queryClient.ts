@@ -1,5 +1,24 @@
 import { QueryClient, QueryFunction } from "@tanstack/react-query";
 
+export function getAuthToken(): string | null {
+  return localStorage.getItem("auth_token");
+}
+
+export function setAuthToken(token: string) {
+  localStorage.setItem("auth_token", token);
+}
+
+export function clearAuthToken() {
+  localStorage.removeItem("auth_token");
+}
+
+function authHeaders(extra?: Record<string, string>): Record<string, string> {
+  const token = getAuthToken();
+  const headers: Record<string, string> = { ...extra };
+  if (token) headers["x-auth-token"] = token;
+  return headers;
+}
+
 async function throwIfResNotOk(res: Response) {
   if (!res.ok) {
     const text = (await res.text()) || res.statusText;
@@ -14,7 +33,9 @@ export async function apiRequest(
 ): Promise<Response> {
   const res = await fetch(url, {
     method,
-    headers: data ? { "Content-Type": "application/json" } : {},
+    headers: data
+      ? authHeaders({ "Content-Type": "application/json" })
+      : authHeaders(),
     body: data ? JSON.stringify(data) : undefined,
     credentials: "include",
   });
@@ -29,7 +50,8 @@ export const getQueryFn: <T>(options: {
 }) => QueryFunction<T> =
   ({ on401: unauthorizedBehavior }) =>
   async ({ queryKey }) => {
-    const res = await fetch(queryKey.join("/") as string, {
+    const res = await fetch(queryKey[0] as string, {
+      headers: authHeaders(),
       credentials: "include",
     });
 
