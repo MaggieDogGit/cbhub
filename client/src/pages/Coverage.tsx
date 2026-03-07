@@ -10,15 +10,42 @@ import { useToast } from "@/hooks/use-toast";
 import type { BankingGroup, LegalEntity, Bic, CorrespondentService, AgentJob } from "@shared/schema";
 
 type CoverageStatus = "complete" | "partial" | "empty";
+type CurrencyScope = "home_only" | "major" | "all";
 
-function buildCBSetupPrompt(group: BankingGroup, entityCount: number, bicCount: number, serviceCount: number): string {
-  return `Run the CB Entity Setup workflow for ${group.group_name}${group.headquarters_country ? ` (${group.headquarters_country})` : ""}:
+const SCOPE_OPTIONS: { value: CurrencyScope; label: string; desc: string }[] = [
+  { value: "home_only", label: "Home currency", desc: "Only the group's primary currency (e.g. EUR for a Eurozone bank)" },
+  { value: "major",    label: "EUR / GBP / USD",  desc: "The three major correspondent banking currencies only" },
+  { value: "all",      label: "All currencies",  desc: "Every currency the entity is known to offer CB services in" },
+];
+
+const SCOPE_LABELS: Record<CurrencyScope, string> = {
+  home_only: "Home",
+  major:     "EUR/GBP/USD",
+  all:       "All CCY",
+};
+
+function buildCurrencyInstruction(scope: CurrencyScope, primaryCurrency?: string | null): string {
+  switch (scope) {
+    case "home_only":
+      return `For each BIC, ensure a Correspondent Banking service exists in the home currency${primaryCurrency ? ` (${primaryCurrency})` : ""} only. Do not create services for other currencies — strictly limit to the home currency.`;
+    case "major":
+      return `For each BIC, focus only on EUR, GBP, and USD correspondent banking services. Only create services for these three currencies; skip the home currency if it is not one of these three.`;
+    case "all":
+      return `For each BIC, identify and add all currencies that entity is known to offer Correspondent Banking services in. Include the home currency${primaryCurrency ? ` (${primaryCurrency})` : ""} plus any additional currencies confirmed through research.`;
+  }
+}
+
+function buildCBSetupPrompt(group: BankingGroup, entityCount: number, bicCount: number, serviceCount: number, scope: CurrencyScope): string {
+  const currencyInstruction = buildCurrencyInstruction(scope, group.primary_currency);
+  const scopeLabel = scope === "home_only" ? "home currency only" : scope === "major" ? "EUR/GBP/USD" : "all currencies";
+
+  return `Run the CB Entity Setup workflow for ${group.group_name}${group.headquarters_country ? ` (${group.headquarters_country})` : ""} [Currency scope: ${scopeLabel}]:
 
 1. Search the web to identify which legal entities within ${group.group_name} actively provide Correspondent Banking services to other financial institutions. For each entity found, check if it already exists in the database before creating it.
 
 2. For each identified CB legal entity, find their primary BIC/SWIFT code. Add it using create_bic if not already present (check list_bics first).
 
-3. For each BIC, ensure a Correspondent Banking service exists in the home currency${group.primary_currency ? ` (${group.primary_currency})` : ""}. Also identify and add any other currencies that entity is known to offer CB services in.
+3. ${currencyInstruction}
 
 4. If any FMI memberships are discovered (e.g. SWIFT, TARGET2, CLS, Euroclear), record them using create_fmi with the correct fmi_type category and fmi_name.
 
@@ -34,25 +61,39 @@ const statusConfig: Record<CoverageStatus, { label: string; icon: React.ReactNod
 };
 
 function JobStatusBadge({ job }: { job: AgentJob }) {
+  const scope = (job.currency_scope || "home_only") as CurrencyScope;
+  const scopeLabel = SCOPE_LABELS[scope];
   if (job.status === "pending") return (
-    <Badge className="bg-slate-100 text-slate-600 border-slate-200 text-xs gap-1">
-      <Clock className="w-3 h-3" /> Queued
-    </Badge>
+    <div className="flex items-center gap-1 flex-wrap">
+      <Badge className="bg-slate-100 text-slate-600 border-slate-200 text-xs gap-1">
+        <Clock className="w-3 h-3" /> Queued
+      </Badge>
+      <span className="text-xs text-slate-400 font-mono">{scopeLabel}</span>
+    </div>
   );
   if (job.status === "running") return (
-    <Badge className="bg-blue-100 text-blue-700 border-blue-200 text-xs gap-1">
-      <Loader2 className="w-3 h-3 animate-spin" /> Running {job.steps_completed ? `(${job.steps_completed} steps)` : ""}
-    </Badge>
+    <div className="flex items-center gap-1 flex-wrap">
+      <Badge className="bg-blue-100 text-blue-700 border-blue-200 text-xs gap-1">
+        <Loader2 className="w-3 h-3 animate-spin" /> Running {job.steps_completed ? `(${job.steps_completed})` : ""}
+      </Badge>
+      <span className="text-xs text-slate-400 font-mono">{scopeLabel}</span>
+    </div>
   );
   if (job.status === "completed") return (
-    <Badge className="bg-emerald-100 text-emerald-700 border-emerald-200 text-xs gap-1">
-      <CheckCircle2 className="w-3 h-3" /> Done ({job.steps_completed} steps)
-    </Badge>
+    <div className="flex items-center gap-1 flex-wrap">
+      <Badge className="bg-emerald-100 text-emerald-700 border-emerald-200 text-xs gap-1">
+        <CheckCircle2 className="w-3 h-3" /> Done ({job.steps_completed})
+      </Badge>
+      <span className="text-xs text-slate-400 font-mono">{scopeLabel}</span>
+    </div>
   );
   if (job.status === "failed") return (
-    <Badge className="bg-red-100 text-red-700 border-red-200 text-xs gap-1" title={job.error_message || ""}>
-      <XCircle className="w-3 h-3" /> Failed
-    </Badge>
+    <div className="flex items-center gap-1 flex-wrap">
+      <Badge className="bg-red-100 text-red-700 border-red-200 text-xs gap-1" title={job.error_message || ""}>
+        <XCircle className="w-3 h-3" /> Failed
+      </Badge>
+      <span className="text-xs text-slate-400 font-mono">{scopeLabel}</span>
+    </div>
   );
   return null;
 }
@@ -61,6 +102,7 @@ export default function Coverage() {
   const [, setLocation] = useLocation();
   const [search, setSearch] = useState("");
   const [filterStatus, setFilterStatus] = useState<CoverageStatus | "all">("all");
+  const [currencyScope, setCurrencyScope] = useState<CurrencyScope>("home_only");
   const { toast } = useToast();
 
   const { data: groups = [], isLoading: lg } = useQuery<BankingGroup[]>({ queryKey: ["/api/banking-groups"] });
@@ -77,8 +119,12 @@ export default function Coverage() {
   });
 
   const queueMutation = useMutation({
-    mutationFn: (group: BankingGroup) =>
-      apiRequest("POST", "/api/jobs", { banking_group_id: group.id, banking_group_name: group.group_name }).then(r => r.json()),
+    mutationFn: (vars: { group: BankingGroup; scope: CurrencyScope }) =>
+      apiRequest("POST", "/api/jobs", {
+        banking_group_id: vars.group.id,
+        banking_group_name: vars.group.group_name,
+        currency_scope: vars.scope,
+      }).then(r => r.json()),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["/api/jobs"] });
       toast({ title: "Job queued", description: "The CB Setup workflow will run in the background." });
@@ -95,8 +141,8 @@ export default function Coverage() {
   });
 
   const queueAllMutation = useMutation({
-    mutationFn: (groupIds: { id: string; name: string }[]) =>
-      apiRequest("POST", "/api/jobs/queue-all", { group_ids: groupIds }).then(r => r.json()),
+    mutationFn: (vars: { groupIds: { id: string; name: string }[]; scope: CurrencyScope }) =>
+      apiRequest("POST", "/api/jobs/queue-all", { group_ids: vars.groupIds, currency_scope: vars.scope }).then(r => r.json()),
     onSuccess: (data) => {
       queryClient.invalidateQueries({ queryKey: ["/api/jobs"] });
       toast({ title: `${data.queued} jobs queued`, description: "The background runner will process them one at a time." });
@@ -136,8 +182,8 @@ export default function Coverage() {
   });
 
   const completeCount = enrichedGroups.filter(r => r.status === "complete").length;
-  const partialCount = enrichedGroups.filter(r => r.status === "partial").length;
-  const emptyCount = enrichedGroups.filter(r => r.status === "empty").length;
+  const partialCount  = enrichedGroups.filter(r => r.status === "partial").length;
+  const emptyCount    = enrichedGroups.filter(r => r.status === "empty").length;
   const activeJobCount = jobs.filter(j => j.status === "pending" || j.status === "running").length;
 
   const filtered = enrichedGroups.filter(r => {
@@ -160,7 +206,7 @@ export default function Coverage() {
     </div>
   );
 
-  const emptyGroups = enrichedGroups.filter(r => r.status === "empty").map(r => ({ id: r.group.id, name: r.group.group_name }));
+  const emptyGroups      = enrichedGroups.filter(r => r.status === "empty").map(r => ({ id: r.group.id, name: r.group.group_name }));
   const incompleteGroups = enrichedGroups.filter(r => r.status !== "complete").map(r => ({ id: r.group.id, name: r.group.group_name }));
 
   return (
@@ -170,19 +216,44 @@ export default function Coverage() {
           <h1 className="text-2xl font-bold text-slate-900">Data Coverage</h1>
           <p className="text-slate-500 text-sm mt-1">Track which banking groups have complete data chains: entity → BIC → service</p>
         </div>
-        <div className="flex gap-2 flex-wrap">
-          {activeJobCount > 0 && (
-            <Badge className="bg-blue-100 text-blue-700 border-blue-200 gap-1 self-center">
-              <Loader2 className="w-3 h-3 animate-spin" /> {activeJobCount} job{activeJobCount !== 1 ? "s" : ""} running
-            </Badge>
-          )}
+        {activeJobCount > 0 && (
+          <Badge className="bg-blue-100 text-blue-700 border-blue-200 gap-1 self-center">
+            <Loader2 className="w-3 h-3 animate-spin" /> {activeJobCount} job{activeJobCount !== 1 ? "s" : ""} running
+          </Badge>
+        )}
+      </div>
+
+      {/* Currency Scope Selector */}
+      <div className="rounded-xl border border-slate-200 bg-white p-4">
+        <div className="flex items-center gap-3 flex-wrap">
+          <span className="text-sm font-medium text-slate-700 whitespace-nowrap">Currency scope for queued jobs:</span>
+          <div className="flex rounded-lg border border-slate-200 overflow-hidden text-sm" data-testid="scope-selector">
+            {SCOPE_OPTIONS.map(opt => (
+              <button
+                key={opt.value}
+                data-testid={`scope-option-${opt.value}`}
+                title={opt.desc}
+                onClick={() => setCurrencyScope(opt.value)}
+                className={`px-3 py-1.5 transition-colors border-r border-slate-200 last:border-r-0 ${
+                  currencyScope === opt.value
+                    ? "bg-blue-600 text-white font-medium"
+                    : "bg-white text-slate-600 hover:bg-slate-50"
+                }`}
+              >
+                {opt.label}
+              </button>
+            ))}
+          </div>
+          <span className="text-xs text-slate-400 italic">{SCOPE_OPTIONS.find(o => o.value === currencyScope)?.desc}</span>
+        </div>
+        <div className="flex gap-2 flex-wrap mt-3 pt-3 border-t border-slate-100">
           <Button
             size="sm"
             variant="outline"
             className="text-xs border-amber-200 text-amber-700 hover:bg-amber-50"
             data-testid="button-queue-all-empty"
             disabled={queueAllMutation.isPending || emptyGroups.length === 0}
-            onClick={() => queueAllMutation.mutate(emptyGroups)}
+            onClick={() => queueAllMutation.mutate({ groupIds: emptyGroups, scope: currencyScope })}
           >
             <Play className="w-3.5 h-3.5 mr-1" />
             Queue Empty ({emptyGroups.length})
@@ -192,7 +263,7 @@ export default function Coverage() {
             className="text-xs bg-blue-600 hover:bg-blue-700"
             data-testid="button-queue-all-incomplete"
             disabled={queueAllMutation.isPending || incompleteGroups.length === 0}
-            onClick={() => queueAllMutation.mutate(incompleteGroups)}
+            onClick={() => queueAllMutation.mutate({ groupIds: incompleteGroups, scope: currencyScope })}
           >
             <Bot className="w-3.5 h-3.5 mr-1" />
             Queue All Incomplete ({incompleteGroups.length})
@@ -200,6 +271,7 @@ export default function Coverage() {
         </div>
       </div>
 
+      {/* Summary Cards */}
       <div className="grid grid-cols-3 gap-4">
         {[
           { status: "complete" as CoverageStatus, count: completeCount, label: "Complete", desc: "Entity + BIC + Service" },
@@ -228,6 +300,7 @@ export default function Coverage() {
         ))}
       </div>
 
+      {/* Search / Count */}
       <div className="flex gap-3 flex-wrap">
         <div className="relative flex-1 min-w-48">
           <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
@@ -242,6 +315,7 @@ export default function Coverage() {
         <div className="text-sm text-slate-500 flex items-center">{filtered.length} of {groups.length} groups</div>
       </div>
 
+      {/* Table */}
       <div className="rounded-xl border border-slate-200 overflow-hidden bg-white">
         <table className="w-full text-sm">
           <thead>
@@ -297,7 +371,7 @@ export default function Coverage() {
                       {statusConfig[status].label}
                     </Badge>
                   </td>
-                  <td className="px-4 py-3">
+                  <td className="px-4 py-3 min-w-36">
                     {job ? <JobStatusBadge job={job} /> : <span className="text-slate-400 text-xs">—</span>}
                   </td>
                   <td className="px-4 py-3">
@@ -319,7 +393,7 @@ export default function Coverage() {
                             className="text-xs h-7 px-2 text-blue-600 border-blue-200 hover:bg-blue-50"
                             data-testid={`button-queue-job-${group.id}`}
                             disabled={queueMutation.isPending}
-                            onClick={() => queueMutation.mutate(group)}
+                            onClick={() => queueMutation.mutate({ group, scope: currencyScope })}
                           >
                             <Bot className="w-3 h-3 mr-1" />Queue
                           </Button>
@@ -327,9 +401,9 @@ export default function Coverage() {
                             size="sm" variant="ghost"
                             className="text-xs h-7 px-2 text-slate-500"
                             data-testid={`button-open-chat-${group.id}`}
-                            title="Open in agent chat"
+                            title={`Open in agent chat (${SCOPE_LABELS[currencyScope]})`}
                             onClick={() => {
-                              const prompt = buildCBSetupPrompt(group, entityCount, bicCount, serviceCount);
+                              const prompt = buildCBSetupPrompt(group, entityCount, bicCount, serviceCount, currencyScope);
                               setLocation(`/agent?prompt=${encodeURIComponent(prompt)}&conv=${encodeURIComponent(`CB Setup: ${group.group_name}`)}`);
                             }}
                           >

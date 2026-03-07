@@ -286,12 +286,13 @@ Only include currencies and services you found evidence for in the research.`,
     res.json(await storage.listJobs());
   });
   app.post("/api/jobs", async (req, res) => {
-    const { banking_group_id, banking_group_name } = req.body;
+    const { banking_group_id, banking_group_name, currency_scope } = req.body;
     if (!banking_group_id || !banking_group_name) return res.status(400).json({ message: "banking_group_id and banking_group_name required" });
     const existing = await storage.listJobs();
     const active = existing.find(j => j.banking_group_id === banking_group_id && (j.status === "pending" || j.status === "running"));
     if (active) return res.status(409).json({ message: "A job for this banking group is already queued or running.", job: active });
-    const job = await storage.createJob({ banking_group_id, banking_group_name, status: "pending" });
+    const scope = ["home_only", "major", "all"].includes(currency_scope) ? currency_scope : "home_only";
+    const job = await storage.createJob({ banking_group_id, banking_group_name, status: "pending", currency_scope: scope });
     res.json(job);
   });
   app.delete("/api/jobs/:id", async (req, res) => {
@@ -301,14 +302,15 @@ Only include currencies and services you found evidence for in the research.`,
     res.json({ ok: true });
   });
   app.post("/api/jobs/queue-all", async (req, res) => {
-    const { group_ids } = req.body as { group_ids: { id: string; name: string }[] };
+    const { group_ids, currency_scope } = req.body as { group_ids: { id: string; name: string }[]; currency_scope?: string };
     if (!Array.isArray(group_ids)) return res.status(400).json({ message: "group_ids array required" });
+    const scope = ["home_only", "major", "all"].includes(currency_scope || "") ? currency_scope! : "home_only";
     const existing = await storage.listJobs();
     const activeIds = new Set(existing.filter(j => j.status === "pending" || j.status === "running").map(j => j.banking_group_id));
     const queued = [];
     for (const { id, name } of group_ids) {
       if (!activeIds.has(id)) {
-        const job = await storage.createJob({ banking_group_id: id, banking_group_name: name, status: "pending" });
+        const job = await storage.createJob({ banking_group_id: id, banking_group_name: name, status: "pending", currency_scope: scope });
         queued.push(job);
       }
     }

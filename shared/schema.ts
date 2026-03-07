@@ -171,6 +171,7 @@ export const agentJobs = pgTable("agent_jobs", {
   completed_at: timestamp("completed_at"),
   error_message: text("error_message"),
   steps_completed: integer("steps_completed").default(0),
+  currency_scope: text("currency_scope").notNull().default("home_only"),
 });
 
 export const insertAgentJobSchema = createInsertSchema(agentJobs).omit({ id: true, queued_at: true });

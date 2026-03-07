@@ -3,14 +3,39 @@ import { buildSystemPrompt, runAgentLoop } from "./agentCore";
 
 let isProcessing = false;
 
-function buildJobPrompt(groupName: string, groupId: string, entityCount: number, bicCount: number, serviceCount: number, primaryCurrency: string | null | undefined, cbProbability: string | null | undefined): string {
-  return `Run the CB Entity Setup workflow for ${groupName}:
+type CurrencyScope = "home_only" | "major" | "all";
+
+function buildCurrencyInstruction(scope: CurrencyScope, primaryCurrency: string | null | undefined): string {
+  switch (scope) {
+    case "home_only":
+      return `For each BIC, ensure a Correspondent Banking service exists in the home currency${primaryCurrency ? ` (${primaryCurrency})` : ""} only. Do not create services for other currencies — strictly limit to the home currency.`;
+    case "major":
+      return `For each BIC, focus only on EUR, GBP, and USD correspondent banking services. Only create services for these three currencies; skip the home currency if it is not one of these three.`;
+    case "all":
+      return `For each BIC, identify and add all currencies that entity is known to offer Correspondent Banking services in. Include the home currency${primaryCurrency ? ` (${primaryCurrency})` : ""} plus any additional currencies confirmed through research.`;
+  }
+}
+
+function buildJobPrompt(
+  groupName: string,
+  groupId: string,
+  entityCount: number,
+  bicCount: number,
+  serviceCount: number,
+  primaryCurrency: string | null | undefined,
+  cbProbability: string | null | undefined,
+  scope: CurrencyScope,
+): string {
+  const currencyInstruction = buildCurrencyInstruction(scope, primaryCurrency);
+  const scopeLabel = scope === "home_only" ? "home currency only" : scope === "major" ? "EUR/GBP/USD" : "all currencies";
+
+  return `Run the CB Entity Setup workflow for ${groupName} [Currency scope: ${scopeLabel}]:
 
 1. Search the web to identify which legal entities within ${groupName} actively provide Correspondent Banking services to other financial institutions. For each entity found, check if it already exists in the database before creating it.
 
 2. For each identified CB legal entity, find their primary BIC/SWIFT code. Add it using create_bic if not already present (check list_bics first).
 
-3. For each BIC, ensure a Correspondent Banking service exists in the home currency${primaryCurrency ? ` (${primaryCurrency})` : ""}. Also identify and add any other currencies that entity is known to offer CB services in.
+3. ${currencyInstruction}
 
 4. If any FMI memberships are discovered (e.g. SWIFT, TARGET2, CLS, Euroclear), record them using create_fmi with the correct fmi_type category and fmi_name.
 
@@ -27,7 +52,8 @@ async function processNextJob() {
   if (!pending) return;
 
   isProcessing = true;
-  console.log(`[JobRunner] Starting job ${pending.id} for ${pending.banking_group_name}`);
+  const scope: CurrencyScope = (pending.currency_scope as CurrencyScope) || "home_only";
+  console.log(`[JobRunner] Starting job ${pending.id} for ${pending.banking_group_name} (scope: ${scope})`);
 
   try {
     const conv = await storage.createConversation({ name: `CB Setup: ${pending.banking_group_name}` });
@@ -59,6 +85,7 @@ async function processNextJob() {
       groupServices.length,
       group.primary_currency,
       group.cb_probability,
+      scope,
     );
 
     await storage.createMessage({ conversation_id: conv.id, role: "user", content: message });
@@ -72,7 +99,7 @@ async function processNextJob() {
     let stepCount = 0;
     const assistantContent = await runAgentLoop(
       openaiMessages,
-      async (toolName, _args, statusText) => {
+      async (_toolName, _args, statusText) => {
         stepCount++;
         console.log(`[JobRunner] ${pending.banking_group_name} — step ${stepCount}: ${statusText}`);
         await storage.updateJob(pending.id, { steps_completed: stepCount } as any);
@@ -102,8 +129,6 @@ async function processNextJob() {
 
 export function startJobRunner() {
   console.log("[JobRunner] Starting background job runner (30s poll interval)");
-  // Process immediately on startup (in case jobs were queued before restart)
   setTimeout(processNextJob, 5000);
-  // Then poll every 30 seconds
   setInterval(processNextJob, 30_000);
 }
