@@ -201,6 +201,19 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
     const { bankName } = req.body;
     if (!bankName) return res.status(400).json({ message: "bankName required" });
     try {
+      // Step 1: search the web for current information about the bank
+      const searchResponse = await openai.chat.completions.create({
+        model: "gpt-4o-search-preview",
+        messages: [
+          {
+            role: "user",
+            content: `Search for current information about "${bankName}" correspondent banking services, currencies they clear, RTGS memberships, CLS membership, and their role as a correspondent bank. Include their headquarters country and whether they are a G-SIB.`,
+          },
+        ],
+      } as any);
+      const webContext = searchResponse.choices[0].message.content || "";
+
+      // Step 2: structure the results as JSON using gpt-4o
       const response = await openai.chat.completions.create({
         model: "gpt-4o",
         response_format: { type: "json_object" },
@@ -211,9 +224,10 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
           },
           {
             role: "user",
-            content: `Research the correspondent banking services offered by "${bankName}".
+            content: `Based on the following up-to-date web research, structure the correspondent banking information for "${bankName}" as JSON.
 
-For each major currency they service, provide details in strict JSON format. Only include currencies you are confident about.
+Web research:
+${webContext}
 
 Return ONLY a valid JSON object like this:
 {
@@ -230,13 +244,14 @@ Return ONLY a valid JSON object like this:
       "nostro_accounts_offered": true,
       "vostro_accounts_offered": true,
       "target_clients": "Banks, Payment Institutions",
-      "source": "Public knowledge"
+      "source": "Web search"
     }
   ]
 }
 
 Service type must be one of: Correspondent Banking, Currency Clearing, RTGS Participation, Instant Payments Access, FX Liquidity, CLS Settlement, Custody Services, Transaction Banking, Liquidity Services.
-Currencies must be from: EUR, USD, GBP, JPY, CHF, CAD, AUD, SGD, HKD, CNH, SEK, NOK, DKK, PLN, CZK, HUF, RON, TRY, ZAR, BRL, MXN, INR.`,
+Currencies must be from: EUR, USD, GBP, JPY, CHF, CAD, AUD, SGD, HKD, CNH, SEK, NOK, DKK, PLN, CZK, HUF, RON, TRY, ZAR, BRL, MXN, INR.
+Only include currencies and services you found evidence for in the research.`,
           },
         ],
       });
@@ -254,19 +269,22 @@ Currencies must be from: EUR, USD, GBP, JPY, CHF, CAD, AUD, SGD, HKD, CNH, SEK, 
     try {
       const history = await storage.listMessages(conversationId);
 
-      const systemPrompt = `You are the CB Provider Intelligence Agent, an expert in correspondent banking with full read and write access to the database.
+      const systemPrompt = `You are the CB Provider Intelligence Agent, an expert in correspondent banking with full read and write access to the database and the ability to search the web for current information.
 
 You can perform these actions using your tools:
 - LIST all banking groups, legal entities, BICs, correspondent services, FMIs
 - CREATE new records for any entity type
 - UPDATE existing records (you must first list to find the correct ID)
 - DELETE records by ID
+- SEARCH the web for current information about banks, SWIFT codes, correspondent banking services, regulatory changes, etc.
 
 When a user asks you to add, update, change, amend, remove or delete something, use the appropriate tool to do it directly. Do not just describe what to do — actually do it.
 
 When creating related records (e.g. a new bank), follow this hierarchy: first create the BankingGroup, then a LegalEntity linked to it, then a BIC linked to the entity, then CorrespondentServices linked to the BIC.
 
-Always confirm what you have done after completing an action. Be concise and accurate. Caveat any AI-generated factual claims as needing verification.`;
+Use web_search when the user asks about current market information, a specific bank's services, recent news, or anything that would benefit from up-to-date data.
+
+Always confirm what you have done after completing an action. Be concise and accurate. Cite sources when using web search results.`;
 
       const tools: any[] = [
         {
@@ -565,6 +583,20 @@ Always confirm what you have done after completing an action. Be concise and acc
             },
           },
         },
+        {
+          type: "function",
+          function: {
+            name: "web_search",
+            description: "Search the web for current information about banks, correspondent banking services, SWIFT codes, regulatory news, or any real-time financial data",
+            parameters: {
+              type: "object",
+              required: ["query"],
+              properties: {
+                query: { type: "string", description: "The search query" },
+              },
+            },
+          },
+        },
       ];
 
       const executeTool = async (name: string, args: any): Promise<string> => {
@@ -589,6 +621,13 @@ Always confirm what you have done after completing an action. Be concise and acc
             case "list_fmis": return JSON.stringify(await storage.listFmis());
             case "create_fmi": return JSON.stringify(await storage.createFmi(args));
             case "delete_fmi": await storage.deleteFmi(args.id); return JSON.stringify({ ok: true, id: args.id });
+            case "web_search": {
+              const searchResponse = await openai.chat.completions.create({
+                model: "gpt-4o-search-preview",
+                messages: [{ role: "user", content: args.query }],
+              } as any);
+              return searchResponse.choices[0].message.content || "No search results found.";
+            }
             default: return JSON.stringify({ error: `Unknown tool: ${name}` });
           }
         } catch (err: any) {
