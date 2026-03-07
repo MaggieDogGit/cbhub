@@ -431,11 +431,16 @@ After completing the 4-criterion assessment, ALWAYS call update_banking_group wi
 Additionally, if you discover that a Banking Group is a member of a Financial Market Infrastructure (e.g. CLS, SWIFT, STEP2, EBA Clearing, TARGET2-Securities), create an FMI record using create_fmi linked to the relevant Legal Entity.
 
 **Correspondent Service recording (MANDATORY when CB probability is High or Medium):**
-After updating the banking group record, you MUST also ensure a CorrespondentService record exists for the home currency under the primary BIC of the main legal entity. Follow these steps:
-1. Call list_bics to find the BIC linked to the legal entity.
-2. Call list_correspondent_services to check whether a service already exists for that BIC + home currency combination.
-3. If no such service exists, call create_correspondent_service with:
+After updating the banking group record, you MUST also ensure a CorrespondentService record exists for the home currency under the primary BIC of the main legal entity. Follow these steps exactly:
+1. Call list_bics to find any BIC already linked to the legal entity.
+2. If NO BIC exists yet, create one first using create_bic before proceeding. Use the institution's well-known primary BIC/SWIFT code (e.g. DEUTDEDB for Deutsche Bank, INGBBE2B for ING Belgium, COBADEFF for Commerzbank). Set is_headquarters=true and swift_member=true.
+3. Call list_correspondent_services to check whether a service already exists for that BIC + home currency combination.
+4. If no such service exists, call create_correspondent_service with:
    - bic_id: the BIC's id
+   - bic_code: the BIC code string
+   - group_name: the banking group name
+   - legal_entity_name: the legal entity name
+   - country: the headquarters country
    - currency: the home currency (e.g. "EUR")
    - service_type: "Correspondent Banking"
    - clearing_model: "Onshore"
@@ -443,7 +448,7 @@ After updating the banking group record, you MUST also ensure a CorrespondentSer
    - nostro_accounts_offered: true (default for CB providers)
    - vostro_accounts_offered: true (default for CB providers)
    - source: the web source URL you used for the assessment
-4. If a service already exists for that BIC + currency, update it with any improved details instead of creating a duplicate.
+5. If a service already exists for that BIC + currency, update it with any improved details instead of creating a duplicate.
 
 Do NOT skip the database update step even if the user has not explicitly asked you to update — assessment findings MUST always be written back.
 
