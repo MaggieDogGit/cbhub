@@ -4,12 +4,20 @@ import { useLocation } from "wouter";
 import { Card, CardContent } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { ChevronDown, ChevronRight, Search, ShieldCheck, Globe, Radio, TrendingUp } from "lucide-react";
+import { ChevronDown, ChevronRight, Search, ShieldCheck, Globe, Radio, TrendingUp, LayoutList, Table2 } from "lucide-react";
 import type { BankingGroup, LegalEntity, Bic, CorrespondentService, Fmi } from "@shared/schema";
 
 const CURRENCIES = ["all","EUR","USD","GBP","JPY","CHF","CAD","AUD","SGD","HKD","CNH","SEK","NOK","DKK","PLN","CZK","HUF","RON","TRY","ZAR","BRL","MXN","INR"];
 const SERVICE_TYPES = ["all","Correspondent Banking","Currency Clearing","RTGS Participation","Instant Payments Access","FX Liquidity","CLS Settlement","Custody Services","Transaction Banking","Liquidity Services"];
+
+const CB_PROB_COLORS: Record<string, string> = {
+  High: "bg-emerald-100 text-emerald-700 border-emerald-200",
+  Medium: "bg-amber-100 text-amber-700 border-amber-200",
+  Low: "bg-orange-100 text-orange-700 border-orange-200",
+  Unconfirmed: "bg-slate-100 text-slate-500 border-slate-200",
+};
 
 export default function Providers() {
   const [location] = useLocation();
@@ -18,6 +26,7 @@ export default function Providers() {
   const [filterServiceType, setFilterServiceType] = useState("all");
   const [filterGsib, setFilterGsib] = useState("all");
   const [sortBy, setSortBy] = useState("name");
+  const [viewMode, setViewMode] = useState<"cards" | "table">("table");
   const [expandedGroups, setExpandedGroups] = useState<Record<string, boolean>>({});
   const [expandedEntities, setExpandedEntities] = useState<Record<string, boolean>>({});
 
@@ -46,14 +55,20 @@ export default function Providers() {
     if (filterServiceType !== "all") svcs = svcs.filter(s => s.service_type === filterServiceType);
     return svcs;
   };
+  const getServicesForGroup = (groupId: string) =>
+    getEntitiesForGroup(groupId).flatMap(e => getBicsForEntity(e.id)).flatMap(b => services.filter(s => s.bic_id === b.id));
   const isEntityClsMember = (entityId: string) => fmis.some(f => f.legal_entity_id === entityId && f.fmi_type === "CLS_Settlement_Member");
   const groupHasClsMember = (groupId: string) => getEntitiesForGroup(groupId).some(e => isEntityClsMember(e.id));
+  const getGroupFmis = (groupId: string) => {
+    const groupEntityIds = getEntitiesForGroup(groupId).map(e => e.id);
+    return fmis.filter(f => groupEntityIds.includes(f.legal_entity_id));
+  };
 
   const groupMatchesFilters = (group: BankingGroup) => {
     if (filterGsib !== "all" && group.gsib_status !== filterGsib) return false;
     if (search) {
       const q = search.toLowerCase();
-      const groupMatch = group.group_name?.toLowerCase().includes(q) || group.headquarters_country?.toLowerCase().includes(q);
+      const groupMatch = group.group_name?.toLowerCase().includes(q) || group.headquarters_country?.toLowerCase().includes(q) || group.primary_currency?.toLowerCase().includes(q);
       const entityMatch = getEntitiesForGroup(group.id).some(e => e.legal_name?.toLowerCase().includes(q) || e.country?.toLowerCase().includes(q));
       const bicMatch = getEntitiesForGroup(group.id).some(e => getBicsForEntity(e.id).some(b => b.bic_code?.toLowerCase().includes(q) || b.city?.toLowerCase().includes(q)));
       if (!groupMatch && !entityMatch && !bicMatch) return false;
@@ -69,9 +84,14 @@ export default function Providers() {
   const sortedGroups = [...filteredGroups].sort((a, b) => {
     if (sortBy === "name") return (a.group_name || "").localeCompare(b.group_name || "");
     if (sortBy === "country") return (a.headquarters_country || "").localeCompare(b.headquarters_country || "");
+    if (sortBy === "currency") return (a.primary_currency || "").localeCompare(b.primary_currency || "");
+    if (sortBy === "cb_probability") {
+      const order: Record<string, number> = { High: 0, Medium: 1, Low: 2, Unconfirmed: 3, "": 4 };
+      return (order[a.cb_probability || ""] ?? 4) - (order[b.cb_probability || ""] ?? 4);
+    }
     if (sortBy === "services") {
-      const aCount = getEntitiesForGroup(a.id).flatMap(e => getBicsForEntity(e.id)).flatMap(b => getServicesForBic(b.id)).length;
-      const bCount = getEntitiesForGroup(b.id).flatMap(e => getBicsForEntity(e.id)).flatMap(b => getServicesForBic(b.id)).length;
+      const aCount = getServicesForGroup(a.id).length;
+      const bCount = getServicesForGroup(b.id).length;
       return bCount - aCount;
     }
     return 0;
@@ -86,23 +106,27 @@ export default function Providers() {
   return (
     <div className="space-y-6">
       <div>
-        <h1 className="text-2xl font-bold text-slate-900">Banking Groups</h1>
-        <p className="text-slate-500 text-sm mt-1">Browse banking groups, entities, BICs and correspondent services</p>
+        <h1 className="text-2xl font-bold text-slate-900">CB Providers</h1>
+        <p className="text-slate-500 text-sm mt-1">Banking groups assessed against the 4-criteria CB Provider qualification framework</p>
       </div>
 
       <div className="flex flex-wrap gap-3">
         <div className="relative flex-1 min-w-48">
           <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
-          <Input data-testid="input-search-providers" placeholder="Search bank, BIC, country..." className="pl-9" value={search} onChange={e => setSearch(e.target.value)} />
+          <Input data-testid="input-search-providers" placeholder="Search bank, BIC, country, currency..." className="pl-9" value={search} onChange={e => setSearch(e.target.value)} />
         </div>
-        <Select value={filterCurrency} onValueChange={setFilterCurrency}>
-          <SelectTrigger className="w-32" data-testid="select-filter-currency"><SelectValue placeholder="Currency" /></SelectTrigger>
-          <SelectContent>{CURRENCIES.map(c => <SelectItem key={c} value={c}>{c === "all" ? "All Currencies" : c}</SelectItem>)}</SelectContent>
-        </Select>
-        <Select value={filterServiceType} onValueChange={setFilterServiceType}>
-          <SelectTrigger className="w-48" data-testid="select-filter-service-type"><SelectValue placeholder="Service Type" /></SelectTrigger>
-          <SelectContent>{SERVICE_TYPES.map(s => <SelectItem key={s} value={s}>{s === "all" ? "All Service Types" : s}</SelectItem>)}</SelectContent>
-        </Select>
+        {viewMode === "cards" && (
+          <>
+            <Select value={filterCurrency} onValueChange={setFilterCurrency}>
+              <SelectTrigger className="w-32" data-testid="select-filter-currency"><SelectValue placeholder="Currency" /></SelectTrigger>
+              <SelectContent>{CURRENCIES.map(c => <SelectItem key={c} value={c}>{c === "all" ? "All Currencies" : c}</SelectItem>)}</SelectContent>
+            </Select>
+            <Select value={filterServiceType} onValueChange={setFilterServiceType}>
+              <SelectTrigger className="w-48" data-testid="select-filter-service-type"><SelectValue placeholder="Service Type" /></SelectTrigger>
+              <SelectContent>{SERVICE_TYPES.map(s => <SelectItem key={s} value={s}>{s === "all" ? "All Service Types" : s}</SelectItem>)}</SelectContent>
+            </Select>
+          </>
+        )}
         <Select value={filterGsib} onValueChange={setFilterGsib}>
           <SelectTrigger className="w-36" data-testid="select-filter-gsib"><SelectValue placeholder="SIB Status" /></SelectTrigger>
           <SelectContent>
@@ -113,20 +137,123 @@ export default function Providers() {
           </SelectContent>
         </Select>
         <Select value={sortBy} onValueChange={setSortBy}>
-          <SelectTrigger className="w-40" data-testid="select-sort-by"><SelectValue placeholder="Sort By" /></SelectTrigger>
+          <SelectTrigger className="w-44" data-testid="select-sort-by"><SelectValue placeholder="Sort By" /></SelectTrigger>
           <SelectContent>
-            <SelectItem value="name">Name (A-Z)</SelectItem>
-            <SelectItem value="country">Country (A-Z)</SelectItem>
+            <SelectItem value="name">Name (A–Z)</SelectItem>
+            <SelectItem value="country">Head Office Country</SelectItem>
+            <SelectItem value="currency">Home Currency</SelectItem>
+            <SelectItem value="cb_probability">CB Likelihood</SelectItem>
             <SelectItem value="services">Services (Most)</SelectItem>
           </SelectContent>
         </Select>
+        <div className="flex rounded-lg border border-slate-200 overflow-hidden">
+          <Button
+            variant="ghost"
+            size="sm"
+            data-testid="button-view-table"
+            className={`rounded-none px-3 ${viewMode === "table" ? "bg-slate-100 text-slate-900" : "text-slate-400"}`}
+            onClick={() => setViewMode("table")}
+          >
+            <Table2 className="w-4 h-4" />
+          </Button>
+          <Button
+            variant="ghost"
+            size="sm"
+            data-testid="button-view-cards"
+            className={`rounded-none px-3 border-l border-slate-200 ${viewMode === "cards" ? "bg-slate-100 text-slate-900" : "text-slate-400"}`}
+            onClick={() => setViewMode("cards")}
+          >
+            <LayoutList className="w-4 h-4" />
+          </Button>
+        </div>
       </div>
 
       <div className="text-sm text-slate-500">{filteredGroups.length} banking group{filteredGroups.length !== 1 ? "s" : ""}</div>
 
       {filteredGroups.length === 0 ? (
         <Card className="border-0 shadow-sm">
-          <CardContent className="p-8 text-center text-slate-400 text-sm">No providers found. Use Database Admin to add banking groups.</CardContent>
+          <CardContent className="p-8 text-center text-slate-400 text-sm">No providers found. Use the Agent Chat to add banking groups.</CardContent>
+        </Card>
+      ) : viewMode === "table" ? (
+        <Card className="border-0 shadow-sm overflow-hidden">
+          <div className="overflow-x-auto">
+            <table className="w-full text-sm" data-testid="table-providers">
+              <thead>
+                <tr className="bg-slate-50 border-b border-slate-200">
+                  <th className="text-left py-3 px-4 font-medium text-slate-600 whitespace-nowrap">Banking Group</th>
+                  <th className="text-left py-3 px-4 font-medium text-slate-600 whitespace-nowrap">Head Office</th>
+                  <th className="text-left py-3 px-4 font-medium text-slate-600 whitespace-nowrap">Home Currency</th>
+                  <th className="text-left py-3 px-4 font-medium text-slate-600 whitespace-nowrap">RTGS System</th>
+                  <th className="text-left py-3 px-4 font-medium text-slate-600 whitespace-nowrap">CB Likelihood</th>
+                  <th className="text-left py-3 px-4 font-medium text-slate-600 whitespace-nowrap">SIB Status</th>
+                  <th className="text-left py-3 px-4 font-medium text-slate-600 whitespace-nowrap">FMI Memberships</th>
+                  <th className="text-right py-3 px-4 font-medium text-slate-600 whitespace-nowrap">Services</th>
+                </tr>
+              </thead>
+              <tbody>
+                {sortedGroups.map((group, idx) => {
+                  const groupFmis = getGroupFmis(group.id);
+                  const svcCount = getServicesForGroup(group.id).length;
+                  const hasCls = groupHasClsMember(group.id);
+                  return (
+                    <tr
+                      key={group.id}
+                      data-testid={`row-provider-${group.id}`}
+                      className={`border-b border-slate-100 hover:bg-slate-50 transition-colors ${idx % 2 === 0 ? "" : "bg-slate-50/30"}`}
+                    >
+                      <td className="py-3 px-4">
+                        <div className="font-medium text-slate-900">{group.group_name}</div>
+                        {group.cb_evidence && (
+                          <div className="text-xs text-slate-400 mt-0.5 max-w-xs truncate" title={group.cb_evidence}>{group.cb_evidence}</div>
+                        )}
+                      </td>
+                      <td className="py-3 px-4 text-slate-600 whitespace-nowrap">{group.headquarters_country || <span className="text-slate-300">—</span>}</td>
+                      <td className="py-3 px-4">
+                        {group.primary_currency
+                          ? <span className="font-mono font-semibold text-slate-800 bg-blue-50 px-2 py-0.5 rounded text-xs">{group.primary_currency}</span>
+                          : <span className="text-slate-300">—</span>}
+                      </td>
+                      <td className="py-3 px-4 whitespace-nowrap">
+                        {group.rtgs_system ? (
+                          <span className="flex items-center gap-1.5">
+                            <Radio className={`w-3 h-3 ${group.rtgs_member ? "text-green-500" : "text-amber-400"}`} />
+                            <span className="text-slate-700">{group.rtgs_system}</span>
+                            {!group.rtgs_member && <span className="text-xs text-amber-500">?</span>}
+                          </span>
+                        ) : <span className="text-slate-300">—</span>}
+                      </td>
+                      <td className="py-3 px-4">
+                        {group.cb_probability ? (
+                          <Badge className={`text-xs ${CB_PROB_COLORS[group.cb_probability] || "bg-slate-100 text-slate-500"}`}>
+                            {group.cb_probability}
+                          </Badge>
+                        ) : <span className="text-slate-300">—</span>}
+                      </td>
+                      <td className="py-3 px-4">
+                        {group.gsib_status === "G-SIB" && <Badge className="bg-purple-100 text-purple-700 border-purple-200 text-xs"><ShieldCheck className="w-3 h-3 mr-1" />G-SIB</Badge>}
+                        {group.gsib_status === "D-SIB" && <Badge className="bg-blue-100 text-blue-700 border-blue-200 text-xs"><ShieldCheck className="w-3 h-3 mr-1" />D-SIB</Badge>}
+                        {group.gsib_status === "N/A" && <span className="text-slate-300 text-xs">—</span>}
+                      </td>
+                      <td className="py-3 px-4">
+                        <div className="flex flex-wrap gap-1">
+                          {hasCls && <Badge className="bg-teal-100 text-teal-700 border-teal-200 text-xs"><Globe className="w-3 h-3 mr-1" />CLS</Badge>}
+                          {groupFmis.filter(f => f.fmi_type !== "CLS_Settlement_Member").map(f => (
+                            <Badge key={f.id} variant="outline" className="text-xs">{f.fmi_name || f.fmi_type}</Badge>
+                          ))}
+                          {groupFmis.length === 0 && !hasCls && <span className="text-slate-300">—</span>}
+                        </div>
+                      </td>
+                      <td className="py-3 px-4 text-right">
+                        {svcCount > 0
+                          ? <span className="text-slate-700 font-medium">{svcCount}</span>
+                          : <span className="text-slate-300">—</span>}
+                      </td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+          </div>
         </Card>
       ) : (
         <div className="space-y-3">
@@ -146,9 +273,7 @@ export default function Providers() {
                       {group.gsib_status === "D-SIB" && <Badge className="bg-blue-100 text-blue-700 border-blue-200 text-xs"><ShieldCheck className="w-3 h-3 mr-1" />D-SIB</Badge>}
                       {groupHasClsMember(group.id) && <Badge className="bg-teal-100 text-teal-700 border-teal-200 text-xs"><Globe className="w-3 h-3 mr-1" />CLS Member</Badge>}
                       {group.rtgs_member && group.rtgs_system && <Badge className="bg-green-100 text-green-700 border-green-200 text-xs"><Radio className="w-3 h-3 mr-1" />{group.rtgs_system}</Badge>}
-                      {group.cb_probability === "High" && <Badge className="bg-emerald-100 text-emerald-700 border-emerald-200 text-xs"><TrendingUp className="w-3 h-3 mr-1" />CB: High</Badge>}
-                      {group.cb_probability === "Medium" && <Badge className="bg-amber-100 text-amber-700 border-amber-200 text-xs"><TrendingUp className="w-3 h-3 mr-1" />CB: Medium</Badge>}
-                      {group.cb_probability === "Low" && <Badge className="bg-orange-100 text-orange-700 border-orange-200 text-xs"><TrendingUp className="w-3 h-3 mr-1" />CB: Low</Badge>}
+                      {group.cb_probability && <Badge className={`text-xs ${CB_PROB_COLORS[group.cb_probability] || ""}`}><TrendingUp className="w-3 h-3 mr-1" />CB: {group.cb_probability}</Badge>}
                       {group.headquarters_country && <Badge variant="outline" className="text-xs">{group.headquarters_country}</Badge>}
                       {group.primary_currency && <Badge variant="outline" className="text-xs font-mono">{group.primary_currency}</Badge>}
                     </div>

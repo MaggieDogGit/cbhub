@@ -783,7 +783,7 @@ Always confirm actions taken. Cite web sources. Be concise but thorough on asses
 
       const messages: any[] = [
         { role: "system", content: systemPrompt },
-        ...history.map(m => ({ role: m.role, content: m.content })),
+        ...history.map(m => ({ role: m.role, content: m.content ?? "" })),
         { role: "user", content: message },
       ];
 
