@@ -2,13 +2,14 @@ import { eq, and } from "drizzle-orm";
 import { db } from "./db";
 import {
   bankingGroups, legalEntities, bics, correspondentServices,
-  clsProfiles, fmis, conversations, chatMessages,
+  clsProfiles, fmis, dataSources, conversations, chatMessages,
   type BankingGroup, type InsertBankingGroup,
   type LegalEntity, type InsertLegalEntity,
   type Bic, type InsertBic,
   type CorrespondentService, type InsertCorrespondentService,
   type ClsProfile, type InsertClsProfile,
   type Fmi, type InsertFmi,
+  type DataSource, type InsertDataSource,
   type Conversation, type InsertConversation,
   type ChatMessage, type InsertMessage,
   type User, type InsertUser,
@@ -57,6 +58,13 @@ export interface IStorage {
   createFmi(data: InsertFmi): Promise<Fmi>;
   updateFmi(id: string, data: Partial<InsertFmi>): Promise<Fmi>;
   deleteFmi(id: string): Promise<void>;
+
+  // DataSources
+  listDataSources(): Promise<DataSource[]>;
+  getDataSource(id: string): Promise<DataSource | undefined>;
+  createDataSource(data: InsertDataSource): Promise<DataSource>;
+  updateDataSource(id: string, data: Partial<InsertDataSource>): Promise<DataSource>;
+  deleteDataSource(id: string): Promise<void>;
 
   // Conversations
   listConversations(): Promise<Conversation[]>;
@@ -116,6 +124,13 @@ export class DatabaseStorage implements IStorage {
   async createFmi(data: InsertFmi) { const [r] = await db.insert(fmis).values(data).returning(); return r; }
   async updateFmi(id: string, data: Partial<InsertFmi>) { const [r] = await db.update(fmis).set(data).where(eq(fmis.id, id)).returning(); return r; }
   async deleteFmi(id: string) { await db.delete(fmis).where(eq(fmis.id, id)); }
+
+  // DataSources
+  async listDataSources() { return db.select().from(dataSources).orderBy(dataSources.created_at); }
+  async getDataSource(id: string) { const [r] = await db.select().from(dataSources).where(eq(dataSources.id, id)); return r; }
+  async createDataSource(data: InsertDataSource) { const [r] = await db.insert(dataSources).values(data).returning(); return r; }
+  async updateDataSource(id: string, data: Partial<InsertDataSource>) { const [r] = await db.update(dataSources).set(data).where(eq(dataSources.id, id)).returning(); return r; }
+  async deleteDataSource(id: string) { await db.delete(dataSources).where(eq(dataSources.id, id)); }
 
   // Conversations
   async listConversations() { return db.select().from(conversations).orderBy(conversations.created_at); }

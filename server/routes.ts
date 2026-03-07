@@ -2,7 +2,7 @@ import type { Express, Request, Response, NextFunction } from "express";
 import { createServer, type Server } from "http";
 import { storage } from "./storage";
 import { pool } from "./db";
-import { insertBankingGroupSchema, insertLegalEntitySchema, insertBicSchema, insertCorrespondentServiceSchema, insertClsProfileSchema, insertFmiSchema, insertConversationSchema, insertMessageSchema } from "@shared/schema";
+import { insertBankingGroupSchema, insertLegalEntitySchema, insertBicSchema, insertCorrespondentServiceSchema, insertClsProfileSchema, insertFmiSchema, insertDataSourceSchema, insertConversationSchema, insertMessageSchema } from "@shared/schema";
 import OpenAI from "openai";
 
 const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
@@ -171,6 +171,23 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
     res.json({ ok: true });
   });
 
+  // Data Sources
+  app.get("/api/data-sources", async (_req, res) => {
+    res.json(await storage.listDataSources());
+  });
+  app.post("/api/data-sources", async (req, res) => {
+    const parsed = insertDataSourceSchema.safeParse(req.body);
+    if (!parsed.success) return res.status(400).json({ message: parsed.error.message });
+    res.json(await storage.createDataSource(parsed.data));
+  });
+  app.patch("/api/data-sources/:id", async (req, res) => {
+    res.json(await storage.updateDataSource(req.params.id, req.body));
+  });
+  app.delete("/api/data-sources/:id", async (req, res) => {
+    await storage.deleteDataSource(req.params.id);
+    res.json({ ok: true });
+  });
+
   // Conversations
   app.get("/api/conversations", async (_req, res) => {
     res.json(await storage.listConversations());
@@ -283,6 +300,11 @@ When a user asks you to add, update, change, amend, remove or delete something, 
 When creating related records (e.g. a new bank), follow this hierarchy: first create the BankingGroup, then a LegalEntity linked to it, then a BIC linked to the entity, then CorrespondentServices linked to the BIC.
 
 Use web_search when the user asks about current market information, a specific bank's services, recent news, or anything that would benefit from up-to-date data.
+
+You also manage a DATA SOURCES library. When a user asks you to find or identify a source for data (e.g. "find the source for TARGET2 members"), you should:
+1. Use web_search to find the authoritative source (official publisher URL)
+2. Save it using create_data_source with appropriate category, publisher, URL, and update frequency
+3. Report back what was saved
 
 Always confirm what you have done after completing an action. Be concise and accurate. Cite sources when using web search results.`;
 
@@ -597,6 +619,67 @@ Always confirm what you have done after completing an action. Be concise and acc
             },
           },
         },
+        {
+          type: "function",
+          function: {
+            name: "list_data_sources",
+            description: "List all stored data sources (reference URLs, member lists, directories, etc.)",
+            parameters: { type: "object", properties: {} },
+          },
+        },
+        {
+          type: "function",
+          function: {
+            name: "create_data_source",
+            description: "Store a new data source reference (e.g. ECB TARGET2 member list URL, SWIFT BIC directory)",
+            parameters: {
+              type: "object",
+              required: ["name", "category"],
+              properties: {
+                name: { type: "string", description: "Display name, e.g. 'ECB TARGET2 Participants'" },
+                category: { type: "string", description: "Type of data, e.g. 'RTGS Members', 'CLS Members', 'SWIFT Directory', 'Regulatory', 'Market Data'" },
+                url: { type: "string", description: "URL of the source" },
+                publisher: { type: "string", description: "Who publishes it, e.g. 'ECB', 'CLS Group', 'SWIFT'" },
+                description: { type: "string", description: "What this source contains" },
+                update_frequency: { type: "string", description: "How often it is updated, e.g. 'Daily', 'Monthly', 'Quarterly'" },
+                notes: { type: "string" },
+              },
+            },
+          },
+        },
+        {
+          type: "function",
+          function: {
+            name: "update_data_source",
+            description: "Update an existing data source record by ID",
+            parameters: {
+              type: "object",
+              required: ["id"],
+              properties: {
+                id: { type: "string" },
+                name: { type: "string" },
+                category: { type: "string" },
+                url: { type: "string" },
+                publisher: { type: "string" },
+                description: { type: "string" },
+                update_frequency: { type: "string" },
+                notes: { type: "string" },
+              },
+            },
+          },
+        },
+        {
+          type: "function",
+          function: {
+            name: "delete_data_source",
+            description: "Delete a data source record by ID",
+            parameters: {
+              type: "object",
+              required: ["id"],
+              properties: { id: { type: "string" } },
+            },
+          },
+        },
       ];
 
       const executeTool = async (name: string, args: any): Promise<string> => {
@@ -628,6 +711,10 @@ Always confirm what you have done after completing an action. Be concise and acc
               } as any);
               return searchResponse.choices[0].message.content || "No search results found.";
             }
+            case "list_data_sources": return JSON.stringify(await storage.listDataSources());
+            case "create_data_source": return JSON.stringify(await storage.createDataSource(args));
+            case "update_data_source": { const { id, ...data } = args; return JSON.stringify(await storage.updateDataSource(id, data)); }
+            case "delete_data_source": await storage.deleteDataSource(args.id); return JSON.stringify({ ok: true, id: args.id });
             default: return JSON.stringify({ error: `Unknown tool: ${name}` });
           }
         } catch (err: any) {

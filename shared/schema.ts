@@ -89,6 +89,19 @@ export const fmis = pgTable("fmis", {
   last_verified: date("last_verified"),
 });
 
+export const dataSources = pgTable("data_sources", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  name: text("name").notNull(),
+  category: text("category").notNull(),
+  url: text("url"),
+  publisher: text("publisher"),
+  description: text("description"),
+  update_frequency: text("update_frequency"),
+  notes: text("notes"),
+  created_at: timestamp("created_at").defaultNow(),
+  last_checked: timestamp("last_checked"),
+});
+
 export const conversations = pgTable("conversations", {
   id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
   name: text("name").notNull(),
@@ -103,6 +116,7 @@ export const chatMessages = pgTable("chat_messages", {
   created_at: timestamp("created_at").defaultNow(),
 });
 
+export const insertDataSourceSchema = createInsertSchema(dataSources).omit({ id: true, created_at: true });
 export const insertBankingGroupSchema = createInsertSchema(bankingGroups).omit({ id: true });
 export const insertLegalEntitySchema = createInsertSchema(legalEntities).omit({ id: true });
 export const insertBicSchema = createInsertSchema(bics).omit({ id: true });
@@ -124,6 +138,8 @@ export type InsertClsProfile = z.infer<typeof insertClsProfileSchema>;
 export type ClsProfile = typeof clsProfiles.$inferSelect;
 export type InsertFmi = z.infer<typeof insertFmiSchema>;
 export type Fmi = typeof fmis.$inferSelect;
+export type InsertDataSource = z.infer<typeof insertDataSourceSchema>;
+export type DataSource = typeof dataSources.$inferSelect;
 export type InsertConversation = z.infer<typeof insertConversationSchema>;
 export type Conversation = typeof conversations.$inferSelect;
 export type InsertMessage = z.infer<typeof insertMessageSchema>;

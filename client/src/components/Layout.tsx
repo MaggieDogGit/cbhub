@@ -1,7 +1,7 @@
 import { useState } from "react";
 import { Link, useLocation } from "wouter";
 import {
-  LayoutDashboard, Building2, Globe, MapPin, Bot, Database, Menu, Search, MessageSquare, LogOut
+  LayoutDashboard, Building2, Globe, MapPin, Bot, Database, Menu, Search, MessageSquare, LogOut, BookOpen
 } from "lucide-react";
 import { Input } from "@/components/ui/input";
 import { useAuth } from "@/hooks/useAuth";
@@ -15,6 +15,7 @@ const navItems = [
   { name: "Market Coverage", path: "/market-coverage", icon: MapPin },
   { name: "Research Assistant", path: "/research", icon: Bot },
   { name: "AI Agent", path: "/agent", icon: MessageSquare },
+  { name: "Data Sources", path: "/sources", icon: BookOpen },
   { name: "Database Admin", path: "/admin", icon: Database },
 ];
 
