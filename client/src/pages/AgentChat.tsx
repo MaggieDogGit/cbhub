@@ -28,7 +28,7 @@ export default function AgentChat() {
   const { data: messages = [] } = useQuery<ChatMessage[]>({
     queryKey: ["/api/conversations", activeConversation?.id, "messages"],
     queryFn: () => activeConversation
-      ? fetch(`/api/conversations/${activeConversation.id}/messages`).then(r => r.json())
+      ? apiRequest("GET", `/api/conversations/${activeConversation.id}/messages`).then(r => r.json())
       : Promise.resolve([]),
     enabled: !!activeConversation,
   });
