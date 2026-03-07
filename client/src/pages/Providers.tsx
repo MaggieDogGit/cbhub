@@ -13,7 +13,7 @@ const CURRENCIES = ["all","EUR","USD","GBP","JPY","CHF","CAD","AUD","SGD","HKD",
 const SERVICE_TYPES = ["all","Correspondent Banking","Currency Clearing","RTGS Participation","Instant Payments Access","FX Liquidity","CLS Settlement","Custody Services","Transaction Banking","Liquidity Services"];
 
 export default function Providers() {
-  const [location] = useLocation();
+  const [location, setLocation] = useLocation();
   const [search, setSearch] = useState("");
   const [filterCurrency, setFilterCurrency] = useState("all");
   const [filterServiceType, setFilterServiceType] = useState("all");
