@@ -5,7 +5,7 @@ import { Card, CardContent } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { ChevronDown, ChevronRight, Search, ShieldCheck, Globe } from "lucide-react";
+import { ChevronDown, ChevronRight, Search, ShieldCheck, Globe, Radio, TrendingUp } from "lucide-react";
 import type { BankingGroup, LegalEntity, Bic, CorrespondentService, Fmi } from "@shared/schema";
 
 const CURRENCIES = ["all","EUR","USD","GBP","JPY","CHF","CAD","AUD","SGD","HKD","CNH","SEK","NOK","DKK","PLN","CZK","HUF","RON","TRY","ZAR","BRL","MXN","INR"];
@@ -145,8 +145,12 @@ export default function Providers() {
                       {group.gsib_status === "G-SIB" && <Badge className="bg-purple-100 text-purple-700 border-purple-200 text-xs"><ShieldCheck className="w-3 h-3 mr-1" />G-SIB</Badge>}
                       {group.gsib_status === "D-SIB" && <Badge className="bg-blue-100 text-blue-700 border-blue-200 text-xs"><ShieldCheck className="w-3 h-3 mr-1" />D-SIB</Badge>}
                       {groupHasClsMember(group.id) && <Badge className="bg-teal-100 text-teal-700 border-teal-200 text-xs"><Globe className="w-3 h-3 mr-1" />CLS Member</Badge>}
+                      {group.rtgs_member && group.rtgs_system && <Badge className="bg-green-100 text-green-700 border-green-200 text-xs"><Radio className="w-3 h-3 mr-1" />{group.rtgs_system}</Badge>}
+                      {group.cb_probability === "High" && <Badge className="bg-emerald-100 text-emerald-700 border-emerald-200 text-xs"><TrendingUp className="w-3 h-3 mr-1" />CB: High</Badge>}
+                      {group.cb_probability === "Medium" && <Badge className="bg-amber-100 text-amber-700 border-amber-200 text-xs"><TrendingUp className="w-3 h-3 mr-1" />CB: Medium</Badge>}
+                      {group.cb_probability === "Low" && <Badge className="bg-orange-100 text-orange-700 border-orange-200 text-xs"><TrendingUp className="w-3 h-3 mr-1" />CB: Low</Badge>}
                       {group.headquarters_country && <Badge variant="outline" className="text-xs">{group.headquarters_country}</Badge>}
-                      {group.primary_currency && <Badge variant="outline" className="text-xs">{group.primary_currency}</Badge>}
+                      {group.primary_currency && <Badge variant="outline" className="text-xs font-mono">{group.primary_currency}</Badge>}
                     </div>
                     <div className="flex flex-wrap gap-1 mt-2">
                       {currencies.slice(0, 10).map(c => <span key={c} className="text-xs bg-blue-50 text-blue-600 rounded px-1.5 py-0.5">{c}</span>)}
@@ -161,6 +165,13 @@ export default function Providers() {
 
                 {expandedGroups[group.id] && (
                   <div className="border-t border-slate-100">
+                    {(group.rtgs_system || group.cb_probability || group.cb_evidence) && (
+                      <div className="px-8 py-3 bg-slate-50 border-b border-slate-100 flex flex-wrap gap-4 text-xs text-slate-600">
+                        {group.rtgs_system && <span><span className="font-medium text-slate-500">RTGS:</span> {group.rtgs_system} {group.rtgs_member ? "✅ Member" : "⚠️ Unconfirmed"}</span>}
+                        {group.cb_probability && <span><span className="font-medium text-slate-500">CB Probability:</span> {group.cb_probability}</span>}
+                        {group.cb_evidence && <span className="flex-1 text-slate-500 italic">{group.cb_evidence}</span>}
+                      </div>
+                    )}
                     {groupEntities.length === 0 ? (
                       <div className="px-8 py-4 text-slate-400 text-sm">No legal entities for this group.</div>
                     ) : (
