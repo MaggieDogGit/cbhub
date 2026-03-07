@@ -1,0 +1,75 @@
+Here's the complete database structure created so far:
+
+1. BankingGroup
+Core entity representing global banking organizations.
+
+group_name (string, required)
+headquarters_country (string)
+primary_currency (string)
+gsib_status (enum: "G-SIB", "D-SIB", "N/A") - Systemic importance classification
+website (string)
+notes (string)
+2. LegalEntity
+Individual legal entities within banking groups.
+
+group_id (string, required) - Reference to BankingGroup
+group_name (string) - Denormalized for display
+legal_name (string, required)
+country (string)
+entity_type (enum: "Bank", "Branch", "Subsidiary", "Representative Office", "Other")
+regulator (string)
+notes (string)
+3. BIC
+Bank Identifier Codes and SWIFT details.
+
+legal_entity_id (string, required) - Reference to LegalEntity
+legal_entity_name (string) - Denormalized
+bic_code (string, required)
+country (string)
+city (string)
+is_headquarters (boolean)
+swift_member (boolean, default: true)
+notes (string)
+4. CorrespondentService
+Banking services offered (correspondent banking, FX liquidity, etc.).
+
+bic_id (string, required)
+bic_code (string) - Denormalized
+group_name (string) - Denormalized
+legal_entity_name (string)
+country (string)
+currency (enum: EUR, USD, GBP, JPY, CHF, CAD, AUD, SGD, HKD, CNH, SEK, NOK, DKK, PLN, CZK, HUF, RON, TRY, ZAR, BRL, MXN, INR)
+clearing_model (enum: "Onshore", "Offshore")
+service_type (enum: "Correspondent Banking", "Currency Clearing", "RTGS Participation", "Instant Payments Access", "FX Liquidity", "CLS Settlement", "CLS Third Party Settlement", "CLS Nostro Payments", "Custody Services", "Transaction Banking", "Liquidity Services")
+rtgs_membership (boolean)
+instant_scheme_access (boolean)
+nostro_accounts_offered (boolean)
+vostro_accounts_offered (boolean)
+target_clients (string)
+notes (string)
+source (string)
+last_verified (date)
+5. CLSProfile
+CLS (Continuous Linked Settlement) membership details.
+
+group_id (string, required)
+group_name (string, required) - Denormalized
+cls_member (boolean, default: false)
+cls_member_legal_entity (string) - Legal entity holding membership
+notes (string)
+last_verified (date)
+6. FMI
+Financial Market Infrastructure memberships.
+
+legal_entity_id (string, required)
+legal_entity_name (string, required) - Denormalized
+fmi_type (enum: "CLS_Settlement_Member")
+member_since (date)
+notes (string)
+last_verified (date)
+All entities include built-in attributes:
+
+id (auto-generated)
+created_date (auto-generated)
+updated_date (auto-generated)
+created_by (auto-generated, user email)

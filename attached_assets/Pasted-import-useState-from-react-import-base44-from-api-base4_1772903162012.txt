@@ -1,0 +1,103 @@
+import { useState } from "react";
+import { base44 } from "@/api/base44Client";
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Input } from "@/components/ui/input";
+import { Button } from "@/components/ui/button";
+import { Badge } from "@/components/ui/badge";
+import { Bot, Search, CheckCircle2, XCircle, Plus, AlertTriangle } from "lucide-react";
+
+const BoolIcon = ({ val }) => val === true || val === "true"
+  ? <CheckCircle2 className="w-4 h-4 text-emerald-500" />
+  : <XCircle className="w-4 h-4 text-slate-300" />;
+
+export default function ResearchAssistant() {
+  const [bankName, setBankName] = useState("");
+  const [loading, setLoading] = useState(false);
+  const [result, setResult] = useState(null);
+  const [approved, setApproved] = useState([]);
+  const [saved, setSaved] = useState(false);
+  const [saving, setSaving] = useState(false);
+
+  const research = async () => {
+    if (!bankName.trim()) return;
+    setLoading(true);
+    setResult(null);
+    setApproved([]);
+    setSaved(false);
+
+    const prompt = `You are a correspondent banking expert. Research the correspondent banking services offered by "${bankName}".
+    
+For each major currency they service, provide details in strict JSON format. Only include currencies you are confident about.
+
+Return ONLY a valid JSON object like this:
+{
+  "bank": "${bankName}",
+  "headquarters": "Country name",
+  "gsib": true or false,
+  "services": [
+    {
+      "currency": "USD",
+      "service_type": "Correspondent Banking",
+      "rtgs_membership": true,
+      "instant_scheme_access": false,
+      "cls_member": true,
+      "nostro_accounts_offered": true,
+      "vostro_accounts_offered": true,
+      "target_clients": "Banks, Payment Institutions",
+      "source": "Public knowledge"
+    }
+  ]
+}
+
+Service type must be one of: Correspondent Banking, Currency Clearing, RTGS Participation, Instant Payments Access, FX Liquidity, CLS Settlement, Custody Services, Transaction Banking, Liquidity Services.
+Currencies must be from: EUR, USD, GBP, JPY, CHF, CAD, AUD, SGD, HKD, CNH, SEK, NOK, DKK, PLN, CZK, HUF, RON, TRY, ZAR, BRL, MXN, INR.`;
+
+    const res = await base44.integrations.Core.InvokeLLM({
+      prompt,
+      add_context_from_internet: true,
+      response_json_schema: {
+        type: "object",
+        properties: {
+          bank: { type: "string" },
+          headquarters: { type: "string" },
+          gsib: { type: "boolean" },
+          services: {
+            type: "array",
+            items: {
+              type: "object",
+              properties: {
+                currency: { type: "string" },
+                service_type: { type: "string" },
+                rtgs_membership: { type: "boolean" },
+                instant_scheme_access: { type: "boolean" },
+                cls_member: { type: "boolean" },
+                nostro_accounts_offered: { type: "boolean" },
+                vostro_accounts_offered: { type: "boolean" },
+                target_clients: { type: "string" },
+                source: { type: "string" },
+              }
+            }
+          }
+        }
+      }
+    });
+
+    setResult(res);
+    setApproved(res.services?.map((_, i) => i) || []);
+    setLoading(false);
+  };
+
+  const toggleApprove = (i) => {
+    setApproved(prev => prev.includes(i) ? prev.filter(x => x !== i) : [...prev, i]);
+  };
+
+  const saveApproved = async () => {
+    setSaving(true);
+    // Find or create the banking group
+    const groups = await base44.entities.BankingGroup.list();
+    let group = groups.find(g => g.group_name.toLowerCase() === result.bank.toLowerCase());
+    if (!group) {
+      group = await base44.entities.BankingGroup.create({
+        group_name: result.bank,
+        headquarters_country: result.headquarters || "",
+ 

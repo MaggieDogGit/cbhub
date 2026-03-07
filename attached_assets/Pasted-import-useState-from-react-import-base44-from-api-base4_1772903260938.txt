@@ -1,0 +1,272 @@
+import { useState } from "react";
+import { base44 } from "@/api/base44Client";
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Input } from "@/components/ui/input";
+import { Button } from "@/components/ui/button";
+import { Badge } from "@/components/ui/badge";
+import { Bot, Search, CheckCircle2, XCircle, Plus, AlertTriangle } from "lucide-react";
+
+const BoolIcon = ({ val }) => val === true || val === "true"
+  ? <CheckCircle2 className="w-4 h-4 text-emerald-500" />
+  : <XCircle className="w-4 h-4 text-slate-300" />;
+
+export default function ResearchAssistant() {
+  const [bankName, setBankName] = useState("");
+  const [loading, setLoading] = useState(false);
+  const [result, setResult] = useState(null);
+  const [approved, setApproved] = useState([]);
+  const [saved, setSaved] = useState(false);
+  const [saving, setSaving] = useState(false);
+
+  const research = async () => {
+    if (!bankName.trim()) return;
+    setLoading(true);
+    setResult(null);
+    setApproved([]);
+    setSaved(false);
+
+    const prompt = `You are a correspondent banking expert. Research the correspondent banking services offered by "${bankName}".
+    
+For each major currency they service, provide details in strict JSON format. Only include currencies you are confident about.
+
+Return ONLY a valid JSON object like this:
+{
+  "bank": "${bankName}",
+  "headquarters": "Country name",
+  "gsib": true or false,
+  "services": [
+    {
+      "currency": "USD",
+      "service_type": "Correspondent Banking",
+      "rtgs_membership": true,
+      "instant_scheme_access": false,
+      "cls_member": true,
+      "nostro_accounts_offered": true,
+      "vostro_accounts_offered": true,
+      "target_clients": "Banks, Payment Institutions",
+      "source": "Public knowledge"
+    }
+  ]
+}
+
+Service type must be one of: Correspondent Banking, Currency Clearing, RTGS Participation, Instant Payments Access, FX Liquidity, CLS Settlement, Custody Services, Transaction Banking, Liquidity Services.
+Currencies must be from: EUR, USD, GBP, JPY, CHF, CAD, AUD, SGD, HKD, CNH, SEK, NOK, DKK, PLN, CZK, HUF, RON, TRY, ZAR, BRL, MXN, INR.`;
+
+    const res = await base44.integrations.Core.InvokeLLM({
+      prompt,
+      add_context_from_internet: true,
+      response_json_schema: {
+        type: "object",
+        properties: {
+          bank: { type: "string" },
+          headquarters: { type: "string" },
+          gsib: { type: "boolean" },
+          services: {
+            type: "array",
+            items: {
+              type: "object",
+              properties: {
+                currency: { type: "string" },
+                service_type: { type: "string" },
+                rtgs_membership: { type: "boolean" },
+                instant_scheme_access: { type: "boolean" },
+                cls_member: { type: "boolean" },
+                nostro_accounts_offered: { type: "boolean" },
+                vostro_accounts_offered: { type: "boolean" },
+                target_clients: { type: "string" },
+                source: { type: "string" },
+              }
+            }
+          }
+        }
+      }
+    });
+
+    setResult(res);
+    setApproved(res.services?.map((_, i) => i) || []);
+    setLoading(false);
+  };
+
+  const toggleApprove = (i) => {
+    setApproved(prev => prev.includes(i) ? prev.filter(x => x !== i) : [...prev, i]);
+  };
+
+  const saveApproved = async () => {
+    setSaving(true);
+    // Find or create the banking group
+    const groups = await base44.entities.BankingGroup.list();
+    let group = groups.find(g => g.group_name.toLowerCase() === result.bank.toLowerCase());
+    if (!group) {
+      group = await base44.entities.BankingGroup.create({
+        group_name: result.bank,
+        headquarters_country: result.headquarters || "",
+        gsib_status: result.gsib || false,
+        notes: "Created via AI Research Assistant",
+      });
+    }
+
+    // Find or create a default legal entity
+    const entities = await base44.entities.LegalEntity.filter({ group_id: group.id });
+    let entity = entities[0];
+    if (!entity) {
+      entity = await base44.entities.LegalEntity.create({
+        group_id: group.id,
+        group_name: group.group_name,
+        legal_name: result.bank,
+        country: result.headquarters || "",
+        entity_type: "Bank",
+        notes: "Created via AI Research Assistant",
+      });
+    }
+
+    // Find or create a default BIC
+    const bics = await base44.entities.BIC.filter({ legal_entity_id: entity.id });
+    let bic = bics[0];
+    if (!bic) {
+      bic = await base44.entities.BIC.create({
+        legal_entity_id: entity.id,
+        legal_entity_name: entity.legal_name,
+        bic_code: result.bank.substring(0, 4).toUpperCase() + "XX",
+        country: result.headquarters || "",
+        is_headquarters: true,
+        swift_member: true,
+        notes: "Created via AI Research Assistant - please update BIC code",
+      });
+    }
+
+    // Create approved services
+    const approvedServices = result.services.filter((_, i) => approved.includes(i));
+    for (const svc of approvedServices) {
+      await base44.entities.CorrespondentService.create({
+        bic_id: bic.id,
+        bic_code: bic.bic_code,
+        group_name: group.group_name,
+        legal_entity_name: entity.legal_name,
+        country: result.headquarters || "",
+        ...svc,
+        last_verified: new Date().toISOString().split("T")[0],
+      });
+    }
+
+    setSaved(true);
+    setSaving(false);
+  };
+
+  return (
+    <div className="space-y-6">
+      <div>
+        <h1 className="text-2xl font-bold text-slate-900">AI Research Assistant</h1>
+        <p className="text-slate-500 text-sm mt-1">Research correspondent banking services for any institution using AI</p>
+      </div>
+
+      <Card className="border-0 shadow-sm">
+        <CardContent className="p-6">
+          <div className="flex gap-3">
+            <Input
+              placeholder="Enter bank name (e.g. JPMorgan Chase, HSBC, Citi...)"
+              value={bankName}
+              onChange={e => setBankName(e.target.value)}
+              onKeyDown={e => e.key === "Enter" && research()}
+              className="flex-1"
+            />
+            <Button onClick={research} disabled={loading || !bankName.trim()} className="bg-blue-600 hover:bg-blue-700">
+              {loading ? <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-white" /> : <><Bot className="w-4 h-4 mr-2" />Research</>}
+            </Button>
+          </div>
+        </CardContent>
+      </Card>
+
+      {loading && (
+        <Card className="border-0 shadow-sm">
+          <CardContent className="p-8 text-center">
+            <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600 mx-auto mb-3" />
+            <p className="text-slate-600 text-sm">Researching {bankName}...</p>
+            <p className="text-slate-400 text-xs mt-1">Searching public sources and AI knowledge base</p>
+          </CardContent>
+        </Card>
+      )}
+
+      {result && !loading && (
+        <div className="space-y-4">
+          <Card className="border-0 shadow-sm border-l-4 border-l-amber-400">
+            <CardContent className="p-4">
+              <div className="flex items-start gap-2">
+                <AlertTriangle className="w-4 h-4 text-amber-500 mt-0.5 shrink-0" />
+                <p className="text-sm text-slate-600">
+                  Review the AI-suggested services below. Select the ones you want to approve and save to the database. AI data should always be verified against official sources.
+                </p>
+              </div>
+            </CardContent>
+          </Card>
+
+          <Card className="border-0 shadow-sm">
+            <CardHeader className="pb-2">
+              <div className="flex items-center justify-between">
+                <CardTitle className="text-base font-bold text-slate-900">
+                  {result.bank}
+                  {result.headquarters && <span className="text-slate-500 font-normal text-sm ml-2">— {result.headquarters}</span>}
+                  {result.gsib && <Badge className="ml-2 bg-purple-100 text-purple-700 border-purple-200">G-SIB</Badge>}
+                </CardTitle>
+                <div className="flex gap-2">
+                  <Button variant="outline" size="sm" onClick={() => setApproved(result.services.map((_, i) => i))}>Select All</Button>
+                  <Button variant="outline" size="sm" onClick={() => setApproved([])}>Deselect All</Button>
+                </div>
+              </div>
+            </CardHeader>
+            <CardContent className="p-0">
+              <div className="overflow-x-auto">
+                <table className="w-full text-sm">
+                  <thead>
+                    <tr className="border-b border-slate-100 bg-slate-50">
+                      <th className="px-4 py-3 text-left w-10"></th>
+                      <th className="px-4 py-3 text-left font-semibold text-slate-600">Currency</th>
+                      <th className="px-4 py-3 text-left font-semibold text-slate-600">Service Type</th>
+                      <th className="px-4 py-3 text-center font-semibold text-slate-600">RTGS</th>
+                      <th className="px-4 py-3 text-center font-semibold text-slate-600">Instant</th>
+                      <th className="px-4 py-3 text-center font-semibold text-slate-600">CLS</th>
+                      <th className="px-4 py-3 text-center font-semibold text-slate-600">Nostro</th>
+                      <th className="px-4 py-3 text-center font-semibold text-slate-600">Vostro</th>
+                      <th className="px-4 py-3 text-left font-semibold text-slate-600">Target Clients</th>
+                      <th className="px-4 py-3 text-left font-semibold text-slate-600">Source</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {result.services?.map((svc, i) => (
+                      <tr key={i} className={`border-b border-slate-50 transition-colors ${approved.includes(i) ? "bg-emerald-50/40" : "opacity-50"}`}>
+                        <td className="px-4 py-3">
+                          <input type="checkbox" checked={approved.includes(i)} onChange={() => toggleApprove(i)} className="w-4 h-4 cursor-pointer" />
+                        </td>
+                        <td className="px-4 py-3 font-bold text-slate-800">{svc.currency}</td>
+                        <td className="px-4 py-3"><Badge variant="outline" className="text-xs">{svc.service_type}</Badge></td>
+                        <td className="px-4 py-3 text-center"><BoolIcon val={svc.rtgs_membership} /></td>
+                        <td className="px-4 py-3 text-center"><BoolIcon val={svc.instant_scheme_access} /></td>
+                        <td className="px-4 py-3 text-center"><BoolIcon val={svc.cls_member} /></td>
+                        <td className="px-4 py-3 text-center"><BoolIcon val={svc.nostro_accounts_offered} /></td>
+                        <td className="px-4 py-3 text-center"><BoolIcon val={svc.vostro_accounts_offered} /></td>
+                        <td className="px-4 py-3 text-slate-600 text-xs">{svc.target_clients}</td>
+                        <td className="px-4 py-3 text-slate-500 text-xs">{svc.source}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+              <div className="p-4 border-t border-slate-100 flex items-center justify-between">
+                <span className="text-sm text-slate-500">{approved.length} of {result.services?.length} services selected</span>
+                {saved ? (
+                  <div className="flex items-center gap-2 text-emerald-600 text-sm font-medium">
+                    <CheckCircle2 className="w-4 h-4" /> Saved to database
+                  </div>
+                ) : (
+                  <Button onClick={saveApproved} disabled={approved.length === 0 || saving} className="bg-emerald-600 hover:bg-emerald-700">
+                    {saving ? <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-white mr-2" /> : <Plus className="w-4 h-4 mr-2" />}
+                    Save {approved.length} service{approved.length !== 1 ? "s" : ""} to Database
+                  </Button>
+                )}
+              </div>
+            </CardContent>
+          </Card>
+        </div>
+      )}
+    </div>
+  );
+}

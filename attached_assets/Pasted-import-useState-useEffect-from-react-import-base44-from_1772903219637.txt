@@ -1,0 +1,422 @@
+import { useState, useEffect } from "react";
+import { base44 } from "@/api/base44Client";
+import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
+import { Card, CardContent } from "@/components/ui/card";
+import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { Checkbox } from "@/components/ui/checkbox";
+import { Badge } from "@/components/ui/badge";
+import { Plus, Trash2, Edit2, Save, X, ChevronDown, ChevronUp } from "lucide-react";
+
+const CURRENCIES = ["EUR","USD","GBP","JPY","CHF","CAD","AUD","SGD","HKD","CNH","SEK","NOK","DKK","PLN","CZK","HUF","RON","TRY","ZAR","BRL","MXN","INR"];
+const SERVICE_TYPES = ["Correspondent Banking","Currency Clearing","RTGS Participation","Instant Payments Access","FX Liquidity","CLS Settlement","Custody Services","Transaction Banking","Liquidity Services"];
+const FMI_TYPES = ["CLS_Settlement_Member"];
+
+function GroupForm({ initial, onSave, onCancel }) {
+  const [form, setForm] = useState(initial || { group_name: "", headquarters_country: "", primary_currency: "", gsib_status: false, website: "", notes: "" });
+  return (
+    <div className="space-y-3 p-4 bg-slate-50 rounded-lg">
+      <div className="grid grid-cols-2 gap-3">
+        <div><Label className="text-xs">Group Name *</Label><Input value={form.group_name} onChange={e => setForm(p => ({ ...p, group_name: e.target.value }))} className="mt-1" /></div>
+        <div><Label className="text-xs">HQ Country</Label><Input value={form.headquarters_country} onChange={e => setForm(p => ({ ...p, headquarters_country: e.target.value }))} className="mt-1" /></div>
+        <div>
+          <Label className="text-xs">Primary Currency</Label>
+          <Select value={form.primary_currency || ""} onValueChange={v => setForm(p => ({ ...p, primary_currency: v }))}>
+            <SelectTrigger className="mt-1"><SelectValue placeholder="Select" /></SelectTrigger>
+            <SelectContent>{CURRENCIES.map(c => <SelectItem key={c} value={c}>{c}</SelectItem>)}</SelectContent>
+          </Select>
+        </div>
+        <div><Label className="text-xs">Website</Label><Input value={form.website || ""} onChange={e => setForm(p => ({ ...p, website: e.target.value }))} className="mt-1" /></div>
+      </div>
+      <div><Label className="text-xs">Notes</Label><Input value={form.notes || ""} onChange={e => setForm(p => ({ ...p, notes: e.target.value }))} className="mt-1" /></div>
+      <div className="flex items-center gap-2">
+        <Checkbox checked={form.gsib_status} onCheckedChange={v => setForm(p => ({ ...p, gsib_status: v }))} />
+        <Label className="text-xs cursor-pointer">G-SIB Status</Label>
+      </div>
+      <div className="flex gap-2">
+        <Button size="sm" onClick={() => onSave(form)} className="bg-blue-600 hover:bg-blue-700"><Save className="w-3 h-3 mr-1" />Save</Button>
+        <Button size="sm" variant="outline" onClick={onCancel}><X className="w-3 h-3 mr-1" />Cancel</Button>
+      </div>
+    </div>
+  );
+}
+
+function EntityForm({ initial, groups, onSave, onCancel }) {
+  const [form, setForm] = useState(initial || { group_id: "", group_name: "", legal_name: "", country: "", entity_type: "Bank", regulator: "", notes: "" });
+  return (
+    <div className="space-y-3 p-4 bg-slate-50 rounded-lg">
+      <div className="grid grid-cols-2 gap-3">
+        <div>
+          <Label className="text-xs">Banking Group *</Label>
+          <Select value={form.group_id} onValueChange={v => { const g = groups.find(g => g.id === v); setForm(p => ({ ...p, group_id: v, group_name: g?.group_name || "" })); }}>
+            <SelectTrigger className="mt-1"><SelectValue placeholder="Select group" /></SelectTrigger>
+            <SelectContent>{groups.map(g => <SelectItem key={g.id} value={g.id}>{g.group_name}</SelectItem>)}</SelectContent>
+          </Select>
+        </div>
+        <div><Label className="text-xs">Legal Name *</Label><Input value={form.legal_name} onChange={e => setForm(p => ({ ...p, legal_name: e.target.value }))} className="mt-1" /></div>
+        <div><Label className="text-xs">Country</Label><Input value={form.country} onChange={e => setForm(p => ({ ...p, country: e.target.value }))} className="mt-1" /></div>
+        <div>
+          <Label className="text-xs">Entity Type</Label>
+          <Select value={form.entity_type} onValueChange={v => setForm(p => ({ ...p, entity_type: v }))}>
+            <SelectTrigger className="mt-1"><SelectValue /></SelectTrigger>
+            <SelectContent>{["Bank","Branch","Subsidiary","Representative Office","Other"].map(t => <SelectItem key={t} value={t}>{t}</SelectItem>)}</SelectContent>
+          </Select>
+        </div>
+        <div><Label className="text-xs">Regulator</Label><Input value={form.regulator || ""} onChange={e => setForm(p => ({ ...p, regulator: e.target.value }))} className="mt-1" /></div>
+        <div><Label className="text-xs">Notes</Label><Input value={form.notes || ""} onChange={e => setForm(p => ({ ...p, notes: e.target.value }))} className="mt-1" /></div>
+      </div>
+      <div className="flex gap-2">
+        <Button size="sm" onClick={() => onSave(form)} className="bg-blue-600 hover:bg-blue-700"><Save className="w-3 h-3 mr-1" />Save</Button>
+        <Button size="sm" variant="outline" onClick={onCancel}><X className="w-3 h-3 mr-1" />Cancel</Button>
+      </div>
+    </div>
+  );
+}
+
+function BICForm({ initial, entities, onSave, onCancel }) {
+  const [form, setForm] = useState(initial || { legal_entity_id: "", legal_entity_name: "", bic_code: "", country: "", city: "", is_headquarters: false, swift_member: true, notes: "" });
+  return (
+    <div className="space-y-3 p-4 bg-slate-50 rounded-lg">
+      <div className="grid grid-cols-2 gap-3">
+        <div>
+          <Label className="text-xs">Legal Entity *</Label>
+          <Select value={form.legal_entity_id} onValueChange={v => { const e = entities.find(e => e.id === v); setForm(p => ({ ...p, legal_entity_id: v, legal_entity_name: e?.legal_name || "" })); }}>
+            <SelectTrigger className="mt-1"><SelectValue placeholder="Select entity" /></SelectTrigger>
+            <SelectContent>{entities.map(e => <SelectItem key={e.id} value={e.id}>{e.legal_name}</SelectItem>)}</SelectContent>
+          </Select>
+        </div>
+        <div><Label className="text-xs">BIC Code *</Label><Input value={form.bic_code} onChange={e => setForm(p => ({ ...p, bic_code: e.target.value.toUpperCase() }))} className="mt-1 font-mono" /></div>
+        <div><Label className="text-xs">Country</Label><Input value={form.country} onChange={e => setForm(p => ({ ...p, country: e.target.value }))} className="mt-1" /></div>
+        <div><Label className="text-xs">City</Label><Input value={form.city || ""} onChange={e => setForm(p => ({ ...p, city: e.target.value }))} className="mt-1" /></div>
+        <div><Label className="text-xs">Notes</Label><Input value={form.notes || ""} onChange={e => setForm(p => ({ ...p, notes: e.target.value }))} className="mt-1" /></div>
+      </div>
+      <div className="flex gap-4">
+        <label className="flex items-center gap-2 text-xs cursor-pointer"><Checkbox checked={form.is_headquarters} onCheckedChange={v => setForm(p => ({ ...p, is_headquarters: v }))} />HQ BIC</label>
+        <label className="flex items-center gap-2 text-xs cursor-pointer"><Checkbox checked={form.swift_member} onCheckedChange={v => setForm(p => ({ ...p, swift_member: v }))} />SWIFT Member</label>
+      </div>
+      <div className="flex gap-2">
+        <Button size="sm" onClick={() => onSave(form)} className="bg-blue-600 hover:bg-blue-700"><Save className="w-3 h-3 mr-1" />Save</Button>
+        <Button size="sm" variant="outline" onClick={onCancel}><X className="w-3 h-3 mr-1" />Cancel</Button>
+      </div>
+    </div>
+  );
+}
+
+function ServiceForm({ initial, bics, onSave, onCancel }) {
+   const [form, setForm] = useState(initial || {
+     bic_id: "", bic_code: "", group_name: "", legal_entity_name: "", country: "",
+     currency: "USD", service_type: "Correspondent Banking",
+     rtgs_membership: false, instant_scheme_access: false, nostro_accounts_offered: false,
+     vostro_accounts_offered: false, target_clients: "", notes: "", source: "", last_verified: ""
+   });
+   return (
+     <div className="space-y-3 p-4 bg-slate-50 rounded-lg">
+       <div className="grid grid-cols-2 gap-3">
+         <div>
+           <Label className="text-xs">BIC *</Label>
+           <Select value={form.bic_id} onValueChange={v => { const b = bics.find(b => b.id === v); setForm(p => ({ ...p, bic_id: v, bic_code: b?.bic_code || "", legal_entity_name: b?.legal_entity_name || "", country: b?.country || "" })); }}>
+             <SelectTrigger className="mt-1"><SelectValue placeholder="Select BIC" /></SelectTrigger>
+             <SelectContent>{bics.map(b => <SelectItem key={b.id} value={b.id}>{b.bic_code} — {b.legal_entity_name}</SelectItem>)}</SelectContent>
+           </Select>
+         </div>
+         <div><Label className="text-xs">Group Name</Label><Input value={form.group_name || ""} onChange={e => setForm(p => ({ ...p, group_name: e.target.value }))} className="mt-1" /></div>
+         <div>
+           <Label className="text-xs">Currency *</Label>
+           <Select value={form.currency} onValueChange={v => setForm(p => ({ ...p, currency: v }))}>
+             <SelectTrigger className="mt-1"><SelectValue /></SelectTrigger>
+             <SelectContent>{CURRENCIES.map(c => <SelectItem key={c} value={c}>{c}</SelectItem>)}</SelectContent>
+           </Select>
+         </div>
+         <div>
+           <Label className="text-xs">Service Type *</Label>
+           <Select value={form.service_type} onValueChange={v => setForm(p => ({ ...p, service_type: v }))}>
+             <SelectTrigger className="mt-1"><SelectValue /></SelectTrigger>
+             <SelectContent>{SERVICE_TYPES.map(s => <SelectItem key={s} value={s}>{s}</SelectItem>)}</SelectContent>
+           </Select>
+         </div>
+         <div><Label className="text-xs">Target Clients</Label><Input value={form.target_clients || ""} onChange={e => setForm(p => ({ ...p, target_clients: e.target.value }))} className="mt-1" /></div>
+         <div><Label className="text-xs">Source</Label><Input value={form.source || ""} onChange={e => setForm(p => ({ ...p, source: e.target.value }))} className="mt-1" /></div>
+         <div><Label className="text-xs">Last Verified</Label><Input type="date" value={form.last_verified || ""} onChange={e => setForm(p => ({ ...p, last_verified: e.target.value }))} className="mt-1" /></div>
+         <div><Label className="text-xs">Notes</Label><Input value={form.notes || ""} onChange={e => setForm(p => ({ ...p, notes: e.target.value }))} className="mt-1" /></div>
+       </div>
+       <div className="flex flex-wrap gap-4">
+         {[["rtgs_membership","RTGS Member"],["instant_scheme_access","Instant Payments"],["nostro_accounts_offered","Nostro Offered"],["vostro_accounts_offered","Vostro Offered"]].map(([k,l]) => (
+           <label key={k} className="flex items-center gap-2 text-xs cursor-pointer"><Checkbox checked={form[k]} onCheckedChange={v => setForm(p => ({ ...p, [k]: v }))} />{l}</label>
+         ))}
+       </div>
+       <div className="flex gap-2">
+         <Button size="sm" onClick={() => onSave(form)} className="bg-blue-600 hover:bg-blue-700"><Save className="w-3 h-3 mr-1" />Save</Button>
+         <Button size="sm" variant="outline" onClick={onCancel}><X className="w-3 h-3 mr-1" />Cancel</Button>
+       </div>
+     </div>
+   );
+ }
+
+function FMIForm({ initial, entities, onSave, onCancel }) {
+   const [form, setForm] = useState(initial || { legal_entity_id: "", legal_entity_name: "", fmi_type: "CLS_Settlement_Member", member_since: "", notes: "", last_verified: "" });
+   return (
+     <div className="space-y-3 p-4 bg-slate-50 rounded-lg">
+       <div className="grid grid-cols-2 gap-3">
+         <div>
+           <Label className="text-xs">Legal Entity *</Label>
+           <Select value={form.legal_entity_id} onValueChange={v => { const e = entities.find(e => e.id === v); setForm(p => ({ ...p, legal_entity_id: v, legal_entity_name: e?.legal_name || "" })); }}>
+             <SelectTrigger className="mt-1"><SelectValue placeholder="Select entity" /></SelectTrigger>
+             <SelectContent>{entities.map(e => <SelectItem key={e.id} value={e.id}>{e.legal_name}</SelectItem>)}</SelectContent>
+           </Select>
+         </div>
+         <div>
+           <Label className="text-xs">FMI Type *</Label>
+           <Select value={form.fmi_type} onValueChange={v => setForm(p => ({ ...p, fmi_type: v }))}>
+             <SelectTrigger className="mt-1"><SelectValue /></SelectTrigger>
+             <SelectContent>{FMI_TYPES.map(t => <SelectItem key={t} value={t}>{t}</SelectItem>)}</SelectContent>
+           </Select>
+         </div>
+         <div><Label className="text-xs">Member Since</Label><Input type="date" value={form.member_since || ""} onChange={e => setForm(p => ({ ...p, member_since: e.target.value }))} className="mt-1" /></div>
+         <div><Label className="text-xs">Last Verified</Label><Input type="date" value={form.last_verified || ""} onChange={e => setForm(p => ({ ...p, last_verified: e.target.value }))} className="mt-1" /></div>
+         <div colSpan={2}><Label className="text-xs">Notes</Label><Input value={form.notes || ""} onChange={e => setForm(p => ({ ...p, notes: e.target.value }))} className="mt-1" /></div>
+       </div>
+       <div className="flex gap-2">
+         <Button size="sm" onClick={() => onSave(form)} className="bg-blue-600 hover:bg-blue-700"><Save className="w-3 h-3 mr-1" />Save</Button>
+         <Button size="sm" variant="outline" onClick={onCancel}><X className="w-3 h-3 mr-1" />Cancel</Button>
+       </div>
+     </div>
+   );
+ }
+
+export default function DatabaseAdmin() {
+  const [groups, setGroups] = useState([]);
+  const [entities, setEntities] = useState([]);
+  const [bics, setBics] = useState([]);
+  const [services, setServices] = useState([]);
+  const [fmis, setFmis] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [showAddGroup, setShowAddGroup] = useState(false);
+  const [showAddEntity, setShowAddEntity] = useState(false);
+  const [showAddBic, setShowAddBic] = useState(false);
+  const [showAddService, setShowAddService] = useState(false);
+  const [showAddFmi, setShowAddFmi] = useState(false);
+  const [editingGroup, setEditingGroup] = useState(null);
+  const [editingEntity, setEditingEntity] = useState(null);
+  const [editingBic, setEditingBic] = useState(null);
+  const [editingService, setEditingService] = useState(null);
+  const [editingFmi, setEditingFmi] = useState(null);
+
+  const load = () => {
+    Promise.all([
+      base44.entities.BankingGroup.list(),
+      base44.entities.LegalEntity.list(),
+      base44.entities.BIC.list(),
+      base44.entities.CorrespondentService.list(),
+      base44.entities.FMI.list(),
+    ]).then(([g, e, b, s, f]) => { setGroups(g); setEntities(e); setBics(b); setServices(s); setFmis(f); setLoading(false); });
+  };
+  useEffect(load, []);
+
+  const saveGroup = async (form) => {
+    if (editingGroup) { await base44.entities.BankingGroup.update(editingGroup.id, form); setEditingGroup(null); }
+    else { await base44.entities.BankingGroup.create(form); setShowAddGroup(false); }
+    load();
+  };
+  const deleteGroup = async (id) => { await base44.entities.BankingGroup.delete(id); load(); };
+
+  const saveEntity = async (form) => {
+    if (editingEntity) { await base44.entities.LegalEntity.update(editingEntity.id, form); setEditingEntity(null); }
+    else { await base44.entities.LegalEntity.create(form); setShowAddEntity(false); }
+    load();
+  };
+  const deleteEntity = async (id) => { await base44.entities.LegalEntity.delete(id); load(); };
+
+  const saveBic = async (form) => {
+    if (editingBic) { await base44.entities.BIC.update(editingBic.id, form); setEditingBic(null); }
+    else { await base44.entities.BIC.create(form); setShowAddBic(false); }
+    load();
+  };
+  const deleteBic = async (id) => { await base44.entities.BIC.delete(id); load(); };
+
+  const saveService = async (form) => {
+    if (editingService) { await base44.entities.CorrespondentService.update(editingService.id, form); setEditingService(null); }
+    else { await base44.entities.CorrespondentService.create(form); setShowAddService(false); }
+    load();
+  };
+  const deleteService = async (id) => { await base44.entities.CorrespondentService.delete(id); load(); };
+
+  const saveFmi = async (form) => {
+    if (editingFmi) { await base44.entities.FMI.update(editingFmi.id, form); setEditingFmi(null); }
+    else { await base44.entities.FMI.create(form); setShowAddFmi(false); }
+    load();
+  };
+  const deleteFmi = async (id) => { await base44.entities.FMI.delete(id); load(); };
+
+  if (loading) return <div className="flex items-center justify-center h-64"><div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600" /></div>;
+
+  return (
+    <div className="space-y-6">
+      <div>
+        <h1 className="text-2xl font-bold text-slate-900">Database Admin</h1>
+        <p className="text-slate-500 text-sm mt-1">Manage banking groups, entities, BICs and correspondent services</p>
+      </div>
+
+      <Tabs defaultValue="groups">
+        <TabsList className="bg-slate-100">
+          <TabsTrigger value="groups">Banking Groups ({groups.length})</TabsTrigger>
+          <TabsTrigger value="entities">Legal Entities ({entities.length})</TabsTrigger>
+          <TabsTrigger value="bics">BICs ({bics.length})</TabsTrigger>
+          <TabsTrigger value="services">Services ({services.length})</TabsTrigger>
+          <TabsTrigger value="fmi">FMI ({fmis.length})</TabsTrigger>
+        </TabsList>
+
+        {/* Banking Groups */}
+        <TabsContent value="groups" className="space-y-3 mt-4">
+          <Button size="sm" onClick={() => setShowAddGroup(true)} className="bg-blue-600 hover:bg-blue-700"><Plus className="w-3 h-3 mr-1" />Add Group</Button>
+          {showAddGroup && <GroupForm onSave={saveGroup} onCancel={() => setShowAddGroup(false)} />}
+          <Card className="border-0 shadow-sm">
+            <CardContent className="p-0">
+              <table className="w-full text-sm">
+                <thead><tr className="border-b bg-slate-50"><th className="text-left px-4 py-3 font-semibold text-slate-600">Group Name</th><th className="text-left px-4 py-3 font-semibold text-slate-600">Country</th><th className="text-left px-4 py-3 font-semibold text-slate-600">Currency</th><th className="text-center px-4 py-3 font-semibold text-slate-600">G-SIB</th><th className="px-4 py-3"></th></tr></thead>
+                <tbody>
+                  {groups.map(g => editingGroup?.id === g.id ? (
+                    <tr key={g.id}><td colSpan={5} className="p-2"><GroupForm initial={g} onSave={saveGroup} onCancel={() => setEditingGroup(null)} /></td></tr>
+                  ) : (
+                    <tr key={g.id} className="border-b hover:bg-slate-50">
+                      <td className="px-4 py-3 font-medium">{g.group_name}</td>
+                      <td className="px-4 py-3 text-slate-600">{g.headquarters_country}</td>
+                      <td className="px-4 py-3 text-slate-600">{g.primary_currency}</td>
+                      <td className="px-4 py-3 text-center">{g.gsib_status ? <Badge className="bg-purple-100 text-purple-700 text-xs">G-SIB</Badge> : "—"}</td>
+                      <td className="px-4 py-3 flex gap-2 justify-end">
+                        <Button size="icon" variant="ghost" className="h-7 w-7" onClick={() => setEditingGroup(g)}><Edit2 className="w-3 h-3" /></Button>
+                        <Button size="icon" variant="ghost" className="h-7 w-7 text-red-500 hover:text-red-700" onClick={() => deleteGroup(g.id)}><Trash2 className="w-3 h-3" /></Button>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </CardContent>
+          </Card>
+        </TabsContent>
+
+        {/* Legal Entities */}
+        <TabsContent value="entities" className="space-y-3 mt-4">
+          <Button size="sm" onClick={() => setShowAddEntity(true)} className="bg-blue-600 hover:bg-blue-700"><Plus className="w-3 h-3 mr-1" />Add Entity</Button>
+          {showAddEntity && <EntityForm groups={groups} onSave={saveEntity} onCancel={() => setShowAddEntity(false)} />}
+          <Card className="border-0 shadow-sm">
+            <CardContent className="p-0">
+              <table className="w-full text-sm">
+                <thead><tr className="border-b bg-slate-50"><th className="text-left px-4 py-3 font-semibold text-slate-600">Legal Name</th><th className="text-left px-4 py-3 font-semibold text-slate-600">Group</th><th className="text-left px-4 py-3 font-semibold text-slate-600">Country</th><th className="text-left px-4 py-3 font-semibold text-slate-600">Type</th><th className="px-4 py-3"></th></tr></thead>
+                <tbody>
+                  {entities.map(e => editingEntity?.id === e.id ? (
+                    <tr key={e.id}><td colSpan={5} className="p-2"><EntityForm initial={e} groups={groups} onSave={saveEntity} onCancel={() => setEditingEntity(null)} /></td></tr>
+                  ) : (
+                    <tr key={e.id} className="border-b hover:bg-slate-50">
+                      <td className="px-4 py-3 font-medium">{e.legal_name}</td>
+                      <td className="px-4 py-3 text-slate-600">{e.group_name}</td>
+                      <td className="px-4 py-3 text-slate-600">{e.country}</td>
+                      <td className="px-4 py-3"><Badge variant="outline" className="text-xs">{e.entity_type}</Badge></td>
+                      <td className="px-4 py-3 flex gap-2 justify-end">
+                        <Button size="icon" variant="ghost" className="h-7 w-7" onClick={() => setEditingEntity(e)}><Edit2 className="w-3 h-3" /></Button>
+                        <Button size="icon" variant="ghost" className="h-7 w-7 text-red-500 hover:text-red-700" onClick={() => deleteEntity(e.id)}><Trash2 className="w-3 h-3" /></Button>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </CardContent>
+          </Card>
+        </TabsContent>
+
+        {/* BICs */}
+        <TabsContent value="bics" className="space-y-3 mt-4">
+          <Button size="sm" onClick={() => setShowAddBic(true)} className="bg-blue-600 hover:bg-blue-700"><Plus className="w-3 h-3 mr-1" />Add BIC</Button>
+          {showAddBic && <BICForm entities={entities} onSave={saveBic} onCancel={() => setShowAddBic(false)} />}
+          <Card className="border-0 shadow-sm">
+            <CardContent className="p-0">
+              <table className="w-full text-sm">
+                <thead><tr className="border-b bg-slate-50"><th className="text-left px-4 py-3 font-semibold text-slate-600">BIC Code</th><th className="text-left px-4 py-3 font-semibold text-slate-600">Legal Entity</th><th className="text-left px-4 py-3 font-semibold text-slate-600">Country</th><th className="text-left px-4 py-3 font-semibold text-slate-600">City</th><th className="text-center px-4 py-3 font-semibold text-slate-600">HQ</th><th className="px-4 py-3"></th></tr></thead>
+                <tbody>
+                  {bics.map(b => editingBic?.id === b.id ? (
+                    <tr key={b.id}><td colSpan={6} className="p-2"><BICForm initial={b} entities={entities} onSave={saveBic} onCancel={() => setEditingBic(null)} /></td></tr>
+                  ) : (
+                    <tr key={b.id} className="border-b hover:bg-slate-50">
+                      <td className="px-4 py-3 font-mono font-bold text-slate-800">{b.bic_code}</td>
+                      <td className="px-4 py-3 text-slate-600">{b.legal_entity_name}</td>
+                      <td className="px-4 py-3 text-slate-600">{b.country}</td>
+                      <td className="px-4 py-3 text-slate-600">{b.city}</td>
+                      <td className="px-4 py-3 text-center">{b.is_headquarters ? "✓" : "—"}</td>
+                      <td className="px-4 py-3 flex gap-2 justify-end">
+                        <Button size="icon" variant="ghost" className="h-7 w-7" onClick={() => setEditingBic(b)}><Edit2 className="w-3 h-3" /></Button>
+                        <Button size="icon" variant="ghost" className="h-7 w-7 text-red-500 hover:text-red-700" onClick={() => deleteBic(b.id)}><Trash2 className="w-3 h-3" /></Button>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </CardContent>
+          </Card>
+        </TabsContent>
+
+        {/* Services */}
+        <TabsContent value="services" className="space-y-3 mt-4">
+          <Button size="sm" onClick={() => setShowAddService(true)} className="bg-blue-600 hover:bg-blue-700"><Plus className="w-3 h-3 mr-1" />Add Service</Button>
+          {showAddService && <ServiceForm bics={bics} onSave={saveService} onCancel={() => setShowAddService(false)} />}
+          <Card className="border-0 shadow-sm">
+            <CardContent className="p-0">
+              <div className="overflow-x-auto">
+                <table className="w-full text-sm">
+                  <thead><tr className="border-b bg-slate-50"><th className="text-left px-4 py-3 font-semibold text-slate-600">Group</th><th className="text-left px-4 py-3 font-semibold text-slate-600">BIC</th><th className="text-left px-4 py-3 font-semibold text-slate-600">Currency</th><th className="text-left px-4 py-3 font-semibold text-slate-600">Service Type</th><th className="text-center px-4 py-3 font-semibold text-slate-600">RTGS</th><th className="text-center px-4 py-3 font-semibold text-slate-600">Instant</th><th className="px-4 py-3"></th></tr></thead>
+                  <tbody>
+                    {services.map(s => editingService?.id === s.id ? (
+                      <tr key={s.id}><td colSpan={7} className="p-2"><ServiceForm initial={s} bics={bics} onSave={saveService} onCancel={() => setEditingService(null)} /></td></tr>
+                    ) : (
+                      <tr key={s.id} className="border-b hover:bg-slate-50">
+                        <td className="px-4 py-3 font-medium">{s.group_name}</td>
+                        <td className="px-4 py-3 font-mono text-slate-600">{s.bic_code}</td>
+                        <td className="px-4 py-3 font-semibold text-blue-700">{s.currency}</td>
+                        <td className="px-4 py-3"><Badge variant="outline" className="text-xs">{s.service_type}</Badge></td>
+                        <td className="px-4 py-3 text-center">{s.rtgs_membership ? "✓" : "—"}</td>
+                         <td className="px-4 py-3 text-center">{s.instant_scheme_access ? "✓" : "—"}</td>
+                         <td className="px-4 py-3 flex gap-2 justify-end">
+                          <Button size="icon" variant="ghost" className="h-7 w-7" onClick={() => setEditingService(s)}><Edit2 className="w-3 h-3" /></Button>
+                          <Button size="icon" variant="ghost" className="h-7 w-7 text-red-500 hover:text-red-700" onClick={() => deleteService(s.id)}><Trash2 className="w-3 h-3" /></Button>
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            </CardContent>
+          </Card>
+        </TabsContent>
+
+        {/* FMI */}
+        <TabsContent value="fmi" className="space-y-3 mt-4">
+          <Button size="sm" onClick={() => setShowAddFmi(true)} className="bg-blue-600 hover:bg-blue-700"><Plus className="w-3 h-3 mr-1" />Add FMI</Button>
+          {showAddFmi && <FMIForm entities={entities} onSave={saveFmi} onCancel={() => setShowAddFmi(false)} />}
+          <Card className="border-0 shadow-sm">
+            <CardContent className="p-0">
+              <table className="w-full text-sm">
+                <thead><tr className="border-b bg-slate-50"><th className="text-left px-4 py-3 font-semibold text-slate-600">Legal Entity</th><th className="text-left px-4 py-3 font-semibold text-slate-600">FMI Type</th><th className="text-left px-4 py-3 font-semibold text-slate-600">Member Since</th><th className="text-left px-4 py-3 font-semibold text-slate-600">Last Verified</th><th className="px-4 py-3"></th></tr></thead>
+                <tbody>
+                  {fmis.map(f => editingFmi?.id === f.id ? (
+                    <tr key={f.id}><td colSpan={5} className="p-2"><FMIForm initial={f} entities={entities} onSave={saveFmi} onCancel={() => setEditingFmi(null)} /></td></tr>
+                  ) : (
+                    <tr key={f.id} className="border-b hover:bg-slate-50">
+                      <td className="px-4 py-3 font-medium">{f.legal_entity_name}</td>
+                      <td className="px-4 py-3"><Badge variant="outline" className="text-xs">{f.fmi_type}</Badge></td>
+                      <td className="px-4 py-3 text-slate-600">{f.member_since || "—"}</td>
+                      <td className="px-4 py-3 text-slate-600">{f.last_verified || "—"}</td>
+                      <td className="px-4 py-3 flex gap-2 justify-end">
+                        <Button size="icon" variant="ghost" className="h-7 w-7" onClick={() => setEditingFmi(f)}><Edit2 className="w-3 h-3" /></Button>
+                        <Button size="icon" variant="ghost" className="h-7 w-7 text-red-500 hover:text-red-700" onClick={() => deleteFmi(f.id)}><Trash2 className="w-3 h-3" /></Button>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </CardContent>
+          </Card>
+        </TabsContent>
+      </Tabs>
+    </div>
+  );
+}
