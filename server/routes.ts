@@ -323,7 +323,28 @@ Only include currencies and services you found evidence for in the research.`,
     };
 
     try {
-      const history = await storage.listMessages(conversationId);
+      const [history, storedSources] = await Promise.all([
+        storage.listMessages(conversationId),
+        storage.listDataSources(),
+      ]);
+
+      const knownSourcesSection = storedSources.length > 0
+        ? `\n\n---\n## KNOWN REFERENCE SOURCES (USE THESE FIRST)\nThe following authoritative sources are already stored in the data sources library. Before searching the web from scratch, check if any of these apply to your current task. When they do, use their URL directly in web_search instead of trying to rediscover the source.\n\n${
+          (() => {
+            const byCategory: Record<string, typeof storedSources> = {};
+            for (const s of storedSources) {
+              const cat = s.category || "Other";
+              if (!byCategory[cat]) byCategory[cat] = [];
+              byCategory[cat].push(s);
+            }
+            return Object.entries(byCategory).map(([cat, sources]) =>
+              `### ${cat}\n` + sources.map(s =>
+                `- **${s.name}**${s.publisher ? ` (${s.publisher})` : ""}${s.url ? ` — ${s.url}` : ""}${s.description ? `\n  ${s.description}` : ""}`
+              ).join("\n")
+            ).join("\n\n");
+          })()
+        }`
+        : "";
 
       const systemPrompt = `You are the CB Provider Intelligence Agent, an expert in correspondent banking with full database access and live web search capability.
 
@@ -335,6 +356,8 @@ When creating a new CB Provider, always follow this order: create BankingGroup f
 ---
 ## CB PROVIDER QUALIFICATION FRAMEWORK
 Whenever you are asked to add, research, or assess a Banking Group as a CB Provider, you MUST evaluate ALL FOUR criteria below using web_search BEFORE creating any database records.
+
+**Before searching:** Check the KNOWN REFERENCE SOURCES section at the bottom of this prompt. If a relevant source is listed there (e.g. a TARGET2 member list, a CLS directory, a central bank register), use that URL in your web_search query directly — this is faster and more authoritative than discovering sources from scratch.
 
 ### Criterion 1 — Home Currency
 Identify the primary/home currency of the Banking Group based on where its global headquarters is domiciled.
@@ -413,7 +436,7 @@ Do NOT skip the database update step even if the user has not explicitly asked y
 - SEARCH the web for current market data, news, SWIFT information, regulatory changes
 - DATA SOURCES: When asked to find an authoritative source for any dataset, use web_search to identify it, then save it with create_data_source (name, category, URL, publisher, update_frequency)
 
-Always confirm actions taken. Cite web sources. Be concise but thorough on assessments.`;
+Always confirm actions taken. Cite web sources. Be concise but thorough on assessments.${knownSourcesSection}`;
 
       const tools: any[] = [
         {
