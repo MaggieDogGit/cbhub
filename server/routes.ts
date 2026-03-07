@@ -430,6 +430,21 @@ After completing the 4-criterion assessment, ALWAYS call update_banking_group wi
 
 Additionally, if you discover that a Banking Group is a member of a Financial Market Infrastructure (e.g. CLS, SWIFT, STEP2, EBA Clearing, TARGET2-Securities), create an FMI record using create_fmi linked to the relevant Legal Entity.
 
+**Correspondent Service recording (MANDATORY when CB probability is High or Medium):**
+After updating the banking group record, you MUST also ensure a CorrespondentService record exists for the home currency under the primary BIC of the main legal entity. Follow these steps:
+1. Call list_bics to find the BIC linked to the legal entity.
+2. Call list_correspondent_services to check whether a service already exists for that BIC + home currency combination.
+3. If no such service exists, call create_correspondent_service with:
+   - bic_id: the BIC's id
+   - currency: the home currency (e.g. "EUR")
+   - service_type: "Correspondent Banking"
+   - clearing_model: "Onshore"
+   - rtgs_membership: true if RTGS membership is confirmed, otherwise false
+   - nostro_accounts_offered: true (default for CB providers)
+   - vostro_accounts_offered: true (default for CB providers)
+   - source: the web source URL you used for the assessment
+4. If a service already exists for that BIC + currency, update it with any improved details instead of creating a duplicate.
+
 Do NOT skip the database update step even if the user has not explicitly asked you to update — assessment findings MUST always be written back.
 
 ---
@@ -857,7 +872,12 @@ When you have proposed an action and the user responds with a short confirmation
             case "update_bic": { const { id, ...data } = args; return JSON.stringify(await storage.updateBic(id, data)); }
             case "delete_bic": await storage.deleteBic(args.id); return JSON.stringify({ ok: true, id: args.id });
             case "list_correspondent_services": return JSON.stringify(await storage.listCorrespondentServices(args.currency));
-            case "create_correspondent_service": return JSON.stringify(await storage.createCorrespondentService(args));
+            case "create_correspondent_service": {
+              const existing = await storage.listCorrespondentServices();
+              const duplicate = existing.find(s => s.bic_id === args.bic_id && s.currency === args.currency);
+              if (duplicate) return JSON.stringify({ duplicate: true, existing_id: duplicate.id, message: `A correspondent service for currency "${args.currency}" already exists on BIC ${args.bic_id} (id=${duplicate.id}). Use update_correspondent_service instead.` });
+              return JSON.stringify(await storage.createCorrespondentService(args));
+            }
             case "update_correspondent_service": { const { id, ...data } = args; return JSON.stringify(await storage.updateCorrespondentService(id, data)); }
             case "delete_correspondent_service": await storage.deleteCorrespondentService(args.id); return JSON.stringify({ ok: true, id: args.id });
             case "list_fmis": return JSON.stringify(await storage.listFmis());
