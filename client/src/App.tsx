@@ -14,6 +14,7 @@ import ResearchAssistant from "@/pages/ResearchAssistant";
 import AgentChat from "@/pages/AgentChat";
 import DatabaseAdmin from "@/pages/DatabaseAdmin";
 import Sources from "@/pages/Sources";
+import Coverage from "@/pages/Coverage";
 import Login from "@/pages/Login";
 import NotFound from "@/pages/not-found";
 import { useAuth } from "@/hooks/useAuth";
@@ -31,6 +32,7 @@ function Router() {
         <Route path="/research" component={ResearchAssistant} />
         <Route path="/agent" component={AgentChat} />
         <Route path="/sources" component={Sources} />
+        <Route path="/coverage" component={Coverage} />
         <Route path="/admin" component={DatabaseAdmin} />
         <Route component={NotFound} />
       </Switch>

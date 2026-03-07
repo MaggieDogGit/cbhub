@@ -1,7 +1,7 @@
 import { useState } from "react";
 import { Link, useLocation } from "wouter";
 import {
-  LayoutDashboard, Building2, Globe, MapPin, Bot, Database, Menu, Search, MessageSquare, LogOut, BookOpen
+  LayoutDashboard, Building2, Globe, MapPin, Bot, Database, Menu, Search, MessageSquare, LogOut, BookOpen, CheckSquare
 } from "lucide-react";
 import { Input } from "@/components/ui/input";
 import { useAuth } from "@/hooks/useAuth";
@@ -13,6 +13,7 @@ const navItems = [
   { name: "CLS", path: "/cls", icon: Globe },
   { name: "Currencies", path: "/currencies", icon: Globe },
   { name: "Market Coverage", path: "/market-coverage", icon: MapPin },
+  { name: "Coverage", path: "/coverage", icon: CheckSquare },
   { name: "Research Assistant", path: "/research", icon: Bot },
   { name: "AI Agent", path: "/agent", icon: MessageSquare },
   { name: "Data Sources", path: "/sources", icon: BookOpen },

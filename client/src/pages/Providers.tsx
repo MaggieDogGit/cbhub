@@ -184,7 +184,7 @@ export default function Providers() {
 Current database state for this group: ${groupEntities.length} legal entit${groupEntities.length !== 1 ? "ies" : "y"}, ${totalBics} BIC${totalBics !== 1 ? "s" : ""}, ${totalServices} service${totalServices !== 1 ? "s" : ""} recorded. CB probability: ${group.cb_probability || "not set"}. Home currency: ${group.primary_currency || "not set"}.
 
 Check for duplicates before creating any record. Work through each step fully before moving to the next.`;
-                        setLocation(`/agent?prompt=${encodeURIComponent(prompt)}`);
+                        setLocation(`/agent?prompt=${encodeURIComponent(prompt)}&conv=${encodeURIComponent(`CB Setup: ${group.group_name}`)}`);
                       }}
                     >
                       <Bot className="w-3 h-3 mr-1" />CB Setup

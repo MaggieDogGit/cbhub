@@ -377,6 +377,7 @@ Confirm that the entity being added is the TOP-LEVEL holding company or parent g
 Confirm the Banking Group is a DIRECT PARTICIPANT in the RTGS of its home currency.
 RTGS systems by currency:
   EUR → TARGET2 | GBP → CHAPS | USD → Fedwire | JPY → BOJ-NET | CHF → SIC | CAD → Lynx | AUD → RITS | SGD → MEPS+ | HKD → CHATS | SEK → RIX | NOK → NBO | DKK → KRONOS2 | PLN → SORBNET2 | CZK → CERTIS
+Always use canonical RTGS names: TARGET2 (not T2), BOJ-NET (not BOJNET), Fedwire (not FEDWIRE), MEPS+ (not MEPS).
 - Search: "[Bank Name] [RTGS name] direct participant member"
 - Store: rtgs_system (name of RTGS), rtgs_member (true/false)
 
@@ -429,7 +430,7 @@ After completing the 4-criterion assessment, ALWAYS call update_banking_group wi
 - gsib_status: update to "G-SIB", "D-SIB", or "N/A" if you found evidence
 
 Additionally, if you discover that a legal entity is a member of a Financial Market Infrastructure, create an FMI record using create_fmi. Use the correct fmi_type category and the specific fmi_name:
-- Payment Systems → TARGET2 / T2, Fedwire, CHAPS, BOJ-NET, SIC, Lynx, RITS, MEPS+, CHATS, RIX
+- Payment Systems → TARGET2, Fedwire, CHAPS, BOJ-NET, SIC, Lynx, RITS, MEPS+, CHATS, RIX
 - Instant Payment Systems → Faster Payments, SEPA Instant, UPI, RTP, FedNow
 - Securities Settlement Systems → Euroclear, Clearstream, DTC
 - Central Securities Depositories → Euroclear Bank, Clearstream Banking Luxembourg
@@ -885,6 +886,9 @@ When you have proposed an action and the user responds with a short confirmation
             case "delete_banking_group": await storage.deleteBankingGroup(args.id); return JSON.stringify({ ok: true, id: args.id });
             case "list_legal_entities": return JSON.stringify(await storage.listLegalEntities());
             case "create_legal_entity": {
+              const allGroups = await storage.listBankingGroups();
+              const groupExists = allGroups.find(g => g.id === args.group_id);
+              if (!groupExists) return JSON.stringify({ error: `Invalid group_id "${args.group_id}". Call list_banking_groups first to find the correct UUID for the banking group.` });
               const existing = await storage.listLegalEntities();
               const duplicate = existing.find(e => e.legal_name.toLowerCase() === (args.legal_name || "").toLowerCase() && e.group_id === args.group_id);
               if (duplicate) return JSON.stringify({ duplicate: true, existing_id: duplicate.id, message: `Legal entity "${duplicate.legal_name}" already exists under this banking group (id=${duplicate.id}). Use update_legal_entity instead.` });
@@ -894,6 +898,9 @@ When you have proposed an action and the user responds with a short confirmation
             case "delete_legal_entity": await storage.deleteLegalEntity(args.id); return JSON.stringify({ ok: true, id: args.id });
             case "list_bics": return JSON.stringify(await storage.listBics());
             case "create_bic": {
+              const allEntities = await storage.listLegalEntities();
+              const entityExists = allEntities.find(e => e.id === args.legal_entity_id);
+              if (!entityExists) return JSON.stringify({ error: `Invalid legal_entity_id "${args.legal_entity_id}". Call list_legal_entities first to find the correct UUID for the legal entity.` });
               const existing = await storage.listBics();
               const duplicate = existing.find(b => b.bic_code.toLowerCase() === (args.bic_code || "").toLowerCase());
               if (duplicate) return JSON.stringify({ duplicate: true, existing_id: duplicate.id, message: `BIC "${duplicate.bic_code}" already exists (id=${duplicate.id}). Use update_bic instead.` });
@@ -903,6 +910,11 @@ When you have proposed an action and the user responds with a short confirmation
             case "delete_bic": await storage.deleteBic(args.id); return JSON.stringify({ ok: true, id: args.id });
             case "list_correspondent_services": return JSON.stringify(await storage.listCorrespondentServices(args.currency));
             case "create_correspondent_service": {
+              const uuidPattern = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+              if (!args.bic_id || !uuidPattern.test(args.bic_id)) return JSON.stringify({ error: `bic_id must be a valid BIC record UUID — call list_bics first to find the correct ID. Received: "${args.bic_id}"` });
+              const allBics = await storage.listBics();
+              const bicExists = allBics.find(b => b.id === args.bic_id);
+              if (!bicExists) return JSON.stringify({ error: `bic_id "${args.bic_id}" does not match any BIC in the database. Call list_bics to find the correct UUID.` });
               const existing = await storage.listCorrespondentServices();
               const duplicate = existing.find(s => s.bic_id === args.bic_id && s.currency === args.currency);
               if (duplicate) return JSON.stringify({ duplicate: true, existing_id: duplicate.id, message: `A correspondent service for currency "${args.currency}" already exists on BIC ${args.bic_id} (id=${duplicate.id}). Use update_correspondent_service instead.` });

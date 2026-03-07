@@ -38,17 +38,22 @@ export default function AgentChat() {
     bottomRef.current?.scrollIntoView({ behavior: "smooth" });
   }, [messages, statusText]);
 
-  // Pre-fill input from ?prompt= URL param (used by CB Setup buttons)
+  // Pre-fill input from ?prompt= URL param and auto-create named conversation from ?conv= (used by CB Setup buttons)
   useEffect(() => {
     const params = new URLSearchParams(window.location.search);
     const prompt = params.get("prompt");
-    if (prompt) {
-      setInput(decodeURIComponent(prompt));
-      // Clear the param from the URL without navigation
+    const convName = params.get("conv");
+    if (prompt || convName) {
+      if (prompt) setInput(decodeURIComponent(prompt));
       const url = new URL(window.location.href);
       url.searchParams.delete("prompt");
+      url.searchParams.delete("conv");
       window.history.replaceState({}, "", url.toString());
+      if (convName) {
+        createConvMutation.mutateAsync(decodeURIComponent(convName)).catch(() => {});
+      }
     }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   const createConvMutation = useMutation({
