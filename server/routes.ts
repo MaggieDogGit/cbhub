@@ -872,6 +872,12 @@ When you have proposed an action and the user responds with a short confirmation
         { role: "user", content: message },
       ];
 
+      // Detect short confirmation messages so we can force a tool call on the first iteration
+      // A message is treated as a confirmation if it begins with a confirmation word/phrase,
+      // even if the user appended additional instructions ("confirmed, store and move to next").
+      const confirmationPattern = /^(yes|y|confirmed?|correct|go ahead|proceed|store(?: and move)?|update|ok|sure|done|do it|move on|next|continue|approved?|accept)\b/i;
+      const isConfirmation = confirmationPattern.test(message.trim());
+
       // Agentic loop — keep calling until no more tool calls, streaming status events
       let assistantContent = "";
       for (let i = 0; i < 10; i++) {
@@ -879,7 +885,10 @@ When you have proposed an action and the user responds with a short confirmation
           model: "gpt-4o",
           messages,
           tools,
-          tool_choice: "auto",
+          // Force a tool call on the first iteration when the user sent a short confirmation.
+          // This prevents the model from generating a text-only acknowledgment ("I will now update...")
+          // which causes the loop to exit before executing the actual update.
+          tool_choice: (i === 0 && isConfirmation) ? "required" : "auto",
         });
 
         const choice = response.choices[0];
