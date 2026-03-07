@@ -5,7 +5,8 @@ import { Card, CardContent } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { ChevronDown, ChevronRight, Search, ShieldCheck, Globe, Radio, TrendingUp } from "lucide-react";
+import { Button } from "@/components/ui/button";
+import { ChevronDown, ChevronRight, Search, ShieldCheck, Globe, Radio, TrendingUp, Bot } from "lucide-react";
 import type { BankingGroup, LegalEntity, Bic, CorrespondentService, Fmi } from "@shared/schema";
 
 const CURRENCIES = ["all","EUR","USD","GBP","JPY","CHF","CAD","AUD","SGD","HKD","CNH","SEK","NOK","DKK","PLN","CZK","HUF","RON","TRY","ZAR","BRL","MXN","INR"];
@@ -157,9 +158,37 @@ export default function Providers() {
                       {currencies.length > 10 && <span className="text-xs text-slate-400">+{currencies.length - 10}</span>}
                     </div>
                   </div>
-                  <div className="text-right text-xs text-slate-500">
-                    <div>{groupEntities.length} entit{groupEntities.length !== 1 ? "ies" : "y"}</div>
-                    <div>{totalServices} service{totalServices !== 1 ? "s" : ""}</div>
+                  <div className="flex items-center gap-3">
+                    <div className="text-right text-xs text-slate-500">
+                      <div>{groupEntities.length} entit{groupEntities.length !== 1 ? "ies" : "y"}</div>
+                      <div>{totalServices} service{totalServices !== 1 ? "s" : ""}</div>
+                    </div>
+                    <Button
+                      size="sm"
+                      variant="outline"
+                      className="text-xs h-7 px-2 text-blue-600 border-blue-200 hover:bg-blue-50 shrink-0"
+                      data-testid={`button-cb-setup-${group.id}`}
+                      onClick={e => {
+                        e.stopPropagation();
+                        const totalBics = groupEntities.flatMap(en => getBicsForEntity(en.id)).length;
+                        const prompt = `Run the CB Entity Setup workflow for ${group.group_name}${group.headquarters_country ? ` (${group.headquarters_country})` : ""}:
+
+1. Search the web to identify which legal entities within ${group.group_name} actively provide Correspondent Banking services to other financial institutions. For each entity found, check if it already exists in the database before creating it.
+
+2. For each identified CB legal entity, find their primary BIC/SWIFT code. Add it using create_bic if not already present (check list_bics first).
+
+3. For each BIC, ensure a Correspondent Banking service exists in the home currency${group.primary_currency ? ` (${group.primary_currency})` : ""}. Also identify and add any other currencies that entity is known to offer CB services in.
+
+4. If any FMI memberships are discovered (e.g. SWIFT, TARGET2, CLS, Euroclear), record them using create_fmi with the correct fmi_type category and fmi_name.
+
+Current database state for this group: ${groupEntities.length} legal entit${groupEntities.length !== 1 ? "ies" : "y"}, ${totalBics} BIC${totalBics !== 1 ? "s" : ""}, ${totalServices} service${totalServices !== 1 ? "s" : ""} recorded. CB probability: ${group.cb_probability || "not set"}. Home currency: ${group.primary_currency || "not set"}.
+
+Check for duplicates before creating any record. Work through each step fully before moving to the next.`;
+                        setLocation(`/agent?prompt=${encodeURIComponent(prompt)}`);
+                      }}
+                    >
+                      <Bot className="w-3 h-3 mr-1" />CB Setup
+                    </Button>
                   </div>
                 </div>
 

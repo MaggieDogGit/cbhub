@@ -38,6 +38,19 @@ export default function AgentChat() {
     bottomRef.current?.scrollIntoView({ behavior: "smooth" });
   }, [messages, statusText]);
 
+  // Pre-fill input from ?prompt= URL param (used by CB Setup buttons)
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search);
+    const prompt = params.get("prompt");
+    if (prompt) {
+      setInput(decodeURIComponent(prompt));
+      // Clear the param from the URL without navigation
+      const url = new URL(window.location.href);
+      url.searchParams.delete("prompt");
+      window.history.replaceState({}, "", url.toString());
+    }
+  }, []);
+
   const createConvMutation = useMutation({
     mutationFn: (name: string) => apiRequest("POST", "/api/conversations", { name }).then(r => r.json()) as Promise<Conversation>,
     onSuccess: (conv) => {
