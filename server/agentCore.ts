@@ -21,7 +21,7 @@ function sleep(ms: number) {
   return new Promise(resolve => setTimeout(resolve, ms));
 }
 
-async function withRetry<T>(fn: () => Promise<T>, maxRetries = 5, label = "OpenAI call"): Promise<T> {
+export async function withRetry<T>(fn: () => Promise<T>, maxRetries = 5, label = "OpenAI call"): Promise<T> {
   for (let attempt = 0; attempt <= maxRetries; attempt++) {
     try {
       return await fn();

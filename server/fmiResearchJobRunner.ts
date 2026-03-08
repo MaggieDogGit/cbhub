@@ -1,6 +1,5 @@
 import { storage } from "./storage";
-import { buildFmiResearchPrompt, getFmiResearchTools } from "./agentFmiResearch";
-import { runAgentLoop } from "./agentCore";
+import { buildFmiResearchPrompt, runFmiAgentLoop } from "./agentFmiResearch";
 
 let isFmiProcessing = false;
 const FMI_JOB_COOLDOWN_MS = 60_000;
@@ -29,21 +28,20 @@ async function processNextFmiJob() {
     });
 
     const prompt = buildFmiResearchPrompt(pending.fmi_name, fmiRegistryEntry);
-    const tools = getFmiResearchTools();
 
     const openaiMessages: any[] = [
       { role: "system", content: prompt }
     ];
 
     let stepCount = 0;
-    const assistantContent = await runAgentLoop(
+    const assistantContent = await runFmiAgentLoop(
       openaiMessages,
       async (_toolName, _args, statusText) => {
         stepCount++;
         console.log(`[FmiJobRunner] ${pending.fmi_name} — step ${stepCount}: ${statusText}`);
         await storage.updateFmiResearchJob(pending.id, { steps_completed: stepCount });
       },
-      20 // Max steps
+      100 // Max steps — enough for 75 members each needing several tool calls
     );
 
     // Create a message in the conversation
