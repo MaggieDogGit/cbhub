@@ -3,6 +3,7 @@ import { db } from "./db";
 import {
   bankingGroups, legalEntities, bics, correspondentServices,
   clsProfiles, fmis, fmiRegistry, fmiResearchJobs, dataSources, conversations, chatMessages, agentJobs,
+  intelObservations,
   type BankingGroup, type InsertBankingGroup,
   type LegalEntity, type InsertLegalEntity,
   type Bic, type InsertBic,
@@ -15,6 +16,7 @@ import {
   type Conversation, type InsertConversation,
   type ChatMessage, type InsertMessage,
   type AgentJob, type InsertAgentJob,
+  type IntelObservation, type InsertIntelObservation,
   type User, type InsertUser,
 } from "@shared/schema";
 import { randomUUID } from "crypto";
@@ -83,6 +85,12 @@ export interface IStorage {
   createDataSource(data: InsertDataSource): Promise<DataSource>;
   updateDataSource(id: string, data: Partial<InsertDataSource>): Promise<DataSource>;
   deleteDataSource(id: string): Promise<void>;
+
+  // Intel Observations
+  listIntelObservations(filters?: { banking_group_id?: string; obs_type?: string }): Promise<IntelObservation[]>;
+  createIntelObservation(data: InsertIntelObservation): Promise<IntelObservation>;
+  updateIntelObservation(id: string, data: Partial<InsertIntelObservation>): Promise<IntelObservation>;
+  deleteIntelObservation(id: string): Promise<void>;
 
   // Merge operations
   mergeLegalEntities(keepId: string, deleteId: string): Promise<{ moved_bics: number; moved_fmis: number; deleted_entity_id: string }>;
@@ -177,6 +185,16 @@ export class DatabaseStorage implements IStorage {
   async updateDataSource(id: string, data: Partial<InsertDataSource>) { const [r] = await db.update(dataSources).set(data).where(eq(dataSources.id, id)).returning(); return r; }
   async deleteDataSource(id: string) { await db.delete(dataSources).where(eq(dataSources.id, id)); }
 
+  // Intel Observations
+  async listIntelObservations(filters?: { banking_group_id?: string; obs_type?: string }) {
+    let query = db.select().from(intelObservations).$dynamic();
+    if (filters?.banking_group_id) query = query.where(eq(intelObservations.banking_group_id, filters.banking_group_id));
+    return query.orderBy(desc(intelObservations.created_at));
+  }
+  async createIntelObservation(data: InsertIntelObservation) { const [r] = await db.insert(intelObservations).values(data).returning(); return r; }
+  async updateIntelObservation(id: string, data: Partial<InsertIntelObservation>) { const [r] = await db.update(intelObservations).set(data).where(eq(intelObservations.id, id)).returning(); return r; }
+  async deleteIntelObservation(id: string) { await db.delete(intelObservations).where(eq(intelObservations.id, id)); }
+
   // Merge operations
   async mergeLegalEntities(keepId: string, deleteId: string) {
     const [keeper] = await db.select().from(legalEntities).where(eq(legalEntities.id, keepId));
@@ -188,6 +206,9 @@ export class DatabaseStorage implements IStorage {
     const movedFmis = await db.update(fmis)
       .set({ legal_entity_id: keepId, legal_entity_name: keeperName })
       .where(eq(fmis.legal_entity_id, deleteId));
+    await db.update(intelObservations)
+      .set({ legal_entity_id: keepId, legal_entity_name: keeperName })
+      .where(eq(intelObservations.legal_entity_id, deleteId));
     await db.delete(legalEntities).where(eq(legalEntities.id, deleteId));
     return { moved_bics: movedBics.rowCount ?? 0, moved_fmis: movedFmis.rowCount ?? 0, deleted_entity_id: deleteId };
   }
@@ -204,6 +225,9 @@ export class DatabaseStorage implements IStorage {
     await db.update(agentJobs)
       .set({ banking_group_id: keepId, banking_group_name: keeperName })
       .where(eq(agentJobs.banking_group_id, deleteId));
+    await db.update(intelObservations)
+      .set({ banking_group_id: keepId, banking_group_name: keeperName })
+      .where(eq(intelObservations.banking_group_id, deleteId));
     await db.delete(bankingGroups).where(eq(bankingGroups.id, deleteId));
     return { moved_entities: movedEntities.rowCount ?? 0, moved_cls_profiles: movedCls.rowCount ?? 0, deleted_group_id: deleteId };
   }

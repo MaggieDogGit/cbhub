@@ -6,15 +6,16 @@ import { Card, CardContent } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
+import { Textarea } from "@/components/ui/textarea";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
 import {
   ChevronDown, ChevronRight, Search, ShieldCheck, Globe, Radio, TrendingUp,
   Bot, Zap, ExternalLink, CheckCircle2, XCircle, Clock, Loader2, RefreshCw, X,
-  CheckSquare, Square,
+  CheckSquare, Square, PlusCircle, Trash2, User, BotIcon, Swords, Building2,
 } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
-import type { BankingGroup, LegalEntity, Bic, CorrespondentService, Fmi, AgentJob } from "@shared/schema";
+import type { BankingGroup, LegalEntity, Bic, CorrespondentService, Fmi, AgentJob, IntelObservation } from "@shared/schema";
 
 type CurrencyScope = "home_only" | "major" | "all";
 type JobMode = "light" | "normal";
@@ -114,9 +115,16 @@ function JobStatusBadge({ job }: { job: AgentJob }) {
   return null;
 }
 
+const CB_CURRENCIES = ["EUR","USD","GBP","JPY","CHF","CAD","AUD","SGD","HKD","CNH","SEK","NOK","DKK","NZD","PLN","CZK","HUF","RON","TRY","ZAR","BRL","MXN","INR","KRW","ILS"];
+
 type MergeDialog =
   | { type: "group"; keepId: string; keepName: string; deleteId: string; deleteName: string }
   | { type: "entity"; keepId: string; keepName: string; deleteId: string; deleteName: string }
+  | null;
+
+type IntelDialog =
+  | { type: "group"; groupId: string; groupName: string; entityId?: undefined; entityName?: undefined }
+  | { type: "entity"; groupId: string; groupName: string; entityId: string; entityName: string }
   | null;
 
 export default function Providers() {
@@ -145,6 +153,12 @@ export default function Providers() {
   // Merge dialog
   const [mergeDialog, setMergeDialog] = useState<MergeDialog>(null);
 
+  // Intel dialog
+  const [intelDialog, setIntelDialog] = useState<IntelDialog>(null);
+  const [intelObsType, setIntelObsType] = useState<"competitor" | "cb_provider">("competitor");
+  const [intelCurrency, setIntelCurrency] = useState("");
+  const [intelNotes, setIntelNotes] = useState("");
+
   useEffect(() => {
     const params = new URLSearchParams(window.location.search);
     const s = params.get("search");
@@ -157,6 +171,7 @@ export default function Providers() {
   const { data: bics = [], isLoading: lb } = useQuery<Bic[]>({ queryKey: ["/api/bics"] });
   const { data: services = [], isLoading: ls } = useQuery<CorrespondentService[]>({ queryKey: ["/api/correspondent-services"] });
   const { data: fmis = [], isLoading: lf } = useQuery<Fmi[]>({ queryKey: ["/api/fmis"] });
+  const { data: intel = [] } = useQuery<IntelObservation[]>({ queryKey: ["/api/intel"] });
   const { data: jobs = [] } = useQuery<AgentJob[]>({
     queryKey: ["/api/jobs"],
     refetchInterval: (query) => {
@@ -293,6 +308,66 @@ export default function Providers() {
     }
     return 0;
   });
+
+  // Intel helpers
+  const getGroupIntel = (groupId: string) => intel.filter(o => o.banking_group_id === groupId && !o.legal_entity_id);
+  const getEntityIntel = (entityId: string) => intel.filter(o => o.legal_entity_id === entityId);
+
+  const addIntelMutation = useMutation({
+    mutationFn: (vars: { banking_group_id: string; banking_group_name: string; legal_entity_id?: string; legal_entity_name?: string; obs_type: "competitor" | "cb_provider"; currency?: string; notes?: string }) =>
+      apiRequest("POST", "/api/intel", vars).then(r => r.json()),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/intel"] });
+      setIntelDialog(null);
+      setIntelObsType("competitor");
+      setIntelCurrency("");
+      setIntelNotes("");
+      toast({ title: "Intel saved" });
+    },
+    onError: (err: any) => toast({ title: "Failed to save", description: err.message, variant: "destructive" }),
+  });
+
+  const deleteIntelMutation = useMutation({
+    mutationFn: (id: string) => apiRequest("DELETE", `/api/intel/${id}`),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/intel"] });
+      toast({ title: "Intel deleted" });
+    },
+    onError: (err: any) => toast({ title: "Failed to delete", description: err.message, variant: "destructive" }),
+  });
+
+  const openGroupIntelDialog = (group: BankingGroup, e: React.MouseEvent) => {
+    e.stopPropagation();
+    setIntelObsType("competitor");
+    setIntelCurrency("");
+    setIntelNotes("");
+    setIntelDialog({ type: "group", groupId: group.id, groupName: group.group_name });
+  };
+
+  const openEntityIntelDialog = (group: BankingGroup, entity: LegalEntity, e: React.MouseEvent) => {
+    e.stopPropagation();
+    setIntelObsType("cb_provider");
+    setIntelCurrency("");
+    setIntelNotes("");
+    setIntelDialog({ type: "entity", groupId: group.id, groupName: group.group_name, entityId: entity.id, entityName: entity.legal_name });
+  };
+
+  const submitIntel = () => {
+    if (!intelDialog) return;
+    if (intelObsType === "cb_provider" && !intelCurrency) {
+      toast({ title: "Currency required", description: "Please select a currency for CB Provider.", variant: "destructive" });
+      return;
+    }
+    addIntelMutation.mutate({
+      banking_group_id: intelDialog.groupId,
+      banking_group_name: intelDialog.groupName,
+      legal_entity_id: intelDialog.entityId,
+      legal_entity_name: intelDialog.entityName,
+      obs_type: intelObsType,
+      currency: intelObsType === "cb_provider" ? intelCurrency : undefined,
+      notes: intelNotes || undefined,
+    });
+  };
 
   // Merge dialog helpers
   const openGroupMergeDialog = () => {
@@ -474,6 +549,12 @@ export default function Providers() {
                       {group.cb_probability === "High" && <Badge className="bg-emerald-100 text-emerald-700 border-emerald-200 text-xs"><TrendingUp className="w-3 h-3 mr-1" />CB: High</Badge>}
                       {group.cb_probability === "Medium" && <Badge className="bg-amber-100 text-amber-700 border-amber-200 text-xs"><TrendingUp className="w-3 h-3 mr-1" />CB: Med</Badge>}
                       {group.cb_probability === "Low" && <Badge className="bg-orange-100 text-orange-700 border-orange-200 text-xs"><TrendingUp className="w-3 h-3 mr-1" />CB: Low</Badge>}
+                      {getGroupIntel(group.id).some(o => o.obs_type === "competitor") && (
+                        <Badge className="bg-orange-100 text-orange-700 border-orange-200 text-xs" title="User-tagged as competitor"><Swords className="w-3 h-3 mr-1" />Competitor</Badge>
+                      )}
+                      {[...new Set(getGroupIntel(group.id).filter(o => o.obs_type === "cb_provider" && o.currency).map(o => o.currency))].map(ccy => (
+                        <Badge key={ccy} className="bg-violet-100 text-violet-700 border-violet-200 text-xs" title="User-tagged as CB Provider"><Building2 className="w-3 h-3 mr-1" />CB: {ccy}</Badge>
+                      ))}
                     </div>
                     {(group.headquarters_country || group.primary_currency) && (
                       <div className="flex items-center gap-1.5 mt-0.5">
@@ -547,6 +628,15 @@ export default function Providers() {
                       >
                         <ExternalLink className="w-3.5 h-3.5" />
                       </Button>
+                      <Button
+                        size="sm" variant="ghost"
+                        className="h-7 w-7 p-0 text-violet-400 hover:text-violet-600"
+                        data-testid={`button-add-intel-${group.id}`}
+                        title="Add intel (competitor / CB provider)"
+                        onClick={e => openGroupIntelDialog(group, e)}
+                      >
+                        <PlusCircle className="w-3.5 h-3.5" />
+                      </Button>
                     </div>
                   </div>
                 </div>
@@ -561,12 +651,42 @@ export default function Providers() {
                         {group.cb_evidence && <span className="flex-1 text-slate-500 italic">{group.cb_evidence}</span>}
                       </div>
                     )}
+
+                    {/* Intel list for group */}
+                    {getGroupIntel(group.id).length > 0 && (
+                      <div className="px-8 py-2 bg-violet-50/40 border-b border-violet-100 space-y-1.5">
+                        <div className="text-xs font-medium text-violet-700 mb-1">Intel</div>
+                        {getGroupIntel(group.id).map(obs => (
+                          <div key={obs.id} className="flex items-center gap-2 text-xs">
+                            {obs.obs_type === "competitor"
+                              ? <Badge className="bg-orange-100 text-orange-700 border-orange-200 text-xs shrink-0"><Swords className="w-2.5 h-2.5 mr-1" />Competitor</Badge>
+                              : <Badge className="bg-violet-100 text-violet-700 border-violet-200 text-xs shrink-0"><Building2 className="w-2.5 h-2.5 mr-1" />CB: {obs.currency}</Badge>
+                            }
+                            {obs.notes && <span className="text-slate-500 italic truncate">{obs.notes}</span>}
+                            <span className="text-slate-300 shrink-0 ml-auto flex items-center gap-1">
+                              {obs.source_type === "user" ? <User className="w-2.5 h-2.5" /> : <BotIcon className="w-2.5 h-2.5" />}
+                              {obs.source_detail && <span>{obs.source_detail}</span>}
+                            </span>
+                            <button
+                              data-testid={`delete-intel-${obs.id}`}
+                              title="Delete"
+                              onClick={() => deleteIntelMutation.mutate(obs.id)}
+                              className="text-slate-300 hover:text-red-500 transition-colors shrink-0"
+                            >
+                              <Trash2 className="w-3 h-3" />
+                            </button>
+                          </div>
+                        ))}
+                      </div>
+                    )}
+
                     {groupEntities.length === 0 ? (
                       <div className="px-8 py-4 text-slate-400 text-sm">No legal entities for this group.</div>
                     ) : (
                       groupEntities.map(entity => {
                         const entityBics = getBicsForEntity(entity.id);
                         const isEntitySelected = selectedEntities.has(entity.id);
+                        const entityIntel = getEntityIntel(entity.id);
                         return (
                           <div key={entity.id} className={`border-b border-slate-50 last:border-0 ${isEntitySelected ? "bg-blue-50/40" : ""}`}>
                             <div
@@ -592,11 +712,46 @@ export default function Providers() {
                                   <span className="text-sm font-medium text-slate-800">{entity.legal_name}</span>
                                   {isEntityClsMember(entity.id) && <Badge className="bg-teal-100 text-teal-700 border-teal-200 text-xs"><Globe className="w-3 h-3 mr-1" />CLS</Badge>}
                                   {entity.entity_type && <Badge variant="outline" className="text-xs">{entity.entity_type}</Badge>}
+                                  {[...new Set(entityIntel.filter(o => o.obs_type === "cb_provider" && o.currency).map(o => o.currency))].map(ccy => (
+                                    <Badge key={ccy} className="bg-violet-100 text-violet-700 border-violet-200 text-xs"><Building2 className="w-2.5 h-2.5 mr-1" />CB: {ccy}</Badge>
+                                  ))}
                                 </div>
                                 {entity.country && <span className="text-xs text-slate-400">{entity.country}</span>}
                               </div>
                               <span className="text-xs text-slate-400 shrink-0">{entityBics.length} BIC{entityBics.length !== 1 ? "s" : ""}</span>
+                              <button
+                                data-testid={`button-entity-intel-${entity.id}`}
+                                title="Add CB Provider intel for this entity"
+                                onClick={e => openEntityIntelDialog(group, entity, e)}
+                                className="text-violet-300 hover:text-violet-600 transition-colors shrink-0"
+                              >
+                                <PlusCircle className="w-3.5 h-3.5" />
+                              </button>
                             </div>
+
+                            {/* Entity intel list */}
+                            {entityIntel.length > 0 && (
+                              <div className="px-14 pb-2 space-y-1">
+                                {entityIntel.map(obs => (
+                                  <div key={obs.id} className="flex items-center gap-2 text-xs">
+                                    <Badge className="bg-violet-100 text-violet-700 border-violet-200 text-xs shrink-0"><Building2 className="w-2.5 h-2.5 mr-1" />CB: {obs.currency}</Badge>
+                                    {obs.notes && <span className="text-slate-500 italic truncate">{obs.notes}</span>}
+                                    <span className="text-slate-300 shrink-0 ml-auto flex items-center gap-1">
+                                      {obs.source_type === "user" ? <User className="w-2.5 h-2.5" /> : <BotIcon className="w-2.5 h-2.5" />}
+                                      {obs.source_detail && <span>{obs.source_detail}</span>}
+                                    </span>
+                                    <button
+                                      data-testid={`delete-intel-${obs.id}`}
+                                      title="Delete"
+                                      onClick={() => deleteIntelMutation.mutate(obs.id)}
+                                      className="text-slate-300 hover:text-red-500 transition-colors shrink-0"
+                                    >
+                                      <Trash2 className="w-3 h-3" />
+                                    </button>
+                                  </div>
+                                ))}
+                              </div>
+                            )}
 
                             {expandedEntities[entity.id] && (
                               <div className="px-12 pb-3">
@@ -740,6 +895,84 @@ export default function Providers() {
           </button>
         </div>
       )}
+
+      {/* Intel dialog */}
+      <Dialog open={!!intelDialog} onOpenChange={open => { if (!open) setIntelDialog(null); }}>
+        <DialogContent className="max-w-sm" data-testid="intel-dialog">
+          <DialogHeader>
+            <DialogTitle>Add Intel</DialogTitle>
+          </DialogHeader>
+          {intelDialog && (
+            <div className="space-y-4 py-2">
+              <p className="text-sm text-slate-500">
+                {intelDialog.type === "entity"
+                  ? <>For <span className="font-medium text-slate-800">{intelDialog.entityName}</span></>
+                  : <>For <span className="font-medium text-slate-800">{intelDialog.groupName}</span></>
+                }
+              </p>
+
+              {intelDialog.type === "group" && (
+                <div className="space-y-1">
+                  <label className="text-xs font-medium text-slate-700">Type</label>
+                  <div className="flex rounded-lg border border-slate-200 overflow-hidden text-sm">
+                    <button
+                      data-testid="intel-type-competitor"
+                      onClick={() => { setIntelObsType("competitor"); setIntelCurrency(""); }}
+                      className={`flex-1 flex items-center justify-center gap-1.5 px-3 py-2 transition-colors border-r border-slate-200 ${intelObsType === "competitor" ? "bg-orange-500 text-white font-medium" : "bg-white text-slate-600 hover:bg-slate-50"}`}
+                    >
+                      <Swords className="w-3.5 h-3.5" /> Competitor
+                    </button>
+                    <button
+                      data-testid="intel-type-cb-provider"
+                      onClick={() => setIntelObsType("cb_provider")}
+                      className={`flex-1 flex items-center justify-center gap-1.5 px-3 py-2 transition-colors ${intelObsType === "cb_provider" ? "bg-violet-600 text-white font-medium" : "bg-white text-slate-600 hover:bg-slate-50"}`}
+                    >
+                      <Building2 className="w-3.5 h-3.5" /> CB Provider
+                    </button>
+                  </div>
+                </div>
+              )}
+
+              {intelObsType === "cb_provider" && (
+                <div className="space-y-1">
+                  <label className="text-xs font-medium text-slate-700">Currency <span className="text-red-500">*</span></label>
+                  <Select value={intelCurrency} onValueChange={setIntelCurrency}>
+                    <SelectTrigger data-testid="intel-currency-select">
+                      <SelectValue placeholder="Select currency…" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {CB_CURRENCIES.map(c => <SelectItem key={c} value={c}>{c}</SelectItem>)}
+                    </SelectContent>
+                  </Select>
+                </div>
+              )}
+
+              <div className="space-y-1">
+                <label className="text-xs font-medium text-slate-700">Notes <span className="text-slate-400">(optional)</span></label>
+                <Textarea
+                  data-testid="intel-notes"
+                  placeholder="e.g. confirmed by FX desk as EUR clearing provider"
+                  className="text-sm resize-none"
+                  rows={3}
+                  value={intelNotes}
+                  onChange={e => setIntelNotes(e.target.value)}
+                />
+              </div>
+            </div>
+          )}
+          <DialogFooter className="gap-2">
+            <Button variant="outline" onClick={() => setIntelDialog(null)}>Cancel</Button>
+            <Button
+              data-testid="confirm-add-intel"
+              disabled={addIntelMutation.isPending}
+              onClick={submitIntel}
+              className={intelObsType === "competitor" ? "bg-orange-500 hover:bg-orange-600" : "bg-violet-600 hover:bg-violet-700"}
+            >
+              {addIntelMutation.isPending ? <><Loader2 className="w-3.5 h-3.5 mr-1 animate-spin" /> Saving…</> : "Save Intel"}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
 
       {/* Merge confirmation dialog */}
       <Dialog open={!!mergeDialog} onOpenChange={open => { if (!open) setMergeDialog(null); }}>

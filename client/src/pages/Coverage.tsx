@@ -4,10 +4,10 @@ import { queryClient, apiRequest } from "@/lib/queryClient";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { CheckCircle2, AlertCircle, XCircle, Bot, Search, ShieldCheck, Clock, Loader2, ExternalLink, Trash2, Play, StopCircle, RefreshCw, Zap } from "lucide-react";
+import { CheckCircle2, AlertCircle, XCircle, Bot, Search, ShieldCheck, Clock, Loader2, ExternalLink, Trash2, Play, StopCircle, RefreshCw, Zap, Swords, Building2 } from "lucide-react";
 import { useState } from "react";
 import { useToast } from "@/hooks/use-toast";
-import type { BankingGroup, LegalEntity, Bic, CorrespondentService, AgentJob } from "@shared/schema";
+import type { BankingGroup, LegalEntity, Bic, CorrespondentService, AgentJob, IntelObservation } from "@shared/schema";
 
 type CoverageStatus = "complete" | "partial" | "empty";
 type CurrencyScope = "home_only" | "major" | "all";
@@ -150,6 +150,7 @@ export default function Coverage() {
   const { data: entities = [], isLoading: le } = useQuery<LegalEntity[]>({ queryKey: ["/api/legal-entities"] });
   const { data: bics = [], isLoading: lb } = useQuery<Bic[]>({ queryKey: ["/api/bics"] });
   const { data: services = [], isLoading: ls } = useQuery<CorrespondentService[]>({ queryKey: ["/api/correspondent-services"] });
+  const { data: intel = [] } = useQuery<IntelObservation[]>({ queryKey: ["/api/intel"] });
   const { data: jobs = [] } = useQuery<AgentJob[]>({
     queryKey: ["/api/jobs"],
     refetchInterval: (query) => {
@@ -217,6 +218,8 @@ export default function Coverage() {
     const groupJobs = jobs.filter(j => j.banking_group_id === groupId);
     return groupJobs.sort((a, b) => new Date(b.queued_at!).getTime() - new Date(a.queued_at!).getTime())[0];
   };
+
+  const getGroupIntel = (groupId: string) => intel.filter(o => o.banking_group_id === groupId);
 
   const enrichedGroups = groups.map(g => {
     const groupEntities = entities.filter(e => e.group_id === g.id);
@@ -446,6 +449,24 @@ export default function Coverage() {
                           <ShieldCheck className="w-3 h-3 mr-1" />G-SIB
                         </Badge>
                       )}
+                      {(() => {
+                        const groupIntel = getGroupIntel(group.id);
+                        const isCompetitor = groupIntel.some(o => o.obs_type === "competitor");
+                        const cbCurrencies = [...new Set(groupIntel.filter(o => o.obs_type === "cb_provider" && o.currency).map(o => o.currency))];
+                        const tooltip = groupIntel.map(o => `${o.obs_type === "competitor" ? "Competitor" : `CB Provider (${o.currency})`}${o.notes ? `: ${o.notes}` : ""}`).join(" · ");
+                        return <>
+                          {isCompetitor && (
+                            <Badge className="bg-orange-100 text-orange-700 border-orange-200 text-xs py-0 h-5" title={tooltip}>
+                              <Swords className="w-3 h-3 mr-1" />Competitor
+                            </Badge>
+                          )}
+                          {cbCurrencies.length > 0 && (
+                            <Badge className="bg-violet-100 text-violet-700 border-violet-200 text-xs py-0 h-5" title={tooltip}>
+                              <Building2 className="w-3 h-3 mr-1" />CB{cbCurrencies.length === 1 ? `: ${cbCurrencies[0]}` : ` ×${cbCurrencies.length}`}
+                            </Badge>
+                          )}
+                        </>;
+                      })()}
                     </div>
                     {(group.headquarters_country || group.primary_currency) && (
                       <div className="flex items-center gap-1.5 mt-0.5">

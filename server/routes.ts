@@ -2,7 +2,7 @@ import type { Express, Request, Response, NextFunction } from "express";
 import { createServer, type Server } from "http";
 import { storage } from "./storage";
 import { pool } from "./db";
-import { insertBankingGroupSchema, insertLegalEntitySchema, insertBicSchema, insertCorrespondentServiceSchema, insertClsProfileSchema, insertFmiSchema, insertFmiRegistrySchema, insertFmiResearchJobSchema, insertDataSourceSchema, insertConversationSchema, insertMessageSchema, insertAgentJobSchema } from "@shared/schema";
+import { insertBankingGroupSchema, insertLegalEntitySchema, insertBicSchema, insertCorrespondentServiceSchema, insertClsProfileSchema, insertFmiSchema, insertFmiRegistrySchema, insertFmiResearchJobSchema, insertDataSourceSchema, insertConversationSchema, insertMessageSchema, insertAgentJobSchema, insertIntelObservationSchema } from "@shared/schema";
 import OpenAI from "openai";
 import { buildSystemPrompt, runAgentLoop } from "./agentCore";
 import { startJobRunner } from "./jobRunner";
@@ -392,6 +392,46 @@ Only include currencies and services you found evidence for in the research.`,
       }
     }
     res.json({ queued: queued.length, jobs: queued });
+  });
+
+  // Intel Observations
+  app.get("/api/intel", async (req, res) => {
+    try {
+      const filters: { banking_group_id?: string; obs_type?: string } = {};
+      if (req.query.banking_group_id) filters.banking_group_id = req.query.banking_group_id as string;
+      if (req.query.obs_type) filters.obs_type = req.query.obs_type as string;
+      res.json(await storage.listIntelObservations(filters));
+    } catch (err: any) {
+      res.status(500).json({ message: err.message });
+    }
+  });
+  app.post("/api/intel", async (req, res) => {
+    try {
+      const username = process.env.AUTH_USERNAME ?? "user";
+      const body = { ...req.body, source_type: "user" as const, source_detail: username };
+      const parsed = insertIntelObservationSchema.safeParse(body);
+      if (!parsed.success) return res.status(400).json({ message: parsed.error.message });
+      const obs = await storage.createIntelObservation(parsed.data);
+      res.json(obs);
+    } catch (err: any) {
+      res.status(500).json({ message: err.message });
+    }
+  });
+  app.patch("/api/intel/:id", async (req, res) => {
+    try {
+      const obs = await storage.updateIntelObservation(req.params.id, req.body);
+      res.json(obs);
+    } catch (err: any) {
+      res.status(500).json({ message: err.message });
+    }
+  });
+  app.delete("/api/intel/:id", async (req, res) => {
+    try {
+      await storage.deleteIntelObservation(req.params.id);
+      res.json({ ok: true });
+    } catch (err: any) {
+      res.status(500).json({ message: err.message });
+    }
   });
 
   // AI Chat with full database tool calling (streaming SSE)

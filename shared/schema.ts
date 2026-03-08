@@ -197,6 +197,27 @@ export type Conversation = typeof conversations.$inferSelect;
 export type InsertMessage = z.infer<typeof insertMessageSchema>;
 export type ChatMessage = typeof chatMessages.$inferSelect;
 
+export const intelObsTypeEnum = pgEnum("intel_obs_type", ["competitor", "cb_provider"]);
+export const intelSourceTypeEnum = pgEnum("intel_source_type", ["user", "ai"]);
+
+export const intelObservations = pgTable("intel_observations", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  banking_group_id: varchar("banking_group_id").notNull(),
+  banking_group_name: text("banking_group_name"),
+  legal_entity_id: varchar("legal_entity_id"),
+  legal_entity_name: text("legal_entity_name"),
+  obs_type: intelObsTypeEnum("obs_type").notNull(),
+  currency: text("currency"),
+  notes: text("notes"),
+  source_type: intelSourceTypeEnum("source_type").notNull().default("user"),
+  source_detail: text("source_detail"),
+  created_at: timestamp("created_at").defaultNow(),
+});
+
+export const insertIntelObservationSchema = createInsertSchema(intelObservations).omit({ id: true, created_at: true });
+export type InsertIntelObservation = z.infer<typeof insertIntelObservationSchema>;
+export type IntelObservation = typeof intelObservations.$inferSelect;
+
 export const agentJobs = pgTable("agent_jobs", {
   id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
   banking_group_id: varchar("banking_group_id").notNull(),
