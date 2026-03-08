@@ -110,40 +110,28 @@ function JobStatusBadge({ job }: { job: AgentJob }) {
   const scope = (job.currency_scope || "home_only") as CurrencyScope;
   const scopeLabel = SCOPE_LABELS[scope];
   const isLight = (job as any).job_mode === "light";
-  const modeTag = isLight
-    ? <span className="inline-flex items-center gap-0.5 text-amber-600 font-medium"><Zap className="w-2.5 h-2.5" />L</span>
-    : <span className="text-slate-400 font-medium">N</span>;
+  const modeLabel = isLight ? "Light (gpt-4o-mini)" : "Normal (gpt-4o)";
+  const tooltip = `${modeLabel} · ${scopeLabel}`;
+
   if (job.status === "pending") return (
-    <div className="flex items-center gap-1 flex-wrap">
-      <Badge className="bg-slate-100 text-slate-600 border-slate-200 text-xs gap-1">
-        <Clock className="w-3 h-3" /> Queued
-      </Badge>
-      <span className="text-xs text-slate-400 font-mono">{modeTag}·{scopeLabel}</span>
-    </div>
+    <Badge className="bg-slate-100 text-slate-600 border-slate-200 text-xs gap-1" title={tooltip}>
+      {isLight ? <Zap className="w-3 h-3 text-amber-500" /> : <Clock className="w-3 h-3" />} Queued
+    </Badge>
   );
   if (job.status === "running") return (
-    <div className="flex items-center gap-1 flex-wrap">
-      <Badge className="bg-blue-100 text-blue-700 border-blue-200 text-xs gap-1">
-        <Loader2 className="w-3 h-3 animate-spin" /> Running {job.steps_completed ? `(${job.steps_completed})` : ""}
-      </Badge>
-      <span className="text-xs text-slate-400 font-mono">{modeTag}·{scopeLabel}</span>
-    </div>
+    <Badge className="bg-blue-100 text-blue-700 border-blue-200 text-xs gap-1" title={tooltip}>
+      <Loader2 className="w-3 h-3 animate-spin" /> Running {job.steps_completed ? `(${job.steps_completed})` : ""}
+    </Badge>
   );
   if (job.status === "completed") return (
-    <div className="flex items-center gap-1 flex-wrap">
-      <Badge className="bg-emerald-100 text-emerald-700 border-emerald-200 text-xs gap-1">
-        <CheckCircle2 className="w-3 h-3" /> Done ({job.steps_completed})
-      </Badge>
-      <span className="text-xs text-slate-400 font-mono">{modeTag}·{scopeLabel}</span>
-    </div>
+    <Badge className="bg-emerald-100 text-emerald-700 border-emerald-200 text-xs gap-1" title={tooltip}>
+      <CheckCircle2 className="w-3 h-3" /> Done ({job.steps_completed})
+    </Badge>
   );
   if (job.status === "failed") return (
-    <div className="flex items-center gap-1 flex-wrap">
-      <Badge className="bg-red-100 text-red-700 border-red-200 text-xs gap-1" title={job.error_message || ""}>
-        <XCircle className="w-3 h-3" /> Failed
-      </Badge>
-      <span className="text-xs text-slate-400 font-mono">{modeTag}·{scopeLabel}</span>
-    </div>
+    <Badge className="bg-red-100 text-red-700 border-red-200 text-xs gap-1" title={`${tooltip}${job.error_message ? ` · ${job.error_message}` : ""}`}>
+      <XCircle className="w-3 h-3" /> Failed
+    </Badge>
   );
   return null;
 }
@@ -435,14 +423,10 @@ export default function Coverage() {
           <thead>
             <tr className="bg-slate-50 border-b border-slate-200">
               <th className="text-left px-4 py-3 font-medium text-slate-600">Banking Group</th>
-              <th className="text-left px-4 py-3 font-medium text-slate-600 hidden sm:table-cell">Country</th>
-              <th className="text-left px-4 py-3 font-medium text-slate-600 hidden md:table-cell">Currency</th>
-              <th className="text-center px-4 py-3 font-medium text-slate-600">Entities</th>
-              <th className="text-center px-4 py-3 font-medium text-slate-600">BICs</th>
-              <th className="text-center px-4 py-3 font-medium text-slate-600">Services</th>
-              <th className="text-left px-4 py-3 font-medium text-slate-600">Coverage</th>
-              <th className="text-left px-4 py-3 font-medium text-slate-600">Job Status</th>
-              <th className="px-4 py-3"></th>
+              <th className="text-center px-3 py-3 font-medium text-slate-600" title="Entities / BICs / Services">E / B / S</th>
+              <th className="text-left px-3 py-3 font-medium text-slate-600">Coverage</th>
+              <th className="text-left px-3 py-3 font-medium text-slate-600">Job</th>
+              <th className="px-3 py-3"></th>
             </tr>
           </thead>
           <tbody>
@@ -463,53 +447,62 @@ export default function Coverage() {
                         </Badge>
                       )}
                     </div>
+                    {(group.headquarters_country || group.primary_currency) && (
+                      <div className="flex items-center gap-1.5 mt-0.5">
+                        {group.headquarters_country && (
+                          <span className="text-xs text-slate-400">{group.headquarters_country}</span>
+                        )}
+                        {group.headquarters_country && group.primary_currency && (
+                          <span className="text-xs text-slate-300">·</span>
+                        )}
+                        {group.primary_currency && (
+                          <span className="font-mono text-xs text-blue-600">{group.primary_currency}</span>
+                        )}
+                      </div>
+                    )}
                   </td>
-                  <td className="px-4 py-3 text-slate-600 hidden sm:table-cell">{group.headquarters_country || "—"}</td>
-                  <td className="px-4 py-3 hidden md:table-cell">
-                    {group.primary_currency
-                      ? <span className="font-mono text-xs bg-blue-50 text-blue-700 px-2 py-0.5 rounded">{group.primary_currency}</span>
-                      : <span className="text-slate-400">—</span>}
+                  <td className="px-3 py-3 text-center" title="Entities / BICs / Services">
+                    <span className="font-mono text-xs text-slate-500 whitespace-nowrap">
+                      <span className={entityCount > 0 ? "text-slate-700 font-medium" : ""}>{entityCount}</span>
+                      <span className="text-slate-300 mx-0.5">/</span>
+                      <span className={bicCount > 0 ? "text-slate-700 font-medium" : ""}>{bicCount}</span>
+                      <span className="text-slate-300 mx-0.5">/</span>
+                      <span className={serviceCount > 0 ? "text-slate-700 font-medium" : ""}>{serviceCount}</span>
+                    </span>
                   </td>
-                  <td className="px-4 py-3 text-center">
-                    <span className={`font-medium ${entityCount > 0 ? "text-slate-900" : "text-slate-400"}`}>{entityCount}</span>
-                  </td>
-                  <td className="px-4 py-3 text-center">
-                    <span className={`font-medium ${bicCount > 0 ? "text-slate-900" : "text-slate-400"}`}>{bicCount}</span>
-                  </td>
-                  <td className="px-4 py-3 text-center">
-                    <span className={`font-medium ${serviceCount > 0 ? "text-slate-900" : "text-slate-400"}`}>{serviceCount}</span>
-                  </td>
-                  <td className="px-4 py-3">
+                  <td className="px-3 py-3">
                     <Badge className={`${statusConfig[status].badge} text-xs gap-1`} data-testid={`status-${group.id}`}>
                       {statusConfig[status].icon}
                       {statusConfig[status].label}
                     </Badge>
                   </td>
-                  <td className="px-4 py-3 min-w-36">
+                  <td className="px-3 py-3">
                     {job ? <JobStatusBadge job={job} /> : <span className="text-slate-400 text-xs">—</span>}
                   </td>
-                  <td className="px-4 py-3">
+                  <td className="px-3 py-3">
                     <div className="flex items-center gap-1">
                       {isActive ? (
                         <Button
                           size="sm" variant="outline"
-                          className="text-xs h-7 px-2 text-red-500 border-red-200 hover:bg-red-50"
+                          className="h-7 w-7 p-0 text-red-500 border-red-200 hover:bg-red-50"
                           data-testid={`button-cancel-job-${group.id}`}
+                          title="Cancel job"
                           onClick={() => job && cancelMutation.mutate(job.id)}
                           disabled={job?.status === "running"}
                         >
-                          <Trash2 className="w-3 h-3 mr-1" />Cancel
+                          <Trash2 className="w-3.5 h-3.5" />
                         </Button>
                       ) : job?.status === "failed" ? (
                         <>
                           <Button
                             size="sm" variant="outline"
-                            className="text-xs h-7 px-2 text-orange-600 border-orange-200 hover:bg-orange-50"
+                            className="h-7 w-7 p-0 text-orange-600 border-orange-200 hover:bg-orange-50"
                             data-testid={`button-retry-job-${group.id}`}
                             disabled={queueMutation.isPending}
+                            title="Retry with same mode and scope"
                             onClick={() => queueMutation.mutate({ group, scope: (job.currency_scope as CurrencyScope) || currencyScope, mode: ((job as any).job_mode as JobMode) || "normal" })}
                           >
-                            <RefreshCw className="w-3 h-3 mr-1" />Retry
+                            <RefreshCw className="w-3.5 h-3.5" />
                           </Button>
                           <Button
                             size="sm" variant="ghost"
@@ -528,23 +521,23 @@ export default function Coverage() {
                         <>
                           <Button
                             size="sm" variant="outline"
-                            className="text-xs h-7 px-2 text-amber-600 border-amber-200 hover:bg-amber-50"
+                            className="h-7 w-7 p-0 text-amber-600 border-amber-200 hover:bg-amber-50"
                             data-testid={`button-queue-light-${group.id}`}
                             disabled={queueMutation.isPending}
-                            title="Light: gpt-4o-mini, no web search, ~$0.01"
+                            title="Light setup: gpt-4o-mini · no web search · ~$0.01"
                             onClick={() => queueMutation.mutate({ group, scope: "home_only", mode: "light" })}
                           >
-                            <Zap className="w-3 h-3 mr-0.5" />L
+                            <Zap className="w-3.5 h-3.5" />
                           </Button>
                           <Button
                             size="sm" variant="outline"
-                            className="text-xs h-7 px-2 text-blue-600 border-blue-200 hover:bg-blue-50"
+                            className="h-7 w-7 p-0 text-blue-600 border-blue-200 hover:bg-blue-50"
                             data-testid={`button-queue-job-${group.id}`}
                             disabled={queueMutation.isPending}
-                            title={`Normal: gpt-4o, web search, scope ${SCOPE_LABELS[currencyScope]}`}
+                            title={`Normal setup: gpt-4o · web search · ${SCOPE_LABELS[currencyScope]}`}
                             onClick={() => queueMutation.mutate({ group, scope: currencyScope, mode: "normal" })}
                           >
-                            <Bot className="w-3 h-3 mr-0.5" />N
+                            <Bot className="w-3.5 h-3.5" />
                           </Button>
                           <Button
                             size="sm" variant="ghost"
