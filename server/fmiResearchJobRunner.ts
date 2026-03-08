@@ -1,5 +1,5 @@
 import { storage } from "./storage";
-import { runFmiMemberDiscovery, processFmiMember } from "./agentFmiResearch";
+import { runFmiMemberDiscovery, processFmiMember, loadDbContext } from "./agentFmiResearch";
 
 let isFmiProcessing = false;
 const FMI_JOB_COOLDOWN_MS = 15_000;
@@ -47,7 +47,11 @@ async function processNextFmiJob() {
     }
 
     // ── Phase 2: Process each member ─────────────────────────────────────────
-    // Get already-recorded FMI members so we can skip them
+    // Load full DB context once — shared across all member calls for this run.
+    // The agent receives this snapshot so it can match entities without blind queries.
+    const ctx = await loadDbContext();
+
+    // Quick skip set based on already-recorded FMI members
     const existingFmis = await storage.listFmisByName(pending.fmi_name);
     const existingNames = new Set(existingFmis.map(f => f.legal_entity_name?.toLowerCase().trim()));
 
@@ -75,7 +79,8 @@ async function processNextFmiJob() {
       }
 
       console.log(`[FmiJobRunner] Processing member ${membersProcessed + 1}/${memberList.length}: ${memberName}`);
-      const result = await processFmiMember(memberName, pending.fmi_name, fmiType, sourceUrl);
+      // Pass the shared ctx — it gets updated in-place as new entities are created
+      const result = await processFmiMember(memberName, pending.fmi_name, fmiType, sourceUrl, ctx);
 
       if (result.action === "added") {
         membersAdded++;

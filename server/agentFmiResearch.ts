@@ -1,4 +1,5 @@
 import { executeTool, withRetry, getTools } from "./agentCore";
+import { storage } from "./storage";
 import OpenAI from "openai";
 
 const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
@@ -30,102 +31,121 @@ export async function executeFmiTool(name: string, args: any): Promise<string> {
   return executeTool(name, args);
 }
 
-const discoveryTools = [{
-  type: "function",
-  function: {
-    name: "web_search",
-    description: "Search the web for current information",
-    parameters: { type: "object", required: ["query"], properties: { query: { type: "string" } } },
-  },
-}];
-
 // ── Phase 1: Discovery ────────────────────────────────────────────────────────
-// Returns the complete list of member names from the official source.
+// Uses gpt-4o-search-preview directly so it can natively browse the web and
+// read PDFs at the source URL — no multi-hop tool calls.
 
 export async function runFmiMemberDiscovery(fmiName: string, fmiDetails: any): Promise<string[]> {
   const membershipUrl = fmiDetails?.membership_url || "";
   const website = fmiDetails?.website || "";
   const isCls = fmiName.toUpperCase().includes("CLS");
 
-  const messages: any[] = [{
-    role: "user",
-    content: `You are a financial research assistant. Your ONLY job is to extract the COMPLETE list of all direct members of: **${fmiName}**
+  const prompt = `You are a financial research assistant. Fetch the direct member list for: **${fmiName}**
 
-${membershipUrl ? `Start here: ${membershipUrl}` : ""}
-${website ? `Official website: ${website}` : ""}
+${membershipUrl ? `Official source: ${membershipUrl}` : ""}
+${website ? `Website: ${website}` : ""}
 
-${isCls ? `IMPORTANT — CLS SPECIFIC:
-- This page links to a PDF of all Settlement Members. Search for it.
-- There are exactly 78 Settlement Members on the official list.
-- Members include banks and securities firms from around the world (A to Z alphabetically).
-- Do NOT filter by type — include ALL entities listed, whether bank, securities firm, or other.
-- You MUST do multiple searches to find all 78. A single search will NOT return all of them.
-- Required searches:
-  1. Search: "CLS settlement members site:cls-group.com" 
-  2. Search: "CLS Group settlement members complete list PDF 2024"
-  3. Search: "CLS settlement members Nomura Goldman Sachs Standard Chartered Sumitomo" (to find members in the second half of the alphabet)
-  4. Search: "CLS settlement members Royal Bank of Canada UBS Morgan Stanley" (to fill in more)
-- You have found all members when you have 70+ names. Stop searching only then.
-` : `- Do multiple searches to find the complete list.`}
+${isCls ? `This page lists all CLS Settlement Members (there are 78 of them).
+The page links to a PDF. Read that PDF or the page itself and extract every single member name.
+Do NOT filter, validate, or exclude any name from the official list.
+Include all entities exactly as they appear — banks, securities firms, broker-dealers.
+If one search doesn't return all 78, search again with different terms to find the rest (especially members M-Z).
+` : `Browse the official URL above and extract every direct member/participant name exactly as listed.`}
 
-OUTPUT FORMAT — CRITICAL:
-After all searches, output ONLY a single JSON array of all member names you found.
-No commentary, no explanations. Just the JSON array.
-Example: ["ABN AMRO Bank N.V.", "Barclays Bank PLC", "Goldman Sachs Bank USA"]
+Return ONLY a JSON array of the official legal entity names — no commentary, no explanation.
+Format: ["Name One", "Name Two", "Name Three"]`;
 
-Do all required searches now, then output the complete JSON array.`,
+  // Use gpt-4o-search-preview directly — it has native web search and can read pages/PDFs
+  const response = await withRetry(() => (openai.chat.completions.create as any)({
+    model: "gpt-4o-search-preview",
+    messages: [{ role: "user", content: prompt }],
+    temperature: 0,
+  }), 5, "fmi-discovery");
+
+  const content = response.choices[0].message.content || "[]";
+
+  // Extract the JSON array — greedy match to capture the whole array
+  const match = content.match(/\[[\s\S]*\]/);
+  if (match) {
+    try {
+      const arr = JSON.parse(match[0]);
+      if (Array.isArray(arr) && arr.length > 0) {
+        return arr.map((n: string) => String(n).trim()).filter(Boolean);
+      }
+    } catch {
+      // If JSON parse fails, extract quoted strings as fallback
+      const names = content.match(/"([^"]+)"/g);
+      if (names) return names.map(n => n.replace(/"/g, "").trim()).filter(n => n.length > 2);
+    }
+  }
+
+  // If gpt-4o-search-preview didn't return enough, fall back to multi-search with gpt-4o
+  if (isCls) {
+    return runClsDiscoveryFallback(fmiName, membershipUrl);
+  }
+
+  return [];
+}
+
+// Fallback: multi-search approach using gpt-4o + web_search tool
+async function runClsDiscoveryFallback(fmiName: string, membershipUrl: string): Promise<string[]> {
+  const discoveryTools = [{
+    type: "function",
+    function: {
+      name: "web_search",
+      description: "Search the web for current information",
+      parameters: { type: "object", required: ["query"], properties: { query: { type: "string" } } },
+    },
   }];
 
-  let steps = 0;
-  let collectedNames: Set<string> = new Set();
+  const messages: any[] = [{
+    role: "user",
+    content: `Find ALL 78 CLS Settlement Members. There are exactly 78.
+Source: ${membershipUrl}
 
-  while (steps < 14) {
+Do these 4 searches IN ORDER:
+1. "CLS Group settlement members list site:cls-group.com"
+2. "CLS settlement members PDF complete list"
+3. "CLS settlement members Goldman Sachs Nomura Standard Chartered MUFG Mizuho"
+4. "CLS settlement members Royal Bank Canada UBS Morgan Stanley Societe Generale"
+
+Combine all unique names found. Return ONLY a JSON array. No commentary.`,
+  }];
+
+  const collectedNames = new Set<string>();
+  let steps = 0;
+
+  while (steps < 12) {
     const response = await withRetry(() => openai.chat.completions.create({
       model: "gpt-4o",
       messages,
       tools: discoveryTools,
       tool_choice: "auto",
       temperature: 0,
-    } as any), 5, `discovery-step-${steps}`);
+    } as any), 5, `cls-fallback-step-${steps}`);
 
     const msg = response.choices[0].message;
     messages.push(msg);
 
     if (!msg.tool_calls?.length) {
-      // Model gave a final answer — extract the JSON array
       const content = msg.content || "[]";
-      // Use greedy match to get the full array including nested content
       const match = content.match(/\[[\s\S]*\]/);
       if (match) {
         try {
           const arr = JSON.parse(match[0]);
-          if (Array.isArray(arr)) {
-            arr.forEach((n: string) => { if (n && typeof n === "string") collectedNames.add(n.trim()); });
-          }
-        } catch {
-          // Try to extract quoted strings if JSON parse fails
-          const names = content.match(/"([^"]+)"/g);
-          if (names) names.forEach(n => collectedNames.add(n.replace(/"/g, "").trim()));
-        }
+          if (Array.isArray(arr)) arr.forEach((n: string) => { if (n) collectedNames.add(String(n).trim()); });
+        } catch {}
       }
-
-      // If we have enough names or this is a non-CLS FMI, return what we have
-      const threshold = isCls ? 60 : 5;
-      if (collectedNames.size >= threshold) {
-        return Array.from(collectedNames);
-      }
-
-      // Not enough — ask for another search
-      if (collectedNames.size > 0 && steps < 12) {
+      if (collectedNames.size >= 60) break;
+      if (collectedNames.size > 0 && steps < 10) {
         messages.push({
           role: "user",
-          content: `You have found ${collectedNames.size} members so far. There should be ${isCls ? "78" : "more"}. Please do additional searches to find the remaining members (especially those with names starting M-Z that may have been missed).`,
+          content: `Found ${collectedNames.size} so far. Need 78. Search for more (especially M-Z names like Nordea, Nomura, Santander, Société Générale, Standard Chartered, Sumitomo, UBS, UniCredit, Wells Fargo).`,
         });
         steps++;
         continue;
       }
-
-      return Array.from(collectedNames);
+      break;
     }
 
     for (const call of msg.tool_calls) {
@@ -133,25 +153,39 @@ Do all required searches now, then output the complete JSON array.`,
       try { args = JSON.parse(call.function.arguments); } catch {}
       const result = await executeTool("web_search", args);
       messages.push({ role: "tool", tool_call_id: call.id, content: result });
-
-      // Try to extract names from intermediate search results too
-      const nameMatches = result.match(/"([A-Z][^"]{3,60})"/g);
-      if (nameMatches) {
-        nameMatches.forEach((n: string) => {
-          const name = n.replace(/"/g, "").trim();
-          if (name.length > 4 && /[A-Z]/.test(name[0])) collectedNames.add(name);
-        });
-      }
     }
-
     steps++;
   }
 
   return Array.from(collectedNames);
 }
 
+// ── Shared DB context snapshot ─────────────────────────────────────────────
+// Loaded once per job run and passed into every processFmiMember call.
+// This gives the agent memory across all members in the batch.
+
+export type DbContext = {
+  bankingGroups: { id: string; group_name: string }[];
+  legalEntities: { id: string; legal_name: string; group_id: string }[];
+  fmiMemberships: { legal_entity_id: string; fmi_name: string }[];
+};
+
+export async function loadDbContext(): Promise<DbContext> {
+  const [bankingGroups, legalEntities, fmis] = await Promise.all([
+    storage.listBankingGroups(),
+    storage.listLegalEntities(),
+    storage.listFmis(),
+  ]);
+  return {
+    bankingGroups: bankingGroups.map(g => ({ id: g.id, group_name: g.group_name })),
+    legalEntities: legalEntities.map(e => ({ id: e.id, legal_name: e.legal_name, group_id: e.group_id })),
+    fmiMemberships: fmis.map(f => ({ legal_entity_id: f.legal_entity_id, fmi_name: f.fmi_name })),
+  };
+}
+
 // ── Phase 2: Process a single member ─────────────────────────────────────────
-// Takes one member name, looks up or creates the entity, creates the FMI record.
+// The agent receives a pre-loaded DB snapshot so it has full context of
+// what already exists — no blind DB queries needed for lookups.
 
 export type MemberProcessResult = {
   action: "added" | "skipped" | "error";
@@ -163,42 +197,80 @@ export async function processFmiMember(
   memberName: string,
   fmiName: string,
   fmiType: string,
-  sourceUrl: string
+  sourceUrl: string,
+  ctx: DbContext
 ): Promise<MemberProcessResult> {
-  const tools = getFmiResearchTools();
+  // Only expose create/update tools — lookup is handled via the injected context
+  const allTools = getTools();
+  const processingTools = allTools.filter((t: any) =>
+    ["create_banking_group", "create_legal_entity", "create_fmi", "delete_fmi"].includes(t.function?.name)
+  );
+
+  // Build relevant excerpts from the DB context to minimise token usage
+  const keyword = extractKeyword(memberName);
+  const matchingGroups = ctx.bankingGroups.filter(g =>
+    g.group_name.toLowerCase().includes(keyword.toLowerCase())
+  );
+  const matchingEntities = ctx.legalEntities.filter(e =>
+    e.legal_name.toLowerCase().includes(keyword.toLowerCase())
+  );
+  const alreadyMember = ctx.fmiMemberships.some(f =>
+    matchingEntities.some(e => e.id === f.legal_entity_id) && f.fmi_name === fmiName
+  );
+
+  // Build a context block for the prompt
+  const contextBlock = [
+    matchingGroups.length
+      ? `Banking groups matching "${keyword}":\n${matchingGroups.map(g => `  - id=${g.id}  name="${g.group_name}"`).join("\n")}`
+      : `No banking groups match "${keyword}" — you may need to create one.`,
+    matchingEntities.length
+      ? `Legal entities matching "${keyword}":\n${matchingEntities.map(e => `  - id=${e.id}  name="${e.legal_name}"  group_id=${e.group_id}`).join("\n")}`
+      : `No legal entities match "${keyword}" — you may need to create one.`,
+    alreadyMember
+      ? `FMI membership: ${fmiName} already recorded for one of the matching entities above.`
+      : `FMI membership: NOT yet recorded for ${fmiName}.`,
+  ].join("\n\n");
 
   const messages: any[] = [{
+    role: "system",
+    content: `You are a precise financial data entry agent. You record FMI memberships in a correspondent banking database.
+Your job for each member: find or create the legal entity, then record the FMI membership.
+
+MATCHING RULES:
+- Use the pre-loaded context below to find existing records. Do NOT call find_* tools — they are not available.
+- Match by common keywords (e.g. "Goldman Sachs" matches "Goldman Sachs Bank USA" and "Goldman Sachs International Bank")
+- Legal entity names must stay EXACTLY as they appear on the official FMI source list
+- If a matching entity already has this FMI membership recorded, respond with skipped
+- If unsure whether an entity matches, prefer creating a new one over incorrectly reusing an existing one
+
+DB CONTEXT (pre-loaded, current as of this run):
+${contextBlock}
+
+Respond with ONLY a JSON object: {"action":"added","entity_name":"..."} or {"action":"skipped","reason":"..."} or {"action":"error","reason":"..."}`,
+  }, {
     role: "user",
-    content: `Process this single FMI membership record:
+    content: `Process this member: "${memberName}"
+FMI: "${fmiName}" (type: "${fmiType}")
+Source: ${sourceUrl}
 
-Member name (from official source): "${memberName}"
-FMI: "${fmiName}"
-FMI Type: "${fmiType}"
-Source URL: "${sourceUrl}"
-
-Follow these steps exactly:
-1. Call find_legal_entity_by_name with a key word from the name (e.g. for "Goldman Sachs Bank USA" use "Goldman Sachs"; for "Bank of America" use "Bank of America")
-2. If a matching entity is found:
-   - Call create_fmi with: legal_entity_id (the UUID from step 1), fmi_name="${fmiName}", fmi_type="${fmiType}", source="${sourceUrl}"
-   - If create_fmi returns {duplicate: true}: respond {"action":"skipped","reason":"already exists"}
-   - Otherwise respond: {"action":"added","entity_name":"<legal_name from step 1>"}
-3. If NO matching entity is found:
-   - Call find_banking_group_by_name with a short keyword from the institution name
-   - If banking group found: call create_legal_entity with group_id from the result, legal_name="${memberName}", entity_type="Bank"
-   - If banking group NOT found: call create_banking_group with group_name="<parent institution name>", then create_legal_entity
+Steps:
+1. Check the context above. If a matching entity already has ${fmiName} membership → respond {"action":"skipped","reason":"already exists"}
+2. If a matching entity exists but does NOT have ${fmiName} membership:
+   - Call create_fmi with that entity's id, fmi_name="${fmiName}", fmi_type="${fmiType}", source="${sourceUrl}"
+   - Respond {"action":"added","entity_name":"<entity name from context>"}
+3. If NO matching entity exists:
+   - If a matching banking group exists: call create_legal_entity with group_id from context, legal_name="${memberName}", entity_type="Bank"
+   - If no matching banking group: call create_banking_group with group_name="<parent name>", then create_legal_entity
    - Then call create_fmi
-   - Respond: {"action":"added","entity_name":"${memberName}"}
-4. If anything fails: respond {"action":"error","reason":"<explanation>"}
-
-Respond with ONLY the JSON object. No other text.`,
+   - Respond {"action":"added","entity_name":"${memberName}"}`,
   }];
 
   let steps = 0;
-  while (steps < 12) {
+  while (steps < 10) {
     const response = await withRetry(() => openai.chat.completions.create({
       model: "gpt-4o",
       messages,
-      tools,
+      tools: processingTools,
       tool_choice: "auto",
       temperature: 0,
     }), 5, `member-${memberName.slice(0, 20)}-step-${steps}`);
@@ -208,7 +280,7 @@ Respond with ONLY the JSON object. No other text.`,
 
     if (!msg.tool_calls?.length) {
       const content = msg.content || "";
-      const match = content.match(/\{[\s\S]*?\}/);
+      const match = content.match(/\{[\s\S]*\}/);
       if (match) {
         try {
           const result = JSON.parse(match[0]);
@@ -228,10 +300,38 @@ Respond with ONLY the JSON object. No other text.`,
       try { args = JSON.parse(call.function.arguments); } catch {}
       const result = await executeFmiTool(name, args);
       messages.push({ role: "tool", tool_call_id: call.id, content: result });
+
+      // Keep the in-memory context up to date so subsequent members benefit
+      if (name === "create_banking_group") {
+        try {
+          const created = JSON.parse(result);
+          if (created.id) ctx.bankingGroups.push({ id: created.id, group_name: created.group_name });
+        } catch {}
+      } else if (name === "create_legal_entity") {
+        try {
+          const created = JSON.parse(result);
+          if (created.id) ctx.legalEntities.push({ id: created.id, legal_name: created.legal_name, group_id: created.group_id });
+        } catch {}
+      } else if (name === "create_fmi") {
+        try {
+          const created = JSON.parse(result);
+          if (created.legal_entity_id) ctx.fmiMemberships.push({ legal_entity_id: created.legal_entity_id, fmi_name: fmiName });
+        } catch {}
+      }
     }
 
     steps++;
   }
 
   return { action: "error", reason: "Max steps reached" };
+}
+
+// Extract the most useful keyword from a member name for DB lookups
+function extractKeyword(name: string): string {
+  const stopWords = ["bank", "the", "of", "n.a.", "ag", "plc", "s.a.", "s.a", "b.v.", "ltd", "inc", "llc", "group", "limited", "corporation", "corp", "na", "se", "nv", "bm", "u.a."];
+  const words = name.split(/[\s,.()/]+/).filter(w => w.length > 1);
+  const meaningful = words.filter(w => !stopWords.includes(w.toLowerCase()));
+  if (meaningful.length >= 2) return meaningful.slice(0, 2).join(" ");
+  if (meaningful.length === 1) return meaningful[0];
+  return words[0] || name.slice(0, 15);
 }
