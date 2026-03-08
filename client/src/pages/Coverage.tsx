@@ -86,7 +86,10 @@ ${currencyInstruction}
 Before creating any service: call list_correspondent_services and confirm no existing record exists for that BIC + currency combination.
 • Exists → update with any missing details using update_correspondent_service; do NOT create a duplicate.
 • Missing → create with create_correspondent_service. bic_id must be a real UUID obtained from list_bics.
-For clearing_model: Onshore ONLY if the BIC entity's country is the home country/region of that currency's settlement infrastructure. All other currencies are Offshore.
+For clearing_model, use the entity's actual country — NOT the banking group's home currency:
+• Onshore ONLY if this specific entity's country is the home country/region of that currency's settlement infrastructure (USD requires US-domiciled entity, EUR requires Eurozone-domiciled entity, GBP requires UK-domiciled entity, etc.).
+• All other combinations → Offshore.
+TRAP TO AVOID: Do NOT mark a service Onshore just because the currency matches the group's primary_currency. A foreign subsidiary offering its parent's home currency is still Offshore (e.g. a US bank's Irish entity offering USD = Offshore, a UK bank's UK entity offering EUR = Offshore).
 
 ---
 STEP 5 — FMI MEMBERSHIPS

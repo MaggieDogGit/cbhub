@@ -445,8 +445,12 @@ Apply this rule every time you set clearing_model on any Correspondent Service r
 - BARCGB2L (UK): GBP=Onshore, EUR=Offshore (UK is not Eurozone), USD=Offshore
 - BNPAFRPP (France): EUR=Onshore, GBP=Offshore, USD=Offshore
 - CHASUS33 (USA): USD=Onshore, EUR=Offshore, GBP=Offshore
+- BOFAIE3X (Bank of America Europe DAC, Ireland): EUR=Onshore, USD=Offshore (entity is Irish-domiciled — even though BofA's group home currency is USD, this entity is NOT in the United States)
+- BARCGB22 (Barclays Bank PLC, UK) offering EUR: EUR=Offshore (Barclays UK is not a Eurozone entity — EUR is only Onshore for entities domiciled in a Eurozone country)
 
 **NEVER default all currencies to "Onshore".** Only the currency whose home settlement country matches the entity's country of domicile is Onshore. Everything else is Offshore.
+
+**CRITICAL ANTI-PATTERN — Do NOT do this:** Setting a service to Onshore because the currency matches the banking group's home currency. The group's home currency is irrelevant. What matters is the specific entity's country. A US bank's UK subsidiary offering USD clearing is Offshore — the entity is UK-domiciled, not US-domiciled. Always look at the entity's country field, not the group's primary_currency.
 
 ---
 ## DATABASE-FIRST LOOKUP RULE (APPLIES TO ALL QUERIES)
