@@ -136,6 +136,7 @@ export default function Providers() {
   const [filterCurrency, setFilterCurrency] = useState("all");
   const [filterServiceType, setFilterServiceType] = useState("all");
   const [filterGsib, setFilterGsib] = useState("all");
+  const [filterIntel, setFilterIntel] = useState<"all" | "competitor" | "cb_provider">("all");
   const [sortBy, setSortBy] = useState("name");
 
   // Job mode / scope
@@ -284,6 +285,10 @@ export default function Providers() {
   // Filtering + sorting
   const groupMatchesFilters = (group: BankingGroup) => {
     if (filterGsib !== "all" && group.gsib_status !== filterGsib) return false;
+    if (filterIntel !== "all") {
+      const groupIntelObs = intel.filter(o => o.banking_group_id === group.id);
+      if (!groupIntelObs.some(o => o.obs_type === filterIntel)) return false;
+    }
     if (search) {
       const q = search.toLowerCase();
       const groupMatch = group.group_name?.toLowerCase().includes(q) || group.headquarters_country?.toLowerCase().includes(q);
@@ -455,6 +460,32 @@ export default function Providers() {
             <SelectItem value="N/A">N/A</SelectItem>
           </SelectContent>
         </Select>
+
+        {/* Intel filter */}
+        <div className="flex rounded-lg border border-slate-200 overflow-hidden text-sm" data-testid="intel-filter">
+          <button
+            data-testid="intel-filter-all"
+            onClick={() => setFilterIntel("all")}
+            className={`px-3 py-1.5 border-r border-slate-200 transition-colors ${filterIntel === "all" ? "bg-slate-700 text-white font-medium" : "bg-white text-slate-600 hover:bg-slate-50"}`}
+          >
+            All
+          </button>
+          <button
+            data-testid="intel-filter-competitor"
+            onClick={() => setFilterIntel(filterIntel === "competitor" ? "all" : "competitor")}
+            className={`flex items-center gap-1 px-3 py-1.5 border-r border-slate-200 transition-colors ${filterIntel === "competitor" ? "bg-orange-500 text-white font-medium" : "bg-white text-slate-600 hover:bg-slate-50"}`}
+          >
+            <Swords className="w-3 h-3" /> Competitor
+          </button>
+          <button
+            data-testid="intel-filter-cb-provider"
+            onClick={() => setFilterIntel(filterIntel === "cb_provider" ? "all" : "cb_provider")}
+            className={`flex items-center gap-1 px-3 py-1.5 transition-colors ${filterIntel === "cb_provider" ? "bg-violet-600 text-white font-medium" : "bg-white text-slate-600 hover:bg-slate-50"}`}
+          >
+            <Building2 className="w-3 h-3" /> CB Provider
+          </button>
+        </div>
+
         <Select value={sortBy} onValueChange={setSortBy}>
           <SelectTrigger className="w-36" data-testid="select-sort-by"><SelectValue placeholder="Sort By" /></SelectTrigger>
           <SelectContent>

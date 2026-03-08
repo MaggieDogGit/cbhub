@@ -142,6 +142,7 @@ export default function Coverage() {
   const [, setLocation] = useLocation();
   const [search, setSearch] = useState("");
   const [filterStatus, setFilterStatus] = useState<CoverageStatus | "all">("all");
+  const [filterIntel, setFilterIntel] = useState<"all" | "competitor" | "cb_provider">("all");
   const [currencyScope, setCurrencyScope] = useState<CurrencyScope>("home_only");
   const [jobMode, setJobMode] = useState<JobMode>("normal");
   const { toast } = useToast();
@@ -242,6 +243,10 @@ export default function Coverage() {
 
   const filtered = enrichedGroups.filter(r => {
     if (filterStatus !== "all" && r.status !== filterStatus) return false;
+    if (filterIntel !== "all") {
+      const groupIntelObs = intel.filter(o => o.banking_group_id === r.group.id);
+      if (!groupIntelObs.some(o => o.obs_type === filterIntel)) return false;
+    }
     if (search) {
       const q = search.toLowerCase();
       return r.group.group_name?.toLowerCase().includes(q) || r.group.headquarters_country?.toLowerCase().includes(q);
@@ -405,8 +410,8 @@ export default function Coverage() {
         ))}
       </div>
 
-      {/* Search / Count */}
-      <div className="flex gap-3 flex-wrap">
+      {/* Search / Intel filter / Count */}
+      <div className="flex gap-3 flex-wrap items-center">
         <div className="relative flex-1 min-w-48">
           <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
           <Input
@@ -417,6 +422,32 @@ export default function Coverage() {
             onChange={e => setSearch(e.target.value)}
           />
         </div>
+
+        {/* Intel filter */}
+        <div className="flex rounded-lg border border-slate-200 overflow-hidden text-sm" data-testid="intel-filter-coverage">
+          <button
+            data-testid="intel-filter-coverage-all"
+            onClick={() => setFilterIntel("all")}
+            className={`px-3 py-1.5 border-r border-slate-200 transition-colors ${filterIntel === "all" ? "bg-slate-700 text-white font-medium" : "bg-white text-slate-600 hover:bg-slate-50"}`}
+          >
+            All
+          </button>
+          <button
+            data-testid="intel-filter-coverage-competitor"
+            onClick={() => setFilterIntel(filterIntel === "competitor" ? "all" : "competitor")}
+            className={`flex items-center gap-1 px-3 py-1.5 border-r border-slate-200 transition-colors ${filterIntel === "competitor" ? "bg-orange-500 text-white font-medium" : "bg-white text-slate-600 hover:bg-slate-50"}`}
+          >
+            <Swords className="w-3 h-3" /> Competitor
+          </button>
+          <button
+            data-testid="intel-filter-coverage-cb-provider"
+            onClick={() => setFilterIntel(filterIntel === "cb_provider" ? "all" : "cb_provider")}
+            className={`flex items-center gap-1 px-3 py-1.5 transition-colors ${filterIntel === "cb_provider" ? "bg-violet-600 text-white font-medium" : "bg-white text-slate-600 hover:bg-slate-50"}`}
+          >
+            <Building2 className="w-3 h-3" /> CB Provider
+          </button>
+        </div>
+
         <div className="text-sm text-slate-500 flex items-center">{filtered.length} of {groups.length} groups</div>
       </div>
 
