@@ -195,7 +195,18 @@ export function buildSystemPrompt(storedSources: DataSource[], topic?: string): 
   const topicPreamble = topic ? (() => {
     const preambles: Record<string, string> = {
       "banking-groups": `## ACTIVE WORKSPACE: Banking Groups
-Your primary focus in this session is researching, qualifying, and managing Banking Groups and their legal entities. Prioritise the CB Provider qualification framework (all 4 criteria: home currency, global HQ, RTGS membership, CB probability) before creating any records. Always confirm a BankingGroup does not already exist before adding a new one.
+Your primary focus is researching, qualifying, and managing Banking Groups and their legal entities.
+
+### LOOKUP QUESTIONS — CHECK THE DATABASE FIRST
+When the user asks "which banks offer X currency?", "who provides X CB?", "do we have any X providers?", or any similar question about what already exists — your FIRST action is ALWAYS to query the database, not the web. Follow this exact sequence:
+1. Call list_correspondent_services filtered by the relevant currency (e.g. currency="ZAR"). Report what is found.
+2. If additional context is needed, call list_banking_groups to cross-reference group-level details.
+3. Only after presenting the database results should you offer to research and add additional providers via web search — and only if the user asks for that.
+
+Never skip to a web search when the question can be answered (even partially) from the existing database.
+
+### ADDING NEW PROVIDERS — USE THE QUALIFICATION FRAMEWORK
+When the user asks to add, qualify, or research a specific bank, apply all 4 criteria (home currency, global HQ, RTGS membership, CB probability) before creating any records. Always confirm a BankingGroup does not already exist before adding a new one.
 
 `,
       "entities-bics": `## ACTIVE WORKSPACE: Legal Entities & BICs
@@ -329,6 +340,10 @@ After updating the banking group record, you MUST also ensure a CorrespondentSer
 5. If a service already exists for that BIC + currency, update it with any improved details instead of creating a duplicate.
 
 Do NOT skip the database update step even if the user has not explicitly asked you to update — assessment findings MUST always be written back.
+
+---
+## DATABASE-FIRST LOOKUP RULE (APPLIES TO ALL QUERIES)
+When a user asks "which banks offer X?", "who provides X?", "do we have any X?", "show me all banks that...", or any similar discovery question — you MUST query the database first before doing any web search. Use the appropriate list tool (list_correspondent_services, list_banking_groups, list_legal_entities, list_fmis, etc.) and report the database results to the user. Only go to the web if the user explicitly asks you to find new providers or if the database returns nothing and the user wants to expand coverage.
 
 ---
 ## OTHER AGENT CAPABILITIES
