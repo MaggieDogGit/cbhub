@@ -1,4 +1,4 @@
-import { eq, and } from "drizzle-orm";
+import { eq, and, desc } from "drizzle-orm";
 import { db } from "./db";
 import {
   bankingGroups, legalEntities, bics, correspondentServices,
@@ -89,6 +89,7 @@ export interface IStorage {
   getConversation(id: string): Promise<Conversation | undefined>;
   createConversation(data: InsertConversation): Promise<Conversation>;
   deleteConversation(id: string): Promise<void>;
+  getOrCreateTopicConversation(topic: string): Promise<Conversation>;
 
   // ChatMessages
   listMessages(conversationId: string): Promise<ChatMessage[]>;
@@ -179,6 +180,19 @@ export class DatabaseStorage implements IStorage {
   async deleteConversation(id: string) {
     await db.delete(chatMessages).where(eq(chatMessages.conversation_id, id));
     await db.delete(conversations).where(eq(conversations.id, id));
+  }
+  async getOrCreateTopicConversation(topic: string) {
+    const [existing] = await db.select().from(conversations).where(eq(conversations.topic, topic)).orderBy(desc(conversations.created_at)).limit(1);
+    if (existing) return existing;
+    const topicLabels: Record<string, string> = {
+      "banking-groups": "Banking Groups",
+      "entities-bics": "Legal Entities & BICs",
+      "cb-services": "CB Services",
+      "fmi": "FMI Memberships",
+      "general": "General",
+    };
+    const [created] = await db.insert(conversations).values({ name: topicLabels[topic] ?? topic, topic }).returning();
+    return created;
   }
 
   // ChatMessages

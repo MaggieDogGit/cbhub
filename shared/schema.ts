@@ -149,6 +149,7 @@ export const dataSources = pgTable("data_sources", {
 export const conversations = pgTable("conversations", {
   id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
   name: text("name").notNull(),
+  topic: text("topic"),
   created_at: timestamp("created_at").defaultNow(),
 });
 

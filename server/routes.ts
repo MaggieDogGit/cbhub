@@ -246,6 +246,9 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
     await storage.deleteConversation(req.params.id);
     res.json({ ok: true });
   });
+  app.get("/api/conversations/topic/:topic", async (req, res) => {
+    res.json(await storage.getOrCreateTopicConversation(req.params.topic));
+  });
 
   // Messages
   app.get("/api/conversations/:id/messages", async (req, res) => {
@@ -369,7 +372,7 @@ Only include currencies and services you found evidence for in the research.`,
 
   // AI Chat with full database tool calling (streaming SSE)
   app.post("/api/chat", async (req, res) => {
-    const { conversationId, message } = req.body;
+    const { conversationId, message, topic } = req.body;
     if (!conversationId || !message) return res.status(400).json({ message: "conversationId and message required" });
 
     res.setHeader("Content-Type", "text/event-stream");
@@ -385,7 +388,7 @@ Only include currencies and services you found evidence for in the research.`,
         storage.listDataSources(),
       ]);
 
-      const systemPrompt = buildSystemPrompt(storedSources);
+      const systemPrompt = buildSystemPrompt(storedSources, topic ?? undefined);
       const confirmationPattern = /^(yes|y|confirmed?|correct|go ahead|proceed|store(?: and move)?|update|ok|sure|done|do it|move on|next|continue|approved?|accept)\b/i;
       const isConfirmation = confirmationPattern.test(message.trim());
 

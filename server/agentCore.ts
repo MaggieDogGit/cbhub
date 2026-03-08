@@ -173,7 +173,7 @@ export async function executeTool(name: string, args: any): Promise<string> {
 
 // ── System prompt ─────────────────────────────────────────────────────────────
 
-export function buildSystemPrompt(storedSources: DataSource[]): string {
+export function buildSystemPrompt(storedSources: DataSource[], topic?: string): string {
   const knownSourcesSection = storedSources.length > 0
     ? `\n\n---\n## KNOWN REFERENCE SOURCES (USE THESE FIRST)\nThe following authoritative sources are already stored. Before searching the web from scratch, check if any of these apply. When they do, use their URL directly in web_search.\n\n${
       (() => {
@@ -192,9 +192,32 @@ export function buildSystemPrompt(storedSources: DataSource[]): string {
     }`
     : "";
 
+  const topicPreamble = topic ? (() => {
+    const preambles: Record<string, string> = {
+      "banking-groups": `## ACTIVE WORKSPACE: Banking Groups
+Your primary focus in this session is researching, qualifying, and managing Banking Groups and their legal entities. Prioritise the CB Provider qualification framework (all 4 criteria: home currency, global HQ, RTGS membership, CB probability) before creating any records. Always confirm a BankingGroup does not already exist before adding a new one.
+
+`,
+      "entities-bics": `## ACTIVE WORKSPACE: Legal Entities & BICs
+Your primary focus is legal entity and BIC management. Emphasise accuracy of entity_type, HQ confirmation, BIC code validation, and correct linking between LegalEntity and BankingGroup. Always check existing records before creating new ones.
+
+`,
+      "cb-services": `## ACTIVE WORKSPACE: CB Services
+Your primary focus is CorrespondentService records — currency coverage, service types, clearing models, RTGS membership status, and nostro/vostro offerings. Help identify coverage gaps and suggest new services based on existing BIC and entity data. Always check if a service already exists before creating a duplicate.
+
+`,
+      "fmi": `## ACTIVE WORKSPACE: FMI Memberships
+Your primary focus is Financial Market Infrastructure membership records. Help query, verify, and record FMI memberships for legal entities. Use check_fmi_membership before creating any record. Refer to the canonical FMI type list: Payment Systems, Instant Payment Systems, Securities Settlement Systems, Central Counterparties, FX Settlement Systems, Messaging Networks.
+
+`,
+      "general": "",
+    };
+    return preambles[topic] ?? "";
+  })() : "";
+
   return `You are the CB Provider Intelligence Agent, an expert in correspondent banking with full database access and live web search capability.
 
----
+${topicPreamble}---
 ## CORE DATA MODEL
 Records are structured hierarchically: BankingGroup → LegalEntity → BIC → CorrespondentService.
 When creating a new CB Provider, always follow this order: create BankingGroup first, then LegalEntity linked to it, then BIC linked to the entity, then CorrespondentServices linked to the BIC.
