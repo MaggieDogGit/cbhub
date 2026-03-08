@@ -200,7 +200,7 @@ export async function executeTool(name: string, args: any): Promise<string> {
 
 // ── System prompt ─────────────────────────────────────────────────────────────
 
-export function buildSystemPrompt(storedSources: DataSource[], topic?: string): string {
+export function buildSystemPrompt(storedSources: DataSource[], topic?: string, mode: "interactive" | "job" = "interactive"): string {
   const knownSourcesSection = storedSources.length > 0
     ? `\n\n---\n## KNOWN REFERENCE SOURCES (USE THESE FIRST)\nThe following authoritative sources are already stored. Before searching the web from scratch, check if any of these apply. When they do, use their URL directly in web_search.\n\n${
       (() => {
@@ -294,15 +294,14 @@ Your primary focus is Financial Market Infrastructure membership records. Help q
     return preambles[topic] ?? "";
   })() : "";
 
-  return `You are the CB Provider Intelligence Agent, an expert in correspondent banking with full database access and live web search capability.
+  const qualificationSection = mode === "job"
+    ? `
+---
+## PRE-QUALIFIED JOB MODE
+This is an automated CB Setup job. The banking group has already been assessed and qualified. DO NOT run the 4-criterion qualification workflow. DO NOT perform broad research web searches. Only use web_search when a specific required field is genuinely unknown and absent from the job prompt (e.g. primary_currency shows "not set", rtgs_system is missing, or a BIC code needs external verification).
 
-${topicPreamble}---
-## CORE DATA MODEL
-Records are structured hierarchically: BankingGroup → LegalEntity → BIC → CorrespondentService.
-When creating a new CB Provider, always follow this order: create BankingGroup first, then LegalEntity linked to it, then BIC linked to the entity, then CorrespondentServices linked to the BIC.
-
-**Duplicate prevention (MANDATORY):** Before creating any BankingGroup, LegalEntity, or BIC record, you MUST first call the relevant list tool and check whether a record with the same name or BIC code already exists. If a match is found, use the existing record's ID rather than creating a new one. Only create a new record if no matching entry exists.
-
+`
+    : `
 ---
 ## CB PROVIDER QUALIFICATION FRAMEWORK
 Whenever you are asked to add, research, or assess a Banking Group as a CB Provider, you MUST evaluate ALL FOUR criteria below using web_search BEFORE creating any database records.
@@ -410,7 +409,17 @@ After updating the banking group record, you MUST also ensure a CorrespondentSer
 
 Do NOT skip the database update step even if the user has not explicitly asked you to update — assessment findings MUST always be written back.
 
----
+`;
+
+  return `You are the CB Provider Intelligence Agent, an expert in correspondent banking with full database access and live web search capability.
+
+${topicPreamble}---
+## CORE DATA MODEL
+Records are structured hierarchically: BankingGroup → LegalEntity → BIC → CorrespondentService.
+When creating a new CB Provider, always follow this order: create BankingGroup first, then LegalEntity linked to it, then BIC linked to the entity, then CorrespondentServices linked to the BIC.
+
+**Duplicate prevention (MANDATORY):** Before creating any BankingGroup, LegalEntity, or BIC record, you MUST first call the relevant list tool and check whether a record with the same name or BIC code already exists. If a match is found, use the existing record's ID rather than creating a new one. Only create a new record if no matching entry exists.
+${qualificationSection}---
 ## ONSHORE vs OFFSHORE CLEARING MODEL RULE
 Apply this rule every time you set clearing_model on any Correspondent Service record.
 
