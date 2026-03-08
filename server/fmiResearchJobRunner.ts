@@ -1,14 +1,9 @@
 import { storage } from "./storage";
-import { buildFmiResearchPrompt, runFmiAgentLoop, isFmiJobComplete } from "./agentFmiResearch";
+import { runFmiMemberDiscovery, processFmiMember } from "./agentFmiResearch";
 
 let isFmiProcessing = false;
-const FMI_JOB_COOLDOWN_MS = 30_000;
-const MAX_AUTO_REQUEUES = 15;
-
-async function countRecentJobsForFmi(fmiName: string): Promise<number> {
-  const jobs = await storage.listFmiResearchJobs();
-  return jobs.filter(j => j.fmi_name === fmiName && (j.status === "completed" || j.status === "failed")).length;
-}
+const FMI_JOB_COOLDOWN_MS = 15_000;
+const MEMBERS_PER_RUN = 100;
 
 async function processNextFmiJob() {
   if (isFmiProcessing) return;
@@ -33,60 +28,110 @@ async function processNextFmiJob() {
       started_at: new Date(),
     });
 
-    const prompt = buildFmiResearchPrompt(pending.fmi_name, fmiRegistryEntry);
+    // ── Phase 1: Discover member list ────────────────────────────────────────
+    let memberList: string[] = pending.member_list ? JSON.parse(pending.member_list) : [];
 
-    const openaiMessages: any[] = [
-      { role: "system", content: prompt }
-    ];
+    if (memberList.length === 0) {
+      console.log(`[FmiJobRunner] Phase 1: Discovering members for ${pending.fmi_name}...`);
+      memberList = await runFmiMemberDiscovery(pending.fmi_name, fmiRegistryEntry);
+      console.log(`[FmiJobRunner] Discovered ${memberList.length} members`);
 
-    let stepCount = 0;
-    const assistantContent = await runFmiAgentLoop(
-      openaiMessages,
-      async (_toolName, _args, statusText) => {
-        stepCount++;
-        console.log(`[FmiJobRunner] ${pending.fmi_name} — step ${stepCount}: ${statusText}`);
-        await storage.updateFmiResearchJob(pending.id, { steps_completed: stepCount });
-      },
-      120
-    );
+      await storage.updateFmiResearchJob(pending.id, {
+        member_list: JSON.stringify(memberList),
+        total_members: memberList.length,
+      });
+    }
 
-    await storage.createMessage({ conversation_id: conv.id, role: "assistant", content: assistantContent });
+    if (memberList.length === 0) {
+      throw new Error(`Could not discover any members for ${pending.fmi_name}. Check the membership URL in the registry.`);
+    }
+
+    // ── Phase 2: Process each member ─────────────────────────────────────────
+    // Get already-recorded FMI members so we can skip them
+    const existingFmis = await storage.listFmisByName(pending.fmi_name);
+    const existingNames = new Set(existingFmis.map(f => f.legal_entity_name?.toLowerCase().trim()));
 
     let membersAdded = 0;
     let membersSkipped = 0;
-    let summaryText = assistantContent;
-    const jobComplete = isFmiJobComplete(assistantContent);
+    let membersProcessed = 0;
+    const sourceUrl = fmiRegistryEntry.membership_url || fmiRegistryEntry.website || "";
+    const fmiType = fmiRegistryEntry.fmi_type || "FX Settlement Systems";
 
-    const jsonMatch = assistantContent.match(/\{[\s\S]*"members_found"[\s\S]*\}/);
-    if (jsonMatch) {
-      try {
-        const summary = JSON.parse(jsonMatch[0]);
-        membersAdded = summary.added || 0;
-        membersSkipped = summary.skipped_already_exists || 0;
-        summaryText = JSON.stringify(summary, null, 2);
-      } catch (e) {
-        console.error("[FmiJobRunner] Failed to parse summary JSON", e);
+    for (const memberName of memberList) {
+      if (membersProcessed >= MEMBERS_PER_RUN) break;
+
+      // Quick skip if name already in existing FMI records
+      const nameLower = memberName.toLowerCase().trim();
+      if (existingNames.has(nameLower)) {
+        membersSkipped++;
+        membersProcessed++;
+        console.log(`[FmiJobRunner] Skipping (already exists): ${memberName}`);
+        await storage.updateFmiResearchJob(pending.id, {
+          members_added: membersAdded,
+          members_skipped: membersSkipped,
+          steps_completed: membersProcessed,
+        });
+        continue;
       }
+
+      console.log(`[FmiJobRunner] Processing member ${membersProcessed + 1}/${memberList.length}: ${memberName}`);
+      const result = await processFmiMember(memberName, pending.fmi_name, fmiType, sourceUrl);
+
+      if (result.action === "added") {
+        membersAdded++;
+        existingNames.add((result.entity_name || memberName).toLowerCase().trim());
+        console.log(`[FmiJobRunner]  → Added: ${result.entity_name || memberName}`);
+      } else if (result.action === "skipped") {
+        membersSkipped++;
+        console.log(`[FmiJobRunner]  → Skipped: ${result.reason}`);
+      } else {
+        console.warn(`[FmiJobRunner]  → Error processing ${memberName}: ${result.reason}`);
+        membersSkipped++;
+      }
+
+      membersProcessed++;
+      await storage.updateFmiResearchJob(pending.id, {
+        members_added: membersAdded,
+        members_skipped: membersSkipped,
+        steps_completed: membersProcessed,
+      });
     }
+
+    const totalProcessed = membersAdded + membersSkipped;
+    const remaining = memberList.length - totalProcessed;
+    const isFullyComplete = remaining <= 0;
+
+    const summary = JSON.stringify({
+      members_found: memberList.length,
+      processed_this_run: membersProcessed,
+      added: membersAdded,
+      skipped_already_exists: membersSkipped,
+      remaining: Math.max(0, remaining),
+      complete: isFullyComplete,
+    }, null, 2);
 
     await storage.updateFmiResearchJob(pending.id, {
       status: "completed",
       completed_at: new Date(),
       members_added: membersAdded,
       members_skipped: membersSkipped,
-      summary: summaryText,
+      total_members: memberList.length,
+      summary,
     });
 
-    if (!jobComplete) {
-      const priorRuns = await countRecentJobsForFmi(pending.fmi_name);
-      if (priorRuns <= MAX_AUTO_REQUEUES) {
-        console.log(`[FmiJobRunner] Job ended without completion JSON — auto-requeueing (run ${priorRuns}/${MAX_AUTO_REQUEUES})`);
-        await storage.createFmiResearchJob({ fmi_name: pending.fmi_name, status: "pending" });
-      } else {
-        console.log(`[FmiJobRunner] Max re-queues (${MAX_AUTO_REQUEUES}) reached for ${pending.fmi_name}. Stopping.`);
-      }
+    await storage.createMessage({ conversation_id: conv.id, role: "assistant", content: summary });
+
+    if (isFullyComplete) {
+      console.log(`[FmiJobRunner] Fully completed ${pending.fmi_name}: ${membersAdded} added, ${membersSkipped} skipped.`);
     } else {
-      console.log(`[FmiJobRunner] Job ${pending.id} fully completed for ${pending.fmi_name}.`);
+      console.log(`[FmiJobRunner] Partial run for ${pending.fmi_name}: processed ${membersProcessed}, ${remaining} remaining. Auto-requeueing.`);
+      // Auto-requeue with existing member_list so discovery is skipped
+      await storage.createFmiResearchJob({
+        fmi_name: pending.fmi_name,
+        status: "pending",
+        member_list: JSON.stringify(memberList),
+        total_members: memberList.length,
+      });
     }
 
   } catch (err: any) {

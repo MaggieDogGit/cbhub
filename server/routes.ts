@@ -196,12 +196,15 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
     res.json(await storage.listFmiResearchJobs());
   });
   app.post("/api/fmi-research-jobs", async (req, res) => {
-    const { fmi_name } = req.body;
+    const { fmi_name, member_list, total_members } = req.body;
     if (!fmi_name) return res.status(400).json({ message: "fmi_name required" });
     const registryEntry = await storage.getFmiRegistryByName(fmi_name);
     if (!registryEntry) return res.status(400).json({ message: `FMI "${fmi_name}" not found in registry.` });
     
-    const job = await storage.createFmiResearchJob({ fmi_name, status: "pending" });
+    const jobData: any = { fmi_name, status: "pending" };
+    if (member_list) jobData.member_list = member_list;
+    if (total_members) jobData.total_members = total_members;
+    const job = await storage.createFmiResearchJob(jobData);
     res.status(201).json(job);
   });
   app.post("/api/fmi-research-jobs/stop-queue", async (req, res) => {

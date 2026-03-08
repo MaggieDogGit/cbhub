@@ -57,6 +57,7 @@ export interface IStorage {
 
   // FMIs
   listFmis(): Promise<Fmi[]>;
+  listFmisByName(fmiName: string): Promise<Fmi[]>;
   getFmi(id: string): Promise<Fmi | undefined>;
   createFmi(data: InsertFmi): Promise<Fmi>;
   updateFmi(id: string, data: Partial<InsertFmi>): Promise<Fmi>;
@@ -144,6 +145,7 @@ export class DatabaseStorage implements IStorage {
 
   // FMIs
   async listFmis() { return db.select().from(fmis); }
+  async listFmisByName(fmiName: string) { return db.select().from(fmis).where(eq(fmis.fmi_name, fmiName)); }
   async getFmi(id: string) { const [r] = await db.select().from(fmis).where(eq(fmis.id, id)); return r; }
   async createFmi(data: InsertFmi) { const [r] = await db.insert(fmis).values(data).returning(); return r; }
   async updateFmi(id: string, data: Partial<InsertFmi>) { const [r] = await db.update(fmis).set(data).where(eq(fmis.id, id)).returning(); return r; }

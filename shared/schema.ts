@@ -128,6 +128,8 @@ export const fmiResearchJobs = pgTable("fmi_research_jobs", {
   steps_completed: integer("steps_completed").default(0),
   members_added: integer("members_added").default(0),
   members_skipped: integer("members_skipped").default(0),
+  total_members: integer("total_members"),
+  member_list: text("member_list"),
   summary: text("summary"),
 });
 

@@ -19,7 +19,7 @@ import { useToast } from "@/hooks/use-toast";
 import { 
   Network, Globe, ExternalLink, Trash2, Plus, 
   Search, Bot, Play, StopCircle, Loader2, 
-  CheckCircle2, XCircle, Clock, ChevronRight, ChevronDown 
+  CheckCircle2, XCircle, Clock, ChevronRight, ChevronDown, RefreshCw
 } from "lucide-react";
 
 export default function FmiManagement() {
@@ -410,8 +410,13 @@ function ResearchTab() {
   });
 
   const runMutation = useMutation({
-    mutationFn: async (fmiName: string) => {
-      const res = await apiRequest("POST", "/api/fmi-research-jobs", { fmi_name: fmiName });
+    mutationFn: async ({ fmiName, memberList }: { fmiName: string; memberList?: string | null }) => {
+      const body: any = { fmi_name: fmiName };
+      if (memberList) {
+        body.member_list = memberList;
+        try { body.total_members = JSON.parse(memberList).length; } catch {}
+      }
+      const res = await apiRequest("POST", "/api/fmi-research-jobs", body);
       return res.json();
     },
     onSuccess: () => {
@@ -467,7 +472,7 @@ function ResearchTab() {
             <div className="flex items-center gap-2">
               <Button
                 disabled={!selectedFmi || runMutation.isPending}
-                onClick={() => runMutation.mutate(selectedFmi)}
+                onClick={() => runMutation.mutate({ fmiName: selectedFmi })}
                 data-testid="button-run-research"
               >
                 {runMutation.isPending ? <Loader2 className="animate-spin w-4 h-4 mr-2" /> : <Play className="w-4 h-4 mr-2" />}
@@ -505,13 +510,19 @@ function ResearchTab() {
                   <TableHead>FMI Name</TableHead>
                   <TableHead>Status</TableHead>
                   <TableHead>Queued At</TableHead>
-                  <TableHead>Result</TableHead>
+                  <TableHead>Progress</TableHead>
                   <TableHead>Summary</TableHead>
-                  <TableHead className="text-right">Chat</TableHead>
+                  <TableHead className="text-right">Actions</TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
-                {sortedJobs.map(job => (
+                {sortedJobs.map(job => {
+                  const processed = (job.members_added || 0) + (job.members_skipped || 0);
+                  const total = job.total_members || 0;
+                  const pct = total > 0 ? Math.round((processed / total) * 100) : null;
+                  const hasMore = job.status === "completed" && total > 0 && processed < total;
+                  const fmiActive = jobs.some(j => j.fmi_name === job.fmi_name && (j.status === "pending" || j.status === "running"));
+                  return (
                   <TableRow key={job.id} data-testid={`row-job-${job.id}`}>
                     <TableCell className="font-medium">{job.fmi_name}</TableCell>
                     <TableCell>
@@ -521,29 +532,71 @@ function ResearchTab() {
                       {job.queued_at ? new Date(job.queued_at).toLocaleString() : "—"}
                     </TableCell>
                     <TableCell>
-                      <div className="flex flex-col gap-1">
-                        <span className="text-xs text-slate-700">Added: <span className="font-semibold text-emerald-600">{job.members_added || 0}</span></span>
-                        <span className="text-xs text-slate-700">Skipped: <span className="font-semibold text-slate-500">{job.members_skipped || 0}</span></span>
+                      <div className="flex flex-col gap-1 min-w-[140px]">
+                        <div className="flex items-center gap-2 text-xs text-slate-700">
+                          <span>
+                            <span className="font-semibold text-emerald-600">{job.members_added || 0}</span> added
+                            {" · "}
+                            <span className="font-semibold text-slate-500">{job.members_skipped || 0}</span> skipped
+                          </span>
+                          {total > 0 && <span className="text-slate-400">/ {total}</span>}
+                        </div>
+                        {pct !== null && (
+                          <div className="w-full bg-slate-100 rounded-full h-1.5">
+                            <div
+                              className="bg-emerald-500 h-1.5 rounded-full transition-all"
+                              style={{ width: `${pct}%` }}
+                            />
+                          </div>
+                        )}
+                        {pct !== null && (
+                          <span className="text-xs text-slate-400">{pct}% complete</span>
+                        )}
                       </div>
                     </TableCell>
                     <TableCell className="text-sm text-slate-500 max-w-xs truncate" title={job.summary || ""}>
-                      {job.summary || job.error_message || "—"}
+                      {job.summary ? (
+                        (() => {
+                          try {
+                            const s = JSON.parse(job.summary);
+                            return `Found ${s.members_found ?? "?"} · Added ${s.added ?? 0} · Remaining ${s.remaining ?? 0}`;
+                          } catch {
+                            return job.summary.slice(0, 80);
+                          }
+                        })()
+                      ) : job.error_message || "—"}
                     </TableCell>
                     <TableCell className="text-right">
-                      {job.conversation_id && (
-                        <Button
-                          variant="ghost"
-                          size="icon"
-                          className="h-8 w-8 text-blue-600"
-                          onClick={() => setLocation(`/agent?conv=${job.conversation_id}`)}
-                          data-testid={`link-conversation-${job.id}`}
-                        >
-                          <Bot className="w-4 h-4" />
-                        </Button>
-                      )}
+                      <div className="flex items-center justify-end gap-1">
+                        {hasMore && !fmiActive && (
+                          <Button
+                            variant="outline"
+                            size="sm"
+                            className="text-emerald-700 border-emerald-200 hover:bg-emerald-50 text-xs h-7 px-2"
+                            onClick={() => runMutation.mutate({ fmiName: job.fmi_name, memberList: job.member_list })}
+                            disabled={runMutation.isPending}
+                            data-testid={`button-continue-${job.id}`}
+                          >
+                            <RefreshCw className="w-3 h-3 mr-1" />
+                            Continue
+                          </Button>
+                        )}
+                        {job.conversation_id && (
+                          <Button
+                            variant="ghost"
+                            size="icon"
+                            className="h-8 w-8 text-blue-600"
+                            onClick={() => setLocation(`/agent?conv=${job.conversation_id}`)}
+                            data-testid={`link-conversation-${job.id}`}
+                          >
+                            <Bot className="w-4 h-4" />
+                          </Button>
+                        )}
+                      </div>
                     </TableCell>
                   </TableRow>
-                ))}
+                  );
+                })}
               </TableBody>
             </Table>
           )}
