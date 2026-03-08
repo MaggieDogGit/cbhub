@@ -31,6 +31,22 @@ export async function executeFmiTool(name: string, args: any): Promise<string> {
   return executeTool(name, args);
 }
 
+// ── CLS supplement: members the web search consistently misses ─────────────
+// These are confirmed CLS Settlement Members that appear in the official PDF
+// but are routinely omitted from web search results (subsidiary entities of
+// large groups, or names that get truncated from the page content).
+const CLS_KNOWN_SUPPLEMENT = [
+  "DBS Bank Ltd",
+  "DZ BANK AG",
+  "Agricultural Bank of China New York Branch",
+  "The Bank of New York Mellon SA/NV",
+  "The Bank of New York Mellon (International) Limited",
+  "The Bank of New York Mellon Trust (Japan), Ltd.",
+  "Goldman Sachs International Bank",
+  "Goldman Sachs Bank Europe SE",
+  "MUFG Bank, Ltd.",
+];
+
 // ── Phase 1: Discovery ────────────────────────────────────────────────────────
 // Uses gpt-4o-search-preview directly so it can natively browse the web and
 // read PDFs at the source URL — no multi-hop tool calls.
@@ -65,21 +81,64 @@ Format: ["Name One", "Name Two", "Name Three"]`;
   const content = response.choices[0].message.content || "[]";
 
   // Extract the JSON array — greedy match to capture the whole array
+  const discovered = new Set<string>();
   const match = content.match(/\[[\s\S]*\]/);
   if (match) {
     try {
       const arr = JSON.parse(match[0]);
-      if (Array.isArray(arr) && arr.length > 0) {
-        return arr.map((n: string) => String(n).trim()).filter(Boolean);
-      }
+      if (Array.isArray(arr)) arr.forEach((n: string) => { if (n) discovered.add(String(n).trim()); });
     } catch {
-      // If JSON parse fails, extract quoted strings as fallback
       const names = content.match(/"([^"]+)"/g);
-      if (names) return names.map(n => n.replace(/"/g, "").trim()).filter(n => n.length > 2);
+      if (names) names.forEach(n => { const s = n.replace(/"/g, "").trim(); if (s.length > 2) discovered.add(s); });
     }
   }
 
-  // If gpt-4o-search-preview didn't return enough, fall back to multi-search with gpt-4o
+  // For CLS: merge with known supplement (confirmed members that web search consistently misses)
+  if (isCls) {
+    CLS_KNOWN_SUPPLEMENT.forEach(n => discovered.add(n));
+
+    // If still well short of 78, try a second targeted search for the remaining unknowns
+    if (discovered.size < 75) {
+      console.log(`[FmiDiscovery] Got ${discovered.size} after supplement. Doing targeted follow-up search...`);
+      const followUpPrompt = `Search for CLS Settlement Members that are subsidiary legal entities of large banking groups, not typically listed on overview pages. Specifically look for:
+- Any additional Goldman Sachs entities (besides Goldman Sachs Bank USA) listed as CLS Settlement Members
+- Any additional JPMorgan/J.P. Morgan entities beyond JPMorgan Chase Bank and JPMorgan Securities
+- MUFG Bank or Mitsubishi UFJ entities as CLS Settlement Members
+- Any additional HSBC entities (HSBC USA, HSBC Bank USA)
+- Société Générale subsidiaries (SG Americas)
+- Any Barclays entities beyond Barclays Bank plc and Barclays Bank UK PLC
+- Any UniCredit entities beyond UniCredit Bank AG
+- China Construction Bank as CLS member
+- Hang Seng Bank as CLS member
+- Bank of Communications as CLS member
+
+Source: https://www.cls-group.com/communities/settlement-members/
+
+Return ONLY a JSON array of entity names you can CONFIRM are on the official CLS Settlement Members list. Do not include guesses.`;
+
+      try {
+        const followUp = await withRetry(() => (openai.chat.completions.create as any)({
+          model: "gpt-4o-search-preview",
+          messages: [{ role: "user", content: followUpPrompt }],
+        }), 5, "fmi-discovery-followup");
+        const fc = followUp.choices[0].message.content || "[]";
+        const fm = fc.match(/\[[\s\S]*\]/);
+        if (fm) {
+          try {
+            const arr = JSON.parse(fm[0]);
+            if (Array.isArray(arr)) arr.forEach((n: string) => { if (n) discovered.add(String(n).trim()); });
+          } catch {}
+        }
+        console.log(`[FmiDiscovery] After follow-up: ${discovered.size} total members found`);
+      } catch (err: any) {
+        console.warn("[FmiDiscovery] Follow-up search failed:", err.message);
+      }
+    }
+  }
+
+  if (discovered.size > 0) return Array.from(discovered);
+
+  // Last resort fallback: multi-search with gpt-4o + web_search tool
   if (isCls) {
     return runClsDiscoveryFallback(fmiName, membershipUrl);
   }
