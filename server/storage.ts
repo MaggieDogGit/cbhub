@@ -84,6 +84,10 @@ export interface IStorage {
   updateDataSource(id: string, data: Partial<InsertDataSource>): Promise<DataSource>;
   deleteDataSource(id: string): Promise<void>;
 
+  // Merge operations
+  mergeLegalEntities(keepId: string, deleteId: string): Promise<{ moved_bics: number; moved_fmis: number; deleted_entity_id: string }>;
+  mergeBankingGroups(keepId: string, deleteId: string): Promise<{ moved_entities: number; moved_cls_profiles: number; deleted_group_id: string }>;
+
   // Conversations
   listConversations(): Promise<Conversation[]>;
   getConversation(id: string): Promise<Conversation | undefined>;
@@ -172,6 +176,20 @@ export class DatabaseStorage implements IStorage {
   async createDataSource(data: InsertDataSource) { const [r] = await db.insert(dataSources).values(data).returning(); return r; }
   async updateDataSource(id: string, data: Partial<InsertDataSource>) { const [r] = await db.update(dataSources).set(data).where(eq(dataSources.id, id)).returning(); return r; }
   async deleteDataSource(id: string) { await db.delete(dataSources).where(eq(dataSources.id, id)); }
+
+  // Merge operations
+  async mergeLegalEntities(keepId: string, deleteId: string) {
+    const movedBics = await db.update(bics).set({ legal_entity_id: keepId }).where(eq(bics.legal_entity_id, deleteId));
+    const movedFmis = await db.update(fmis).set({ legal_entity_id: keepId }).where(eq(fmis.legal_entity_id, deleteId));
+    await db.delete(legalEntities).where(eq(legalEntities.id, deleteId));
+    return { moved_bics: movedBics.rowCount ?? 0, moved_fmis: movedFmis.rowCount ?? 0, deleted_entity_id: deleteId };
+  }
+  async mergeBankingGroups(keepId: string, deleteId: string) {
+    const movedEntities = await db.update(legalEntities).set({ group_id: keepId }).where(eq(legalEntities.group_id, deleteId));
+    const movedCls = await db.update(clsProfiles).set({ group_id: keepId }).where(eq(clsProfiles.group_id, deleteId));
+    await db.delete(bankingGroups).where(eq(bankingGroups.id, deleteId));
+    return { moved_entities: movedEntities.rowCount ?? 0, moved_cls_profiles: movedCls.rowCount ?? 0, deleted_group_id: deleteId };
+  }
 
   // Conversations
   async listConversations() { return db.select().from(conversations).orderBy(conversations.created_at); }
