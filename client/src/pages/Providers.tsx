@@ -1,26 +1,149 @@
 import { useState, useEffect } from "react";
-import { useQuery } from "@tanstack/react-query";
+import { useQuery, useMutation } from "@tanstack/react-query";
 import { useLocation } from "wouter";
+import { queryClient, apiRequest } from "@/lib/queryClient";
 import { Card, CardContent } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Button } from "@/components/ui/button";
-import { ChevronDown, ChevronRight, Search, ShieldCheck, Globe, Radio, TrendingUp, Bot } from "lucide-react";
-import type { BankingGroup, LegalEntity, Bic, CorrespondentService, Fmi } from "@shared/schema";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
+import {
+  ChevronDown, ChevronRight, Search, ShieldCheck, Globe, Radio, TrendingUp,
+  Bot, Zap, ExternalLink, CheckCircle2, XCircle, Clock, Loader2, RefreshCw, X,
+  CheckSquare, Square,
+} from "lucide-react";
+import { useToast } from "@/hooks/use-toast";
+import type { BankingGroup, LegalEntity, Bic, CorrespondentService, Fmi, AgentJob } from "@shared/schema";
+
+type CurrencyScope = "home_only" | "major" | "all";
+type JobMode = "light" | "normal";
+
+const SCOPE_OPTIONS: { value: CurrencyScope; label: string }[] = [
+  { value: "home_only", label: "Home" },
+  { value: "major",    label: "EUR/GBP/USD" },
+  { value: "all",      label: "All" },
+];
+
+const SCOPE_LABELS: Record<CurrencyScope, string> = {
+  home_only: "Home",
+  major:     "EUR/GBP/USD",
+  all:       "All CCY",
+};
 
 const CURRENCIES = ["all","EUR","USD","GBP","JPY","CHF","CAD","AUD","SGD","HKD","CNH","SEK","NOK","DKK","NZD","PLN","CZK","HUF","RON","TRY","ZAR","BRL","MXN","INR","KRW","ILS"];
 const SERVICE_TYPES = ["all","Correspondent Banking","Global Currency Clearing","Currency Clearing","RTGS Participation","Instant Payments Access","FX Liquidity","CLS Settlement","Custody Services","Transaction Banking","Liquidity Services"];
 
+const CLS_CURRENCIES = new Set(["AUD","CAD","CHF","DKK","EUR","GBP","HKD","JPY","MXN","NOK","NZD","SEK","SGD","USD","ILS","ZAR","KRW","HUF"]);
+
+function buildAgentPrompt(group: BankingGroup, entityCount: number, bicCount: number, serviceCount: number): string {
+  const rtgsLabel = group.rtgs_system || (group.primary_currency ? `identify RTGS for ${group.primary_currency}` : "not identified");
+  const clsLine = group.primary_currency && CLS_CURRENCIES.has(group.primary_currency)
+    ? `CLS (fmi_type "FX Settlement Systems") — ${group.primary_currency} is a CLS-eligible currency; check direct settlement membership`
+    : `CLS — verify whether ${group.primary_currency || "the home currency"} participates in CLS`;
+  return `Run the CB Entity Setup workflow for ${group.group_name}${group.headquarters_country ? ` (${group.headquarters_country})` : ""} [Scope: all currencies]
+Group ID: ${group.id} | Home currency: ${group.primary_currency || "not set"} | RTGS: ${rtgsLabel} | CB probability: ${group.cb_probability || "not set"}
+Current DB state: ${entityCount} legal entit${entityCount !== 1 ? "ies" : "y"}, ${bicCount} BIC${bicCount !== 1 ? "s" : ""}, ${serviceCount} service${serviceCount !== 1 ? "s" : ""} recorded.
+
+---
+STEP 1 — VERIFY BANKING GROUP RECORD
+Locate this group using list_banking_groups (ID: ${group.id}).
+If any of the following fields are missing, research and fill them now using update_banking_group before proceeding:
+• primary_currency  • rtgs_system  • rtgs_member (boolean)  • cb_probability (High/Medium/Low/Unconfirmed)  • cb_evidence (one-sentence summary)
+
+---
+STEP 2 — IDENTIFY CORRESPONDENT BANKING LEGAL ENTITIES
+Search: "${group.group_name} correspondent banking SWIFT BIC legal entity".
+Target ONLY: (a) the primary HQ licensed banking entity, (b) dedicated CB-hub subsidiaries.
+For each candidate: call find_legal_entity_by_name to check if it already exists.
+• Exists → note its ID; update missing fields using update_legal_entity.
+• Does not exist → create with create_legal_entity linked to group_id ${group.id}.
+
+---
+STEP 3 — BIC CODES
+For every entity: call list_bics to check if a BIC is already linked.
+• BIC exists → use its ID; update missing fields using update_bic.
+• Missing → add with create_bic. Set is_headquarters=true for the primary HQ entity's BIC.
+
+---
+STEP 4 — CORRESPONDENT SERVICES
+For each BIC, identify all currencies that entity offers CB services in.
+Before creating: call list_correspondent_services to confirm no duplicate exists.
+• Exists → update missing details; do NOT create a duplicate.
+• Missing → create with create_correspondent_service (bic_id from list_bics).
+Onshore ONLY if entity's country is the home country of that currency's settlement infrastructure.
+
+---
+STEP 5 — FMI MEMBERSHIPS
+For the primary HQ entity (call check_fmi_membership before each create_fmi):
+• SWIFT (fmi_type "Messaging Networks")
+• ${rtgsLabel} (fmi_type "Payment Systems")
+• ${clsLine}
+
+---
+Work all 5 steps fully. End with a summary.`;
+}
+
+function JobStatusBadge({ job }: { job: AgentJob }) {
+  const scope = (job.currency_scope || "home_only") as CurrencyScope;
+  const scopeLabel = SCOPE_LABELS[scope];
+  const isLight = (job as any).job_mode === "light";
+  const modeLabel = isLight ? "Light (gpt-4o-mini)" : "Normal (gpt-4o)";
+  const tooltip = `${modeLabel} · ${scopeLabel}`;
+
+  if (job.status === "pending") return (
+    <Badge className="bg-slate-100 text-slate-600 border-slate-200 text-xs gap-1 shrink-0" title={tooltip}>
+      {isLight ? <Zap className="w-3 h-3 text-amber-500" /> : <Clock className="w-3 h-3" />} Queued
+    </Badge>
+  );
+  if (job.status === "running") return (
+    <Badge className="bg-blue-100 text-blue-700 border-blue-200 text-xs gap-1 shrink-0" title={tooltip}>
+      <Loader2 className="w-3 h-3 animate-spin" /> Running {job.steps_completed ? `(${job.steps_completed})` : ""}
+    </Badge>
+  );
+  if (job.status === "completed") return (
+    <Badge className="bg-emerald-100 text-emerald-700 border-emerald-200 text-xs gap-1 shrink-0" title={tooltip}>
+      <CheckCircle2 className="w-3 h-3" /> Done ({job.steps_completed})
+    </Badge>
+  );
+  if (job.status === "failed") return (
+    <Badge className="bg-red-100 text-red-700 border-red-200 text-xs gap-1 shrink-0" title={`${tooltip}${job.error_message ? ` · ${job.error_message}` : ""}`}>
+      <XCircle className="w-3 h-3" /> Failed
+    </Badge>
+  );
+  return null;
+}
+
+type MergeDialog =
+  | { type: "group"; keepId: string; keepName: string; deleteId: string; deleteName: string }
+  | { type: "entity"; keepId: string; keepName: string; deleteId: string; deleteName: string }
+  | null;
+
 export default function Providers() {
-  const [location, setLocation] = useLocation();
+  const [, setLocation] = useLocation();
+  const { toast } = useToast();
+
+  // Filters
   const [search, setSearch] = useState("");
   const [filterCurrency, setFilterCurrency] = useState("all");
   const [filterServiceType, setFilterServiceType] = useState("all");
   const [filterGsib, setFilterGsib] = useState("all");
   const [sortBy, setSortBy] = useState("name");
+
+  // Job mode / scope
+  const [jobMode, setJobMode] = useState<JobMode>("normal");
+  const [currencyScope, setCurrencyScope] = useState<CurrencyScope>("home_only");
+
+  // Expand state
   const [expandedGroups, setExpandedGroups] = useState<Record<string, boolean>>({});
   const [expandedEntities, setExpandedEntities] = useState<Record<string, boolean>>({});
+
+  // Multi-select
+  const [selectedGroups, setSelectedGroups] = useState<Set<string>>(new Set());
+  const [selectedEntities, setSelectedEntities] = useState<Set<string>>(new Set());
+
+  // Merge dialog
+  const [mergeDialog, setMergeDialog] = useState<MergeDialog>(null);
 
   useEffect(() => {
     const params = new URLSearchParams(window.location.search);
@@ -28,16 +151,49 @@ export default function Providers() {
     if (s) setSearch(s);
   }, []);
 
+  // Data queries
   const { data: groups = [], isLoading: lg } = useQuery<BankingGroup[]>({ queryKey: ["/api/banking-groups"] });
   const { data: entities = [], isLoading: le } = useQuery<LegalEntity[]>({ queryKey: ["/api/legal-entities"] });
   const { data: bics = [], isLoading: lb } = useQuery<Bic[]>({ queryKey: ["/api/bics"] });
   const { data: services = [], isLoading: ls } = useQuery<CorrespondentService[]>({ queryKey: ["/api/correspondent-services"] });
   const { data: fmis = [], isLoading: lf } = useQuery<Fmi[]>({ queryKey: ["/api/fmis"] });
+  const { data: jobs = [] } = useQuery<AgentJob[]>({
+    queryKey: ["/api/jobs"],
+    refetchInterval: (query) => {
+      const data = query.state.data as AgentJob[] | undefined;
+      const hasActive = data?.some(j => j.status === "pending" || j.status === "running");
+      return hasActive ? 5000 : 30000;
+    },
+  });
 
   const loading = lg || le || lb || ls || lf;
 
+  // Helpers
   const toggleGroup = (id: string) => setExpandedGroups(p => ({ ...p, [id]: !p[id] }));
   const toggleEntity = (id: string) => setExpandedEntities(p => ({ ...p, [id]: !p[id] }));
+
+  const toggleGroupSelect = (id: string, e: React.MouseEvent) => {
+    e.stopPropagation();
+    setSelectedGroups(prev => {
+      const next = new Set(prev);
+      next.has(id) ? next.delete(id) : next.add(id);
+      return next;
+    });
+  };
+
+  const toggleEntitySelect = (id: string, e: React.MouseEvent) => {
+    e.stopPropagation();
+    setSelectedEntities(prev => {
+      const next = new Set(prev);
+      next.has(id) ? next.delete(id) : next.add(id);
+      return next;
+    });
+  };
+
+  const clearSelection = () => {
+    setSelectedGroups(new Set());
+    setSelectedEntities(new Set());
+  };
 
   const getEntitiesForGroup = (groupId: string) => entities.filter(e => e.group_id === groupId);
   const getBicsForEntity = (entityId: string) => bics.filter(b => b.legal_entity_id === entityId);
@@ -50,6 +206,66 @@ export default function Providers() {
   const isEntityClsMember = (entityId: string) => fmis.some(f => f.legal_entity_id === entityId && (f.fmi_name === "CLS" || f.fmi_type === "FX Settlement Systems"));
   const groupHasClsMember = (groupId: string) => getEntitiesForGroup(groupId).some(e => isEntityClsMember(e.id));
 
+  const jobByGroup = (groupId: string): AgentJob | undefined => {
+    const groupJobs = jobs.filter(j => j.banking_group_id === groupId);
+    return groupJobs.sort((a, b) => new Date(b.queued_at!).getTime() - new Date(a.queued_at!).getTime())[0];
+  };
+
+  // Mutations
+  const queueMutation = useMutation({
+    mutationFn: (vars: { groupId: string; groupName: string; scope: CurrencyScope; mode: JobMode }) =>
+      apiRequest("POST", "/api/jobs", {
+        banking_group_id: vars.groupId,
+        banking_group_name: vars.groupName,
+        currency_scope: vars.scope,
+        job_mode: vars.mode,
+      }).then(r => r.json()),
+    onSuccess: (_data, vars) => {
+      queryClient.invalidateQueries({ queryKey: ["/api/jobs"] });
+      toast({ title: "Job queued", description: vars.mode === "light" ? `Light setup for ${vars.groupName}` : `Normal setup for ${vars.groupName}` });
+    },
+    onError: (err: any) => toast({ title: "Could not queue job", description: err.message, variant: "destructive" }),
+  });
+
+  const queueAllMutation = useMutation({
+    mutationFn: (vars: { groupIds: { id: string; name: string }[]; scope: CurrencyScope; mode: JobMode }) =>
+      apiRequest("POST", "/api/jobs/queue-all", { group_ids: vars.groupIds, currency_scope: vars.scope, job_mode: vars.mode }).then(r => r.json()),
+    onSuccess: (data, vars) => {
+      queryClient.invalidateQueries({ queryKey: ["/api/jobs"] });
+      toast({ title: `${data.queued} jobs queued`, description: `${vars.mode === "light" ? "Light" : "Normal"} mode` });
+      clearSelection();
+    },
+    onError: (err: any) => toast({ title: "Queue all failed", description: err.message, variant: "destructive" }),
+  });
+
+  const mergeGroupsMutation = useMutation({
+    mutationFn: (vars: { keep_id: string; delete_id: string }) =>
+      apiRequest("POST", "/api/banking-groups/merge", vars).then(r => r.json()),
+    onSuccess: (data) => {
+      queryClient.invalidateQueries({ queryKey: ["/api/banking-groups"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/legal-entities"] });
+      toast({ title: "Groups merged", description: `Moved ${data.moved_entities} entities. Deleted group removed.` });
+      setMergeDialog(null);
+      clearSelection();
+    },
+    onError: (err: any) => toast({ title: "Merge failed", description: err.message, variant: "destructive" }),
+  });
+
+  const mergeEntitiesMutation = useMutation({
+    mutationFn: (vars: { keep_id: string; delete_id: string }) =>
+      apiRequest("POST", "/api/legal-entities/merge", vars).then(r => r.json()),
+    onSuccess: (data) => {
+      queryClient.invalidateQueries({ queryKey: ["/api/legal-entities"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/bics"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/fmis"] });
+      toast({ title: "Entities merged", description: `Moved ${data.moved_bics} BICs, ${data.moved_fmis} FMI records. Deleted entity removed.` });
+      setMergeDialog(null);
+      clearSelection();
+    },
+    onError: (err: any) => toast({ title: "Merge failed", description: err.message, variant: "destructive" }),
+  });
+
+  // Filtering + sorting
   const groupMatchesFilters = (group: BankingGroup) => {
     if (filterGsib !== "all" && group.gsib_status !== filterGsib) return false;
     if (search) {
@@ -71,12 +287,44 @@ export default function Providers() {
     if (sortBy === "name") return (a.group_name || "").localeCompare(b.group_name || "");
     if (sortBy === "country") return (a.headquarters_country || "").localeCompare(b.headquarters_country || "");
     if (sortBy === "services") {
-      const aCount = getEntitiesForGroup(a.id).flatMap(e => getBicsForEntity(e.id)).flatMap(b => getServicesForBic(b.id)).length;
-      const bCount = getEntitiesForGroup(b.id).flatMap(e => getBicsForEntity(e.id)).flatMap(b => getServicesForBic(b.id)).length;
-      return bCount - aCount;
+      const aC = getEntitiesForGroup(a.id).flatMap(e => getBicsForEntity(e.id)).flatMap(b => getServicesForBic(b.id)).length;
+      const bC = getEntitiesForGroup(b.id).flatMap(e => getBicsForEntity(e.id)).flatMap(b => getServicesForBic(b.id)).length;
+      return bC - aC;
     }
     return 0;
   });
+
+  // Merge dialog helpers
+  const openGroupMergeDialog = () => {
+    const ids = [...selectedGroups];
+    if (ids.length !== 2) return;
+    const [a, b] = ids.map(id => groups.find(g => g.id === id)!);
+    setMergeDialog({ type: "group", keepId: a.id, keepName: a.group_name, deleteId: b.id, deleteName: b.group_name });
+  };
+
+  const openEntityMergeDialog = () => {
+    const ids = [...selectedEntities];
+    if (ids.length !== 2) return;
+    const [a, b] = ids.map(id => entities.find(e => e.id === id)!);
+    setMergeDialog({ type: "entity", keepId: a.id, keepName: a.legal_name, deleteId: b.id, deleteName: b.legal_name });
+  };
+
+  const swapMergeDialog = () => {
+    if (!mergeDialog) return;
+    setMergeDialog({ ...mergeDialog, keepId: mergeDialog.deleteId, keepName: mergeDialog.deleteName, deleteId: mergeDialog.keepId, deleteName: mergeDialog.keepName });
+  };
+
+  const confirmMerge = () => {
+    if (!mergeDialog) return;
+    if (mergeDialog.type === "group") {
+      mergeGroupsMutation.mutate({ keep_id: mergeDialog.keepId, delete_id: mergeDialog.deleteId });
+    } else {
+      mergeEntitiesMutation.mutate({ keep_id: mergeDialog.keepId, delete_id: mergeDialog.deleteId });
+    }
+  };
+
+  const hasSelection = selectedGroups.size > 0 || selectedEntities.size > 0;
+  const selectedGroupObjects = [...selectedGroups].map(id => groups.find(g => g.id === id)).filter(Boolean) as BankingGroup[];
 
   if (loading) return (
     <div className="flex items-center justify-center h-64">
@@ -85,27 +333,34 @@ export default function Providers() {
   );
 
   return (
-    <div className="space-y-6">
+    <div className="space-y-6 pb-24">
       <div>
         <h1 className="text-2xl font-bold text-slate-900">Banking Groups</h1>
         <p className="text-slate-500 text-sm mt-1">Browse banking groups, entities, BICs and correspondent services</p>
       </div>
 
-      <div className="flex flex-wrap gap-3">
+      {/* Filter bar */}
+      <div className="flex flex-wrap gap-3 items-center">
         <div className="relative flex-1 min-w-48">
           <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
-          <Input data-testid="input-search-providers" placeholder="Search bank, BIC, country..." className="pl-9" value={search} onChange={e => setSearch(e.target.value)} />
+          <Input
+            data-testid="input-search-providers"
+            placeholder="Search bank, BIC, country..."
+            className="pl-9"
+            value={search}
+            onChange={e => setSearch(e.target.value)}
+          />
         </div>
         <Select value={filterCurrency} onValueChange={setFilterCurrency}>
           <SelectTrigger className="w-32" data-testid="select-filter-currency"><SelectValue placeholder="Currency" /></SelectTrigger>
           <SelectContent>{CURRENCIES.map(c => <SelectItem key={c} value={c}>{c === "all" ? "All Currencies" : c}</SelectItem>)}</SelectContent>
         </Select>
         <Select value={filterServiceType} onValueChange={setFilterServiceType}>
-          <SelectTrigger className="w-48" data-testid="select-filter-service-type"><SelectValue placeholder="Service Type" /></SelectTrigger>
+          <SelectTrigger className="w-44" data-testid="select-filter-service-type"><SelectValue placeholder="Service Type" /></SelectTrigger>
           <SelectContent>{SERVICE_TYPES.map(s => <SelectItem key={s} value={s}>{s === "all" ? "All Service Types" : s}</SelectItem>)}</SelectContent>
         </Select>
         <Select value={filterGsib} onValueChange={setFilterGsib}>
-          <SelectTrigger className="w-36" data-testid="select-filter-gsib"><SelectValue placeholder="SIB Status" /></SelectTrigger>
+          <SelectTrigger className="w-32" data-testid="select-filter-gsib"><SelectValue placeholder="SIB Status" /></SelectTrigger>
           <SelectContent>
             <SelectItem value="all">All Banks</SelectItem>
             <SelectItem value="G-SIB">G-SIB</SelectItem>
@@ -114,13 +369,55 @@ export default function Providers() {
           </SelectContent>
         </Select>
         <Select value={sortBy} onValueChange={setSortBy}>
-          <SelectTrigger className="w-40" data-testid="select-sort-by"><SelectValue placeholder="Sort By" /></SelectTrigger>
+          <SelectTrigger className="w-36" data-testid="select-sort-by"><SelectValue placeholder="Sort By" /></SelectTrigger>
           <SelectContent>
-            <SelectItem value="name">Name (A-Z)</SelectItem>
-            <SelectItem value="country">Country (A-Z)</SelectItem>
+            <SelectItem value="name">Name (A–Z)</SelectItem>
+            <SelectItem value="country">Country (A–Z)</SelectItem>
             <SelectItem value="services">Services (Most)</SelectItem>
           </SelectContent>
         </Select>
+
+        {/* Mode toggle */}
+        <div className="flex rounded-lg border border-slate-200 overflow-hidden text-sm" data-testid="mode-selector-providers">
+          <button
+            data-testid="mode-light-providers"
+            title="Light: gpt-4o-mini, no web search, ~$0.01/group"
+            onClick={() => { setJobMode("light"); setCurrencyScope("home_only"); }}
+            className={`flex items-center gap-1 px-3 py-1.5 transition-colors border-r border-slate-200 ${
+              jobMode === "light" ? "bg-amber-500 text-white font-medium" : "bg-white text-slate-600 hover:bg-slate-50"
+            }`}
+          >
+            <Zap className="w-3 h-3" /> Light
+          </button>
+          <button
+            data-testid="mode-normal-providers"
+            title="Normal: gpt-4o, conditional web search, ~$0.07/group"
+            onClick={() => setJobMode("normal")}
+            className={`flex items-center gap-1 px-3 py-1.5 transition-colors ${
+              jobMode === "normal" ? "bg-blue-600 text-white font-medium" : "bg-white text-slate-600 hover:bg-slate-50"
+            }`}
+          >
+            <Bot className="w-3 h-3" /> Normal
+          </button>
+        </div>
+
+        {/* Scope selector — only for Normal mode */}
+        {jobMode === "normal" && (
+          <div className="flex rounded-lg border border-slate-200 overflow-hidden text-sm" data-testid="scope-selector-providers">
+            {SCOPE_OPTIONS.map(opt => (
+              <button
+                key={opt.value}
+                data-testid={`scope-${opt.value}-providers`}
+                onClick={() => setCurrencyScope(opt.value)}
+                className={`px-3 py-1.5 transition-colors border-r border-slate-200 last:border-r-0 ${
+                  currencyScope === opt.value ? "bg-blue-600 text-white font-medium" : "bg-white text-slate-600 hover:bg-slate-50"
+                }`}
+              >
+                {opt.label}
+              </button>
+            ))}
+          </div>
+        )}
       </div>
 
       <div className="text-sm text-slate-500">{filteredGroups.length} banking group{filteredGroups.length !== 1 ? "s" : ""}</div>
@@ -133,100 +430,128 @@ export default function Providers() {
         <div className="space-y-3">
           {sortedGroups.map(group => {
             const groupEntities = getEntitiesForGroup(group.id);
+            const totalBics = groupEntities.flatMap(e => getBicsForEntity(e.id)).length;
             const totalServices = groupEntities.flatMap(e => getBicsForEntity(e.id)).flatMap(b => getServicesForBic(b.id)).length;
             const currencies = [...new Set(groupEntities.flatMap(e => getBicsForEntity(e.id)).flatMap(b => getServicesForBic(b.id)).map(s => s.currency).filter(Boolean))];
+            const isSelected = selectedGroups.has(group.id);
+            const job = jobByGroup(group.id);
+            const isJobActive = job && (job.status === "pending" || job.status === "running");
 
             return (
-              <Card key={group.id} className="border-0 shadow-sm overflow-hidden" data-testid={`card-group-${group.id}`}>
-                <div className="flex items-center gap-3 p-4 cursor-pointer hover:bg-slate-50 transition-colors" onClick={() => toggleGroup(group.id)}>
-                  {expandedGroups[group.id] ? <ChevronDown className="w-4 h-4 text-slate-400" /> : <ChevronRight className="w-4 h-4 text-slate-400" />}
-                  <div className="flex-1">
+              <Card
+                key={group.id}
+                className={`border shadow-sm overflow-hidden transition-colors ${isSelected ? "border-blue-400 bg-blue-50/30" : "border-slate-200"}`}
+                data-testid={`card-group-${group.id}`}
+              >
+                <div className="flex items-center gap-2 p-4">
+                  {/* Checkbox */}
+                  <button
+                    data-testid={`checkbox-group-${group.id}`}
+                    title={isSelected ? "Deselect group" : "Select group"}
+                    onClick={e => toggleGroupSelect(group.id, e)}
+                    className="text-slate-400 hover:text-blue-600 transition-colors shrink-0"
+                  >
+                    {isSelected ? <CheckSquare className="w-4 h-4 text-blue-600" /> : <Square className="w-4 h-4" />}
+                  </button>
+
+                  {/* Expand chevron */}
+                  <button
+                    className="text-slate-400 shrink-0"
+                    onClick={() => toggleGroup(group.id)}
+                    data-testid={`chevron-group-${group.id}`}
+                  >
+                    {expandedGroups[group.id] ? <ChevronDown className="w-4 h-4" /> : <ChevronRight className="w-4 h-4" />}
+                  </button>
+
+                  {/* Name + metadata */}
+                  <div className="flex-1 min-w-0 cursor-pointer" onClick={() => toggleGroup(group.id)}>
                     <div className="flex items-center gap-2 flex-wrap">
                       <span className="font-semibold text-slate-900">{group.group_name}</span>
                       {group.gsib_status === "G-SIB" && <Badge className="bg-purple-100 text-purple-700 border-purple-200 text-xs"><ShieldCheck className="w-3 h-3 mr-1" />G-SIB</Badge>}
                       {group.gsib_status === "D-SIB" && <Badge className="bg-blue-100 text-blue-700 border-blue-200 text-xs"><ShieldCheck className="w-3 h-3 mr-1" />D-SIB</Badge>}
-                      {groupHasClsMember(group.id) && <Badge className="bg-teal-100 text-teal-700 border-teal-200 text-xs"><Globe className="w-3 h-3 mr-1" />CLS Member</Badge>}
+                      {groupHasClsMember(group.id) && <Badge className="bg-teal-100 text-teal-700 border-teal-200 text-xs"><Globe className="w-3 h-3 mr-1" />CLS</Badge>}
                       {group.rtgs_member && group.rtgs_system && <Badge className="bg-green-100 text-green-700 border-green-200 text-xs"><Radio className="w-3 h-3 mr-1" />{group.rtgs_system}</Badge>}
                       {group.cb_probability === "High" && <Badge className="bg-emerald-100 text-emerald-700 border-emerald-200 text-xs"><TrendingUp className="w-3 h-3 mr-1" />CB: High</Badge>}
-                      {group.cb_probability === "Medium" && <Badge className="bg-amber-100 text-amber-700 border-amber-200 text-xs"><TrendingUp className="w-3 h-3 mr-1" />CB: Medium</Badge>}
+                      {group.cb_probability === "Medium" && <Badge className="bg-amber-100 text-amber-700 border-amber-200 text-xs"><TrendingUp className="w-3 h-3 mr-1" />CB: Med</Badge>}
                       {group.cb_probability === "Low" && <Badge className="bg-orange-100 text-orange-700 border-orange-200 text-xs"><TrendingUp className="w-3 h-3 mr-1" />CB: Low</Badge>}
-                      {group.headquarters_country && <Badge variant="outline" className="text-xs">{group.headquarters_country}</Badge>}
-                      {group.primary_currency && <Badge variant="outline" className="text-xs font-mono">{group.primary_currency}</Badge>}
                     </div>
-                    <div className="flex flex-wrap gap-1 mt-2">
-                      {currencies.slice(0, 10).map(c => <span key={c} className="text-xs bg-blue-50 text-blue-600 rounded px-1.5 py-0.5">{c}</span>)}
-                      {currencies.length > 10 && <span className="text-xs text-slate-400">+{currencies.length - 10}</span>}
-                    </div>
+                    {(group.headquarters_country || group.primary_currency) && (
+                      <div className="flex items-center gap-1.5 mt-0.5">
+                        {group.headquarters_country && <span className="text-xs text-slate-400">{group.headquarters_country}</span>}
+                        {group.headquarters_country && group.primary_currency && <span className="text-xs text-slate-300">·</span>}
+                        {group.primary_currency && <span className="font-mono text-xs text-blue-600">{group.primary_currency}</span>}
+                      </div>
+                    )}
+                    {currencies.length > 0 && (
+                      <div className="flex flex-wrap gap-1 mt-1.5">
+                        {currencies.slice(0, 10).map(c => <span key={c} className="text-xs bg-blue-50 text-blue-600 rounded px-1.5 py-0.5">{c}</span>)}
+                        {currencies.length > 10 && <span className="text-xs text-slate-400">+{currencies.length - 10}</span>}
+                      </div>
+                    )}
                   </div>
-                  <div className="flex items-center gap-3">
-                    <div className="text-right text-xs text-slate-500">
+
+                  {/* Right side: stats + job status + actions */}
+                  <div className="flex items-center gap-2 shrink-0">
+                    <div className="text-right text-xs text-slate-400 hidden sm:block">
                       <div>{groupEntities.length} entit{groupEntities.length !== 1 ? "ies" : "y"}</div>
-                      <div>{totalServices} service{totalServices !== 1 ? "s" : ""}</div>
+                      <div>{totalServices} svc{totalServices !== 1 ? "s" : ""}</div>
                     </div>
-                    <Button
-                      size="sm"
-                      variant="outline"
-                      className="text-xs h-7 px-2 text-blue-600 border-blue-200 hover:bg-blue-50 shrink-0"
-                      data-testid={`button-cb-setup-${group.id}`}
-                      onClick={e => {
-                        e.stopPropagation();
-                        const totalBics = groupEntities.flatMap(en => getBicsForEntity(en.id)).length;
-                        const CLS_CCY = new Set(["AUD","CAD","CHF","DKK","EUR","GBP","HKD","JPY","MXN","NOK","NZD","SEK","SGD","USD","ILS","ZAR","KRW","HUF"]);
-                        const rtgsLabel = group.rtgs_system || (group.primary_currency ? `identify RTGS for ${group.primary_currency}` : "not identified");
-                        const clsLine = group.primary_currency && CLS_CCY.has(group.primary_currency)
-                          ? `CLS (fmi_type "FX Settlement Systems") — ${group.primary_currency} is a CLS-eligible currency; check direct settlement membership`
-                          : `CLS — verify whether ${group.primary_currency || "the home currency"} participates in CLS`;
-                        const prompt = `Run the CB Entity Setup workflow for ${group.group_name}${group.headquarters_country ? ` (${group.headquarters_country})` : ""} [Scope: all currencies]
-Group ID: ${group.id} | Home currency: ${group.primary_currency || "not set"} | RTGS: ${rtgsLabel} | CB probability: ${group.cb_probability || "not set"}
-Current DB state: ${groupEntities.length} legal entit${groupEntities.length !== 1 ? "ies" : "y"}, ${totalBics} BIC${totalBics !== 1 ? "s" : ""}, ${totalServices} service${totalServices !== 1 ? "s" : ""} recorded.
 
----
-STEP 1 — VERIFY BANKING GROUP RECORD
-Locate this group using list_banking_groups (ID: ${group.id}).
-If any of the following fields are missing, research and fill them now using update_banking_group before proceeding:
-• primary_currency  • rtgs_system  • rtgs_member (boolean)  • cb_probability (High/Medium/Low/Unconfirmed)  • cb_evidence (one-sentence summary)
+                    {job && <JobStatusBadge job={job} />}
 
----
-STEP 2 — IDENTIFY CORRESPONDENT BANKING LEGAL ENTITIES
-Search: "${group.group_name} correspondent banking SWIFT BIC legal entity".
-Target ONLY: (a) the primary HQ licensed banking entity, (b) dedicated CB-hub subsidiaries that directly operate CB business for external financial institutions.
-Do NOT add every subsidiary — be selective; prefer fewer high-confidence entities over many speculative ones.
-For each candidate: call find_legal_entity_by_name to check if it already exists.
-• Exists → note its ID; update any missing fields (country, entity_type, notes) using update_legal_entity.
-• Does not exist → create with create_legal_entity linked to group_id ${group.id}.
-
----
-STEP 3 — BIC CODES
-For every entity identified in Step 2: call list_bics to check if a BIC is already linked to it.
-• BIC exists → use its ID; update any missing fields using update_bic.
-• Missing → add with create_bic. Set is_headquarters=true and swift_member=true for the primary HQ entity's BIC.
-
----
-STEP 4 — CORRESPONDENT SERVICES
-For each BIC, identify and add all currencies that entity is known to offer Correspondent Banking services in. Include the home currency${group.primary_currency ? ` (${group.primary_currency})` : ""} plus any additional currencies confirmed through research.
-Before creating any service: call list_correspondent_services and confirm no existing record exists for that BIC + currency combination.
-• Exists → update with any missing details using update_correspondent_service; do NOT create a duplicate.
-• Missing → create with create_correspondent_service. bic_id must be a real UUID obtained from list_bics.
-For clearing_model: Onshore ONLY if the BIC entity's country is the home country/region of that currency's settlement infrastructure (e.g. EUR for a Eurozone entity, USD for a US entity, GBP for a UK entity). All other currencies offered by that entity are Offshore.
-
----
-STEP 5 — FMI MEMBERSHIPS
-For the primary HQ entity, proactively check and record the following (call check_fmi_membership before each create_fmi):
-• SWIFT (fmi_type "Messaging Networks") — virtually all major international banks are SWIFT members; confirm and record
-• ${rtgsLabel} (fmi_type "Payment Systems") — check whether this entity is a direct participant; search "${group.group_name} ${rtgsLabel} direct participant" to confirm
-• ${clsLine}
-• Any additional FMIs discovered during research (Euroclear, Clearstream, Fedwire, CHAPS, CHIPS, LCH, etc.)
-
----
-Work all 5 steps fully. End with a summary: entities added/updated | BICs added | services created | FMI memberships recorded | any issues.`;
-                        setLocation(`/agent?prompt=${encodeURIComponent(prompt)}&conv=${encodeURIComponent(`CB Setup: ${group.group_name}`)}`);
-                      }}
-                    >
-                      <Bot className="w-3 h-3 mr-1" />CB Setup
-                    </Button>
+                    {/* Action buttons */}
+                    <div className="flex items-center gap-1">
+                      {isJobActive ? (
+                        <Button
+                          size="sm" variant="outline"
+                          className="h-7 w-7 p-0 text-slate-400 border-slate-200"
+                          disabled
+                          title="Job in progress…"
+                        >
+                          <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                        </Button>
+                      ) : (
+                        <>
+                          <Button
+                            size="sm" variant="outline"
+                            className="h-7 w-7 p-0 text-amber-600 border-amber-200 hover:bg-amber-50"
+                            data-testid={`button-light-${group.id}`}
+                            title="Light setup: gpt-4o-mini · no web search · ~$0.01"
+                            disabled={queueMutation.isPending}
+                            onClick={e => { e.stopPropagation(); queueMutation.mutate({ groupId: group.id, groupName: group.group_name, scope: "home_only", mode: "light" }); }}
+                          >
+                            <Zap className="w-3.5 h-3.5" />
+                          </Button>
+                          <Button
+                            size="sm" variant="outline"
+                            className="h-7 w-7 p-0 text-blue-600 border-blue-200 hover:bg-blue-50"
+                            data-testid={`button-normal-${group.id}`}
+                            title={`Normal setup: gpt-4o · web search · ${SCOPE_LABELS[currencyScope]}`}
+                            disabled={queueMutation.isPending}
+                            onClick={e => { e.stopPropagation(); queueMutation.mutate({ groupId: group.id, groupName: group.group_name, scope: currencyScope, mode: "normal" }); }}
+                          >
+                            <Bot className="w-3.5 h-3.5" />
+                          </Button>
+                        </>
+                      )}
+                      <Button
+                        size="sm" variant="ghost"
+                        className="h-7 w-7 p-0 text-slate-400 hover:text-slate-600"
+                        data-testid={`button-open-agent-${group.id}`}
+                        title="Open in agent chat"
+                        onClick={e => {
+                          e.stopPropagation();
+                          const prompt = buildAgentPrompt(group, groupEntities.length, totalBics, totalServices);
+                          setLocation(`/agent?prompt=${encodeURIComponent(prompt)}&conv=${encodeURIComponent(`CB Setup: ${group.group_name}`)}`);
+                        }}
+                      >
+                        <ExternalLink className="w-3.5 h-3.5" />
+                      </Button>
+                    </div>
                   </div>
                 </div>
 
+                {/* Expanded: group metadata + entities */}
                 {expandedGroups[group.id] && (
                   <div className="border-t border-slate-100">
                     {(group.rtgs_system || group.cb_probability || group.cb_evidence) && (
@@ -241,19 +566,36 @@ Work all 5 steps fully. End with a summary: entities added/updated | BICs added 
                     ) : (
                       groupEntities.map(entity => {
                         const entityBics = getBicsForEntity(entity.id);
+                        const isEntitySelected = selectedEntities.has(entity.id);
                         return (
-                          <div key={entity.id} className="border-b border-slate-50 last:border-0">
-                            <div className="flex items-center gap-3 px-8 py-3 cursor-pointer hover:bg-slate-50 transition-colors" onClick={() => toggleEntity(entity.id)}>
-                              {expandedEntities[entity.id] ? <ChevronDown className="w-3 h-3 text-slate-400" /> : <ChevronRight className="w-3 h-3 text-slate-400" />}
+                          <div key={entity.id} className={`border-b border-slate-50 last:border-0 ${isEntitySelected ? "bg-blue-50/40" : ""}`}>
+                            <div
+                              className="flex items-center gap-2 px-6 py-3 cursor-pointer hover:bg-slate-50 transition-colors"
+                              onClick={() => toggleEntity(entity.id)}
+                            >
+                              {/* Entity checkbox */}
+                              <button
+                                data-testid={`checkbox-entity-${entity.id}`}
+                                title={isEntitySelected ? "Deselect entity" : "Select entity"}
+                                onClick={e => toggleEntitySelect(entity.id, e)}
+                                className="text-slate-300 hover:text-blue-500 transition-colors shrink-0"
+                              >
+                                {isEntitySelected ? <CheckSquare className="w-3.5 h-3.5 text-blue-500" /> : <Square className="w-3.5 h-3.5" />}
+                              </button>
+
+                              {expandedEntities[entity.id]
+                                ? <ChevronDown className="w-3 h-3 text-slate-400 shrink-0" />
+                                : <ChevronRight className="w-3 h-3 text-slate-400 shrink-0" />}
+
                               <div className="flex-1">
                                 <div className="flex items-center gap-2 flex-wrap">
                                   <span className="text-sm font-medium text-slate-800">{entity.legal_name}</span>
-                                  {isEntityClsMember(entity.id) && <Badge className="bg-teal-100 text-teal-700 border-teal-200 text-xs"><Globe className="w-3 h-3 mr-1" />CLS Member</Badge>}
+                                  {isEntityClsMember(entity.id) && <Badge className="bg-teal-100 text-teal-700 border-teal-200 text-xs"><Globe className="w-3 h-3 mr-1" />CLS</Badge>}
+                                  {entity.entity_type && <Badge variant="outline" className="text-xs">{entity.entity_type}</Badge>}
                                 </div>
-                                <span className="text-xs text-slate-500">{entity.country}</span>
-                                {entity.entity_type && <Badge variant="outline" className="ml-2 text-xs">{entity.entity_type}</Badge>}
+                                {entity.country && <span className="text-xs text-slate-400">{entity.country}</span>}
                               </div>
-                              <span className="text-xs text-slate-400">{entityBics.length} BIC{entityBics.length !== 1 ? "s" : ""}</span>
+                              <span className="text-xs text-slate-400 shrink-0">{entityBics.length} BIC{entityBics.length !== 1 ? "s" : ""}</span>
                             </div>
 
                             {expandedEntities[entity.id] && (
@@ -291,9 +633,9 @@ Work all 5 steps fully. End with a summary: entities added/updated | BICs added 
                                                     <td className="py-1 pr-3 font-semibold text-slate-700">{svc.currency}</td>
                                                     <td className="py-1 pr-3 text-slate-600">{svc.service_type}</td>
                                                     <td className="py-1 pr-3">
-                                                      {svc.clearing_model ? (
-                                                        <span className={`px-1.5 py-0.5 rounded text-xs font-medium ${svc.clearing_model === "Onshore" ? "bg-emerald-50 text-emerald-700" : "bg-sky-50 text-sky-700"}`}>{svc.clearing_model}</span>
-                                                      ) : "—"}
+                                                      {svc.clearing_model
+                                                        ? <span className={`px-1.5 py-0.5 rounded text-xs font-medium ${svc.clearing_model === "Onshore" ? "bg-emerald-50 text-emerald-700" : "bg-sky-50 text-sky-700"}`}>{svc.clearing_model}</span>
+                                                        : "—"}
                                                     </td>
                                                     <td className="py-1 pr-3 text-center">{svc.rtgs_membership ? "✓" : "—"}</td>
                                                     <td className="py-1 pr-3 text-center">{svc.instant_scheme_access ? "✓" : "—"}</td>
@@ -321,6 +663,137 @@ Work all 5 steps fully. End with a summary: entities added/updated | BICs added 
           })}
         </div>
       )}
+
+      {/* Floating selection action bar */}
+      {hasSelection && (
+        <div
+          className="fixed bottom-6 left-1/2 -translate-x-1/2 z-50 bg-white border border-slate-200 rounded-2xl shadow-xl px-4 py-2.5 flex items-center gap-3 flex-wrap max-w-2xl"
+          data-testid="selection-action-bar"
+        >
+          <span className="text-sm text-slate-600 font-medium whitespace-nowrap">
+            {selectedGroups.size > 0 && `${selectedGroups.size} group${selectedGroups.size !== 1 ? "s" : ""}`}
+            {selectedGroups.size > 0 && selectedEntities.size > 0 && " · "}
+            {selectedEntities.size > 0 && `${selectedEntities.size} entit${selectedEntities.size !== 1 ? "ies" : "y"}`}
+          </span>
+
+          {selectedGroups.size > 0 && (
+            <>
+              <Button
+                size="sm"
+                className="h-7 text-xs bg-amber-500 hover:bg-amber-600 text-white gap-1"
+                data-testid="batch-queue-light"
+                disabled={queueAllMutation.isPending}
+                onClick={() => queueAllMutation.mutate({
+                  groupIds: selectedGroupObjects.map(g => ({ id: g.id, name: g.group_name })),
+                  scope: "home_only",
+                  mode: "light",
+                })}
+              >
+                <Zap className="w-3 h-3" /> Queue Light ({selectedGroups.size})
+              </Button>
+              <Button
+                size="sm"
+                className="h-7 text-xs bg-blue-600 hover:bg-blue-700 text-white gap-1"
+                data-testid="batch-queue-normal"
+                disabled={queueAllMutation.isPending}
+                onClick={() => queueAllMutation.mutate({
+                  groupIds: selectedGroupObjects.map(g => ({ id: g.id, name: g.group_name })),
+                  scope: currencyScope,
+                  mode: jobMode,
+                })}
+              >
+                <Bot className="w-3 h-3" /> Queue Normal ({selectedGroups.size})
+              </Button>
+              {selectedGroups.size === 2 && (
+                <Button
+                  size="sm"
+                  variant="outline"
+                  className="h-7 text-xs border-slate-300 text-slate-700 hover:bg-slate-50 gap-1"
+                  data-testid="batch-merge-groups"
+                  onClick={openGroupMergeDialog}
+                >
+                  Merge Groups
+                </Button>
+              )}
+            </>
+          )}
+
+          {selectedEntities.size === 2 && (
+            <Button
+              size="sm"
+              variant="outline"
+              className="h-7 text-xs border-slate-300 text-slate-700 hover:bg-slate-50 gap-1"
+              data-testid="batch-merge-entities"
+              onClick={openEntityMergeDialog}
+            >
+              Merge Entities
+            </Button>
+          )}
+
+          <button
+            data-testid="clear-selection"
+            title="Clear selection"
+            onClick={clearSelection}
+            className="ml-auto text-slate-400 hover:text-slate-600 transition-colors"
+          >
+            <X className="w-4 h-4" />
+          </button>
+        </div>
+      )}
+
+      {/* Merge confirmation dialog */}
+      <Dialog open={!!mergeDialog} onOpenChange={open => { if (!open) setMergeDialog(null); }}>
+        <DialogContent className="max-w-md" data-testid="merge-dialog">
+          <DialogHeader>
+            <DialogTitle>
+              {mergeDialog?.type === "group" ? "Merge Banking Groups" : "Merge Legal Entities"}
+            </DialogTitle>
+          </DialogHeader>
+          {mergeDialog && (
+            <div className="space-y-4 py-2">
+              <p className="text-sm text-slate-600">
+                The record marked <span className="font-medium text-red-600">Delete</span> will be permanently removed.
+                All its data (entities, BICs, FMI records) will be moved to the <span className="font-medium text-emerald-700">Keeper</span>.
+              </p>
+              <div className="space-y-2">
+                <div className="flex items-center gap-3 p-3 rounded-lg border border-emerald-200 bg-emerald-50">
+                  <CheckCircle2 className="w-4 h-4 text-emerald-600 shrink-0" />
+                  <div className="flex-1">
+                    <div className="text-xs font-medium text-emerald-700 uppercase tracking-wide mb-0.5">Keep</div>
+                    <div className="text-sm font-medium text-slate-900">{mergeDialog.keepName}</div>
+                  </div>
+                </div>
+                <div className="flex items-center gap-3 p-3 rounded-lg border border-red-200 bg-red-50">
+                  <XCircle className="w-4 h-4 text-red-500 shrink-0" />
+                  <div className="flex-1">
+                    <div className="text-xs font-medium text-red-600 uppercase tracking-wide mb-0.5">Delete</div>
+                    <div className="text-sm font-medium text-slate-900">{mergeDialog.deleteName}</div>
+                  </div>
+                </div>
+              </div>
+              <button
+                className="text-xs text-slate-400 hover:text-slate-600 underline"
+                onClick={swapMergeDialog}
+              >
+                Swap keeper / deleted
+              </button>
+            </div>
+          )}
+          <DialogFooter className="gap-2">
+            <Button variant="outline" onClick={() => setMergeDialog(null)}>Cancel</Button>
+            <Button
+              variant="destructive"
+              data-testid="confirm-merge"
+              disabled={mergeGroupsMutation.isPending || mergeEntitiesMutation.isPending}
+              onClick={confirmMerge}
+            >
+              {(mergeGroupsMutation.isPending || mergeEntitiesMutation.isPending)
+                ? <><Loader2 className="w-3.5 h-3.5 mr-1 animate-spin" /> Merging…</>
+                : "Confirm Merge"}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }

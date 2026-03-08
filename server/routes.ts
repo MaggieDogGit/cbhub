@@ -87,6 +87,17 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
     await storage.deleteBankingGroup(req.params.id);
     res.json({ ok: true });
   });
+  app.post("/api/banking-groups/merge", async (req, res) => {
+    const { keep_id, delete_id } = req.body;
+    if (!keep_id || !delete_id) return res.status(400).json({ message: "keep_id and delete_id are required" });
+    if (keep_id === delete_id) return res.status(400).json({ message: "keep_id and delete_id must be different" });
+    try {
+      const result = await storage.mergeBankingGroups(keep_id, delete_id);
+      res.json(result);
+    } catch (err: any) {
+      res.status(500).json({ message: err.message });
+    }
+  });
 
   // Legal Entities
   app.get("/api/legal-entities", async (_req, res) => {
@@ -103,6 +114,17 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
   app.delete("/api/legal-entities/:id", async (req, res) => {
     await storage.deleteLegalEntity(req.params.id);
     res.json({ ok: true });
+  });
+  app.post("/api/legal-entities/merge", async (req, res) => {
+    const { keep_id, delete_id } = req.body;
+    if (!keep_id || !delete_id) return res.status(400).json({ message: "keep_id and delete_id are required" });
+    if (keep_id === delete_id) return res.status(400).json({ message: "keep_id and delete_id must be different" });
+    try {
+      const result = await storage.mergeLegalEntities(keep_id, delete_id);
+      res.json(result);
+    } catch (err: any) {
+      res.status(500).json({ message: err.message });
+    }
   });
 
   // BICs
