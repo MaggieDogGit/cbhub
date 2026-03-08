@@ -1,5 +1,5 @@
 import { storage } from "./storage";
-import { buildSystemPrompt, runAgentLoop } from "./agentCore";
+import { buildSystemPrompt, getLightTools, runAgentLoop } from "./agentCore";
 
 let isProcessing = false;
 
@@ -119,6 +119,50 @@ ${step5FmiLines}
 Work all 5 steps fully. End with a summary: entities added/updated | BICs added | services created | FMI memberships recorded | web searches performed | any issues.`;
 }
 
+function buildLightJobPrompt(
+  groupName: string,
+  groupId: string,
+  country: string | null | undefined,
+  primaryCurrency: string | null | undefined,
+  rtgsSystem: string | null | undefined,
+  rtgsMember: boolean | null | undefined,
+  snapshot: string,
+): string {
+  const hasEntities = !snapshot.startsWith("No entities");
+  const rtgsConfirmed = !!rtgsMember && !!rtgsSystem;
+  const taskE = rtgsConfirmed
+    ? `E. RTGS FMI: Call check_fmi_membership(legal_entity_id=<entity ID from B>, fmi_name="${rtgsSystem}"). If not exists → call create_fmi(fmi_type="Payment Systems", fmi_name="${rtgsSystem}"). Do NOT search the web.`
+    : `E. RTGS FMI: Skip — RTGS not confirmed (rtgs_member is false or rtgs_system is unknown).`;
+
+  const snapshotNote = hasEntities
+    ? `CURRENT DB STATE — use these IDs directly for entities/BICs already shown:\n${snapshot}`
+    : `CURRENT DB STATE: No entities, BICs, or services recorded yet for this group.`;
+
+  return `Light CB Setup: ${groupName} [Home currency only]
+Group ID: ${groupId} | Country: ${country || "unknown"} | Currency: ${primaryCurrency || "not set"} | RTGS: ${rtgsSystem || "not set"} | RTGS confirmed: ${rtgsConfirmed ? "yes" : "no"}
+
+${snapshotNote}
+
+Complete ALL tasks below in ONE parallel batch of tool calls:
+
+A. GROUP: If primary_currency is "not set" above, call update_banking_group(id="${groupId}") to set the correct ISO currency for ${country || "the group's country"}. Skip if currency is already set.
+
+B. ENTITY: ${hasEntities ? `Entity already in DB STATE above — use its ID directly. Skip create.` : `Call find_legal_entity_by_name("${groupName}"). If not found → call create_legal_entity(group_id="${groupId}", legal_name="${groupName}", entity_type="Bank", country="${country || ""}").`}
+
+C. BIC: ${hasEntities ? `BIC already in DB STATE above — use its ID directly. Skip create.` : `Call list_bics filtered to entity from B. If none → call create_bic(legal_entity_id=<entity ID>, bic_code="<derive from name + country: first 4 chars + CC + XXXX>", is_headquarters=true, swift_member=true). The user will correct the BIC code if needed.`}
+
+D. SWIFT FMI: Call check_fmi_membership(legal_entity_id=<entity ID from B>, fmi_name="SWIFT"). If not exists → call create_fmi(fmi_type="Messaging Networks", fmi_name="SWIFT"). Do NOT search the web.
+
+${taskE}
+
+F. SERVICE: Call list_correspondent_services filtered to BIC from C and currency="${primaryCurrency || "home currency"}". If none found → call create_correspondent_service(bic_id=<BIC ID>, currency="${primaryCurrency || "home currency"}", service_type="Correspondent Banking", clearing_model="Onshore", rtgs_membership=${rtgsConfirmed}, nostro_accounts_offered=true, vostro_accounts_offered=true). If already exists → skip.
+
+IMPORTANT: No web searches. All calls in parallel. End with exactly 3 lines:
+"Entity: [name | ID]"
+"BIC: [code | ID]"
+"Service: [created | already existed]"`;
+}
+
 async function processNextJob() {
   if (isProcessing) return;
 
@@ -128,10 +172,11 @@ async function processNextJob() {
 
   isProcessing = true;
   const scope: CurrencyScope = (pending.currency_scope as CurrencyScope) || "home_only";
-  console.log(`[JobRunner] Starting job ${pending.id} for ${pending.banking_group_name} (scope: ${scope})`);
+  const isLight = (pending as any).job_mode === "light";
+  console.log(`[JobRunner] Starting job ${pending.id} for ${pending.banking_group_name} (scope: ${scope}, mode: ${isLight ? "light" : "normal"})`);
 
   try {
-    const conv = await storage.createConversation({ name: `CB Setup: ${pending.banking_group_name}` });
+    const conv = await storage.createConversation({ name: `CB Setup${isLight ? " [Light]" : ""}: ${pending.banking_group_name}` });
     await storage.updateJob(pending.id, {
       status: "running",
       conversation_id: conv.id,
@@ -154,20 +199,30 @@ async function processNextJob() {
 
     const snapshot = buildGroupSnapshot(groupEntities, groupBics, groupServices);
 
-    const message = buildJobPrompt(
-      group.group_name,
-      group.id,
-      group.primary_currency,
-      group.cb_probability,
-      group.rtgs_system,
-      group.rtgs_member,
-      snapshot,
-      scope,
-    );
+    const message = isLight
+      ? buildLightJobPrompt(
+          group.group_name,
+          group.id,
+          group.headquarters_country,
+          group.primary_currency,
+          group.rtgs_system,
+          group.rtgs_member,
+          snapshot,
+        )
+      : buildJobPrompt(
+          group.group_name,
+          group.id,
+          group.primary_currency,
+          group.cb_probability,
+          group.rtgs_system,
+          group.rtgs_member,
+          snapshot,
+          scope,
+        );
 
     await storage.createMessage({ conversation_id: conv.id, role: "user", content: message });
 
-    const systemPrompt = buildSystemPrompt(sources, undefined, "job");
+    const systemPrompt = buildSystemPrompt(sources, undefined, isLight ? "light" : "job");
     const openaiMessages: any[] = [
       { role: "system", content: systemPrompt },
       { role: "user", content: message },
@@ -181,7 +236,10 @@ async function processNextJob() {
         console.log(`[JobRunner] ${pending.banking_group_name} — step ${stepCount}: ${statusText}`);
         await storage.updateJob(pending.id, { steps_completed: stepCount } as any);
       },
-      15
+      isLight ? 3 : 15,
+      "auto",
+      isLight ? "gpt-4o-mini" : "gpt-4o",
+      isLight ? getLightTools() : undefined,
     );
 
     await storage.createMessage({ conversation_id: conv.id, role: "assistant", content: assistantContent });

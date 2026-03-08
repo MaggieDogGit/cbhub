@@ -200,7 +200,17 @@ export async function executeTool(name: string, args: any): Promise<string> {
 
 // ── System prompt ─────────────────────────────────────────────────────────────
 
-export function buildSystemPrompt(storedSources: DataSource[], topic?: string, mode: "interactive" | "job" = "interactive"): string {
+export function buildSystemPrompt(storedSources: DataSource[], topic?: string, mode: "interactive" | "job" | "light" = "interactive"): string {
+  if (mode === "light") {
+    return `You are a structured database entry assistant for correspondent banking records. Your job is to create the minimum required records for a banking group using ONLY the data provided in the job prompt.
+
+RULES (all mandatory):
+- DO NOT search the web. You have no web search capability in this mode.
+- Complete all tool calls in a SINGLE parallel batch in your first response.
+- If a record already exists in the DB STATE snapshot, use its existing ID — skip creation.
+- Follow the lettered tasks exactly as written in the job prompt.
+- Output a brief 3-line summary only after completing the tool calls.`;
+  }
   const knownSourcesSection = storedSources.length > 0
     ? `\n\n---\n## KNOWN REFERENCE SOURCES (USE THESE FIRST)\nThe following authoritative sources are already stored. Before searching the web from scratch, check if any of these apply. When they do, use their URL directly in web_search.\n\n${
       (() => {
@@ -510,25 +520,49 @@ export function getTools(): any[] {
   ];
 }
 
+// ── Light tool set (12 essential tools — no web_search, no merge/delete) ─────
+
+export function getLightTools(): any[] {
+  const all = getTools();
+  const allowed = new Set([
+    "find_banking_group_by_name",
+    "update_banking_group",
+    "find_legal_entity_by_name",
+    "create_legal_entity",
+    "update_legal_entity",
+    "list_bics",
+    "create_bic",
+    "update_bic",
+    "check_fmi_membership",
+    "create_fmi",
+    "list_correspondent_services",
+    "create_correspondent_service",
+    "update_correspondent_service",
+  ]);
+  return all.filter((t: any) => allowed.has(t.function.name));
+}
+
 // ── Agent loop ────────────────────────────────────────────────────────────────
 
 export async function runAgentLoop(
   openaiMessages: any[],
   onStep?: StepCallback,
   maxIterations = 12,
-  firstIterToolChoice: "auto" | "required" | "none" = "auto"
+  firstIterToolChoice: "auto" | "required" | "none" = "auto",
+  model = "gpt-4o",
+  tools?: any[]
 ): Promise<string> {
   const messages = [...openaiMessages];
-  const tools = getTools();
+  const resolvedTools = tools ?? getTools();
 
   for (let i = 0; i < maxIterations; i++) {
     const toolChoice = i === 0 ? firstIterToolChoice : "auto";
 
     const response = await withRetry(
       () => openai.chat.completions.create({
-        model: "gpt-4o",
+        model,
         messages,
-        tools,
+        tools: resolvedTools,
         tool_choice: toolChoice,
       }),
       5,
