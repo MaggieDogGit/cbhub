@@ -1,8 +1,14 @@
 import { storage } from "./storage";
-import { buildFmiResearchPrompt, runFmiAgentLoop } from "./agentFmiResearch";
+import { buildFmiResearchPrompt, runFmiAgentLoop, isFmiJobComplete } from "./agentFmiResearch";
 
 let isFmiProcessing = false;
-const FMI_JOB_COOLDOWN_MS = 60_000;
+const FMI_JOB_COOLDOWN_MS = 30_000;
+const MAX_AUTO_REQUEUES = 15;
+
+async function countRecentJobsForFmi(fmiName: string): Promise<number> {
+  const jobs = await storage.listFmiResearchJobs();
+  return jobs.filter(j => j.fmi_name === fmiName && (j.status === "completed" || j.status === "failed")).length;
+}
 
 async function processNextFmiJob() {
   if (isFmiProcessing) return;
@@ -41,18 +47,17 @@ async function processNextFmiJob() {
         console.log(`[FmiJobRunner] ${pending.fmi_name} — step ${stepCount}: ${statusText}`);
         await storage.updateFmiResearchJob(pending.id, { steps_completed: stepCount });
       },
-      100 // Max steps — enough for 75 members each needing several tool calls
+      120
     );
 
-    // Create a message in the conversation
     await storage.createMessage({ conversation_id: conv.id, role: "assistant", content: assistantContent });
 
-    // Parse summary JSON from the final message
     let membersAdded = 0;
     let membersSkipped = 0;
     let summaryText = assistantContent;
+    const jobComplete = isFmiJobComplete(assistantContent);
 
-    const jsonMatch = assistantContent.match(/\{[\s\S]*\}/);
+    const jsonMatch = assistantContent.match(/\{[\s\S]*"members_found"[\s\S]*\}/);
     if (jsonMatch) {
       try {
         const summary = JSON.parse(jsonMatch[0]);
@@ -72,7 +77,18 @@ async function processNextFmiJob() {
       summary: summaryText,
     });
 
-    console.log(`[FmiJobRunner] Completed job ${pending.id} for ${pending.fmi_name}. Cooling down.`);
+    if (!jobComplete) {
+      const priorRuns = await countRecentJobsForFmi(pending.fmi_name);
+      if (priorRuns <= MAX_AUTO_REQUEUES) {
+        console.log(`[FmiJobRunner] Job ended without completion JSON — auto-requeueing (run ${priorRuns}/${MAX_AUTO_REQUEUES})`);
+        await storage.createFmiResearchJob({ fmi_name: pending.fmi_name, status: "pending" });
+      } else {
+        console.log(`[FmiJobRunner] Max re-queues (${MAX_AUTO_REQUEUES}) reached for ${pending.fmi_name}. Stopping.`);
+      }
+    } else {
+      console.log(`[FmiJobRunner] Job ${pending.id} fully completed for ${pending.fmi_name}.`);
+    }
+
   } catch (err: any) {
     console.error(`[FmiJobRunner] Job ${pending.id} failed:`, err.message);
     await storage.updateFmiResearchJob(pending.id, {
@@ -107,6 +123,5 @@ export async function startFmiJobRunner() {
     console.error("[FmiJobRunner] Failed to reset stuck jobs:", err.message);
   }
 
-  // Poll for pending jobs every 5s
   setInterval(processNextFmiJob, 5000);
 }

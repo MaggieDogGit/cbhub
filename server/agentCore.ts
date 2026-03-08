@@ -74,6 +74,23 @@ export function getStatusText(name: string, args: any): string {
 export async function executeTool(name: string, args: any): Promise<string> {
   try {
     switch (name) {
+      case "find_banking_group_by_name": {
+        const needle = (args.name_contains || "").toLowerCase();
+        const all = await storage.listBankingGroups();
+        const matches = all.filter(g => g.group_name.toLowerCase().includes(needle));
+        return JSON.stringify(matches.length ? matches.slice(0, 5) : { not_found: true, message: `No banking group found containing "${args.name_contains}"` });
+      }
+      case "find_legal_entity_by_name": {
+        const needle = (args.name_contains || "").toLowerCase();
+        const all = await storage.listLegalEntities();
+        const matches = all.filter(e => e.legal_name.toLowerCase().includes(needle));
+        return JSON.stringify(matches.length ? matches.slice(0, 5) : { not_found: true, message: `No legal entity found containing "${args.name_contains}"` });
+      }
+      case "check_fmi_membership": {
+        const all = await storage.listFmis();
+        const match = all.find(f => f.legal_entity_id === args.legal_entity_id && f.fmi_name === args.fmi_name);
+        return JSON.stringify(match ? { exists: true, id: match.id } : { exists: false });
+      }
       case "list_banking_groups": return JSON.stringify(await storage.listBankingGroups());
       case "create_banking_group": {
         const existing = await storage.listBankingGroups();
@@ -307,6 +324,9 @@ When you have proposed an action and the user responds with a short confirmation
 
 export function getTools(): any[] {
   return [
+    { type: "function", function: { name: "find_banking_group_by_name", description: "Search for a banking group by partial name match. Returns up to 5 matches. Use this instead of list_banking_groups when looking for a specific institution.", parameters: { type: "object", required: ["name_contains"], properties: { name_contains: { type: "string", description: "Partial name to search for, e.g. 'Goldman' or 'JPMorgan'" } } } } },
+    { type: "function", function: { name: "find_legal_entity_by_name", description: "Search for a legal entity by partial name match. Returns up to 5 matches. Use this instead of list_legal_entities when looking for a specific entity.", parameters: { type: "object", required: ["name_contains"], properties: { name_contains: { type: "string", description: "Partial name to search for, e.g. 'Goldman Sachs' or 'Barclays'" } } } } },
+    { type: "function", function: { name: "check_fmi_membership", description: "Check whether a specific FMI membership record already exists for a given legal entity and FMI. Returns {exists: true/false}.", parameters: { type: "object", required: ["legal_entity_id", "fmi_name"], properties: { legal_entity_id: { type: "string" }, fmi_name: { type: "string" } } } } },
     { type: "function", function: { name: "list_banking_groups", description: "List all banking groups in the database", parameters: { type: "object", properties: {} } } },
     { type: "function", function: { name: "create_banking_group", description: "Create a new banking group after completing the 4-criterion CB Provider assessment", parameters: { type: "object", required: ["group_name"], properties: { group_name: { type: "string" }, headquarters_country: { type: "string" }, primary_currency: { type: "string" }, rtgs_system: { type: "string" }, rtgs_member: { type: "boolean" }, cb_probability: { type: "string", enum: ["High", "Medium", "Low", "Unconfirmed"] }, cb_evidence: { type: "string" }, gsib_status: { type: "string", enum: ["G-SIB", "D-SIB", "N/A"] }, website: { type: "string" }, notes: { type: "string" } } } } },
     { type: "function", function: { name: "update_banking_group", description: "Update an existing banking group by ID", parameters: { type: "object", required: ["id"], properties: { id: { type: "string" }, group_name: { type: "string" }, headquarters_country: { type: "string" }, primary_currency: { type: "string" }, rtgs_system: { type: "string" }, rtgs_member: { type: "boolean" }, cb_probability: { type: "string", enum: ["High", "Medium", "Low", "Unconfirmed"] }, cb_evidence: { type: "string" }, gsib_status: { type: "string", enum: ["G-SIB", "D-SIB", "N/A"] }, website: { type: "string" }, notes: { type: "string" } } } } },

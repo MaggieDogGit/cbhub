@@ -8,84 +8,86 @@ export function buildFmiResearchPrompt(fmiName: string, fmiDetails: any): string
   const membershipUrlInfo = fmiDetails?.membership_url ? `Official member list URL: ${fmiDetails.membership_url}` : "";
   const description = fmiDetails?.description ? `Description: ${fmiDetails.description}` : "";
 
-  return `You are the FMI Membership Research Agent. Your task is to find ALL direct members of the Financial Market Infrastructure: **${fmiName}**.
+  return `You are the FMI Membership Research Agent. Your task is to find ALL direct members of: **${fmiName}**.
 
 ${description}
 ${websiteInfo}
 ${membershipUrlInfo}
 
 ---
-## CRITICAL RULES
+## TOOL USAGE — CRITICAL RULES
 
-### 1. Direct Members ONLY
-- For **CLS**: only "Settlement Members" count — these are the ~75 institutional shareholders who submit FX trades directly to CLS. Do NOT record third-party customers who route via a Settlement Member.
-- For **SWIFT**: only direct SWIFT member financial institutions. Not messaging providers or non-bank entities.
-- For **RTGS systems** (TARGET2, Fedwire, CHAPS, etc.): only direct participants, not indirect/tiered participants.
+### Use TARGETED tools, never bulk list tools
+- To look up an entity: use \`find_legal_entity_by_name\` with a partial name (e.g. "Goldman" finds "Goldman Sachs Bank USA")
+- To look up a banking group: use \`find_banking_group_by_name\` with a partial name
+- To check if membership already exists: use \`check_fmi_membership\` with legal_entity_id + fmi_name
+- NEVER call \`list_legal_entities\`, \`list_banking_groups\`, or \`list_fmis\` — these return the full database and waste your context window
+- You may call \`create_banking_group\`, \`create_legal_entity\`, \`create_fmi\` to add records
 
-### 2. Find the COMPLETE list — do not stop early
-- There are approximately 75 CLS Settlement Members published on the CLS website. You MUST find ALL of them, not just the first few.
-- Do MULTIPLE web searches to find the complete list. Try searching for:
-  - The official membership page URL directly
-  - "CLS Settlement Members complete list"
-  - "CLS Group settlement members [current year]"
-  - The CLS PDF member list
-- Do not stop until you have exhausted all search options and processed every member you found.
-
-### 3. Entity matching — use fuzzy/partial matching
-- When comparing names from the member list to our database, use PARTIAL string matching. Do NOT require exact matches.
-- Example: if the CLS list says "Goldman Sachs Bank USA", search list_legal_entities for any entity whose name CONTAINS "Goldman Sachs".
-- Example: if the CLS list says "JPMorgan Chase Bank, N.A.", match it against "JPMorgan Chase Bank, National Association".
-- First call list_banking_groups to get the full group list. If you can match a banking group by name, look for the appropriate legal entity within that group.
-
-### 4. When an entity is NOT in the database — CREATE it
-- If you find a CLS member that has NO matching legal entity in the database, you MUST create it. Do not skip it.
-- Follow this sequence:
-  1. Call list_banking_groups — check if the banking group already exists (fuzzy match on name)
-  2. If the group does NOT exist: call create_banking_group with the institution's name, country, and primary currency
-  3. Call list_legal_entities — check if the specific legal entity already exists
-  4. If it does NOT exist: call create_legal_entity with group_id from step 2 (or found group), the legal name, country, entity_type="Bank"
-  5. Then call create_fmi with the legal_entity_id from step 4
-
-### 5. Every FMI record MUST have a source
-- Set the source field to the URL where you verified the membership (e.g. the CLS member list page URL).
-
-### 6. Duplicate prevention
-- Call list_fmis at the start and keep track of existing records. Do not call create_fmi if a record already exists for this entity + FMI name combination.
+### Batching tool calls
+- In each response, you CAN issue MULTIPLE tool calls simultaneously. Use this to check several entities at once.
+- For example, look up 5 entities in parallel using 5 simultaneous find_legal_entity_by_name calls.
 
 ---
-## WORKFLOW
+## MEMBER RESEARCH
 
-1. Search the web to find the complete list of direct members of ${fmiName}. Use multiple searches.
-2. Call list_banking_groups, list_legal_entities, and list_fmis — get the current state of the database.
-3. For EACH member in the complete list:
-   a. Try to find a matching legal entity using partial name matching.
-   b. If not found, check if the banking group exists. Create group + entity if needed.
-   c. Check if an FMI record already exists for this entity + "${fmiName}".
-   d. If not, call create_fmi.
-4. After processing ALL members, output ONLY this JSON as your final message:
+### Direct Members ONLY
+- For **CLS**: only "Settlement Members" — the ~75 institutional shareholders who submit FX trades directly to CLS. NOT third-party customers.
+- For **SWIFT**: direct SWIFT member financial institutions only.
+- For **RTGS**: direct participants only, not indirect/tiered participants.
+
+### Find the COMPLETE list
+- There are approximately 75 CLS Settlement Members. You MUST process ALL of them.
+- Do multiple web searches to get the complete list. Search for:
+  1. The official membership URL above
+  2. "CLS Settlement Members complete list [current year]"
+  3. The CLS PDF member list
+- Extract ALL member names before proceeding to database work.
+
+---
+## WORKFLOW — FOLLOW THIS EXACTLY
+
+**Step 1**: Do 1–2 web searches to get the complete list of direct members. Extract ALL member names.
+
+**Step 2**: For each member on the list (process ALL of them — do not stop early):
+  a. Call \`find_legal_entity_by_name\` with a short keyword from their name (e.g. "Goldman", "Barclays")
+  b. If found → check if already a member via \`check_fmi_membership\`
+     - If already exists → skip (count as skipped)
+     - If not exists → call \`create_fmi\` with source="${fmiDetails?.membership_url || 'https://www.cls-group.com/about/members/'}"
+  c. If NOT found → call \`find_banking_group_by_name\` to check if the group exists
+     - If group found → call \`create_legal_entity\` (group_id from group, entity_type="Bank")
+     - If group NOT found → call \`create_banking_group\` first, then \`create_legal_entity\`
+     - Then call \`create_fmi\`
+
+**Step 3**: After processing ALL members, output ONLY this JSON as your final message (no other text):
 
 \`\`\`json
 {"members_found": N, "added": N, "skipped_already_exists": N, "created_new_entities": N, "not_found_in_source": []}
 \`\`\`
 
 - members_found: total unique direct members found from official source
-- added: number of new FMI records created
-- skipped_already_exists: number skipped because FMI record already existed
+- added: number of new FMI membership records created
+- skipped_already_exists: number skipped because membership already existed
 - created_new_entities: number of new legal entities created during this run
-- not_found_in_source: leave empty []`;
+- not_found_in_source: leave empty []
+
+---
+## IMPORTANT: DO NOT STOP EARLY
+- Do not emit any text until you have processed EVERY member from the list.
+- Do not say "I will continue" — just continue.
+- Process members in batches of 5–10 using parallel tool calls to go faster.
+- Only output the final JSON after ALL members are done.`;
 }
 
 const FMI_ALLOWED_TOOLS = [
   "web_search",
-  "list_banking_groups",
+  "find_banking_group_by_name",
+  "find_legal_entity_by_name",
+  "check_fmi_membership",
   "create_banking_group",
   "update_banking_group",
-  "list_legal_entities",
   "create_legal_entity",
   "update_legal_entity",
-  "list_bics",
-  "create_bic",
-  "list_fmis",
   "create_fmi",
   "delete_fmi",
 ];
@@ -107,7 +109,7 @@ export type FmiStepCallback = (toolName: string, args: any, statusText: string) 
 export async function runFmiAgentLoop(
   messages: any[],
   onStep?: FmiStepCallback,
-  maxSteps = 100
+  maxSteps = 120
 ): Promise<string> {
   const tools = getFmiResearchTools();
   let steps = 0;
@@ -133,7 +135,10 @@ export async function runFmiAgentLoop(
       let args: any = {};
       try { args = JSON.parse(call.function.arguments); } catch {}
 
-      if (onStep) await onStep(name, args, `${name}(${args.query || args.fmi_name || args.legal_name || args.group_name || ""})`);
+      if (onStep) {
+        const label = args.query || args.name_contains || args.fmi_name || args.legal_name || args.group_name || "";
+        await onStep(name, args, `${name}(${label})`);
+      }
 
       const result = await executeFmiTool(name, args);
 
@@ -148,4 +153,9 @@ export async function runFmiAgentLoop(
   }
 
   return "Max steps reached.";
+}
+
+export function isFmiJobComplete(summary: string): boolean {
+  const jsonMatch = summary.match(/\{[\s\S]*"members_found"[\s\S]*\}/);
+  return !!jsonMatch;
 }
