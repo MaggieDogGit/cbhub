@@ -2,10 +2,11 @@ import type { Express, Request, Response, NextFunction } from "express";
 import { createServer, type Server } from "http";
 import { storage } from "./storage";
 import { pool } from "./db";
-import { insertBankingGroupSchema, insertLegalEntitySchema, insertBicSchema, insertCorrespondentServiceSchema, insertClsProfileSchema, insertFmiSchema, insertDataSourceSchema, insertConversationSchema, insertMessageSchema, insertAgentJobSchema } from "@shared/schema";
+import { insertBankingGroupSchema, insertLegalEntitySchema, insertBicSchema, insertCorrespondentServiceSchema, insertClsProfileSchema, insertFmiSchema, insertFmiRegistrySchema, insertFmiResearchJobSchema, insertDataSourceSchema, insertConversationSchema, insertMessageSchema, insertAgentJobSchema } from "@shared/schema";
 import OpenAI from "openai";
 import { buildSystemPrompt, runAgentLoop } from "./agentCore";
 import { startJobRunner } from "./jobRunner";
+import { startFmiJobRunner } from "./fmiResearchJobRunner";
 
 const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
 
@@ -171,6 +172,45 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
   app.delete("/api/fmis/:id", async (req, res) => {
     await storage.deleteFmi(req.params.id);
     res.json({ ok: true });
+  });
+
+  // FMI Registry
+  app.get("/api/fmi-registry", async (_req, res) => {
+    res.json(await storage.listFmiRegistry());
+  });
+  app.post("/api/fmi-registry", async (req, res) => {
+    const parsed = insertFmiRegistrySchema.safeParse(req.body);
+    if (!parsed.success) return res.status(400).json({ message: parsed.error.message });
+    res.json(await storage.createFmiRegistryEntry(parsed.data));
+  });
+  app.patch("/api/fmi-registry/:id", async (req, res) => {
+    res.json(await storage.updateFmiRegistryEntry(req.params.id, req.body));
+  });
+  app.delete("/api/fmi-registry/:id", async (req, res) => {
+    await storage.deleteFmiRegistryEntry(req.params.id);
+    res.json({ ok: true });
+  });
+
+  // FMI Research Jobs
+  app.get("/api/fmi-research-jobs", async (_req, res) => {
+    res.json(await storage.listFmiResearchJobs());
+  });
+  app.post("/api/fmi-research-jobs", async (req, res) => {
+    const { fmi_name } = req.body;
+    if (!fmi_name) return res.status(400).json({ message: "fmi_name required" });
+    const registryEntry = await storage.getFmiRegistryByName(fmi_name);
+    if (!registryEntry) return res.status(400).json({ message: `FMI "${fmi_name}" not found in registry.` });
+    
+    const job = await storage.createFmiResearchJob({ fmi_name, status: "pending" });
+    res.status(201).json(job);
+  });
+  app.post("/api/fmi-research-jobs/stop-queue", async (req, res) => {
+    const jobs = await storage.listFmiResearchJobs();
+    const pending = jobs.filter(j => j.status === "pending");
+    for (const job of pending) {
+      await storage.updateFmiResearchJob(job.id, { status: "failed", error_message: "Job cancelled by user" });
+    }
+    res.json({ stopped: pending.length });
   });
 
   // Data Sources
@@ -354,7 +394,7 @@ Only include currencies and services you found evidence for in the research.`,
 
       const assistantContent = await runAgentLoop(
         openaiMessages,
-        (_name, _args, text) => emit({ type: "status", text }),
+        (_name, _args, text) => { emit({ type: "status", text }); },
         12,
         isConfirmation ? "required" : "auto"
       );
@@ -372,8 +412,9 @@ Only include currencies and services you found evidence for in the research.`,
     }
   });
 
-  // Start the background job runner
+  // Start the background job runners
   startJobRunner();
+  startFmiJobRunner();
 
   return httpServer;
 }

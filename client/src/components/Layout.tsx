@@ -1,7 +1,7 @@
 import { useState } from "react";
 import { Link, useLocation } from "wouter";
 import {
-  LayoutDashboard, Building2, Globe, MapPin, Bot, Database, Menu, Search, MessageSquare, LogOut, BookOpen, CheckSquare
+  LayoutDashboard, Building2, Globe, MapPin, Bot, Database, Menu, Search, MessageSquare, LogOut, BookOpen, CheckSquare, Network
 } from "lucide-react";
 import { Input } from "@/components/ui/input";
 import { useAuth } from "@/hooks/useAuth";
@@ -10,6 +10,7 @@ const navItems = [
   { name: "Dashboard", path: "/", icon: LayoutDashboard },
   { name: "CB Providers (groups)", path: "/providers", icon: Building2 },
   { name: "CB Legal Entities", path: "/legal-entities", icon: Building2 },
+  { name: "FMI", path: "/fmi", icon: Network },
   { name: "CLS", path: "/cls", icon: Globe },
   { name: "Currencies", path: "/currencies", icon: Globe },
   { name: "Market Coverage", path: "/market-coverage", icon: MapPin },

@@ -101,7 +101,34 @@ export const fmis = pgTable("fmis", {
   fmi_name: text("fmi_name"),
   member_since: date("member_since"),
   notes: text("notes"),
+  source: text("source"),
   last_verified: date("last_verified"),
+});
+
+export const fmiRegistry = pgTable("fmi_registry", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  fmi_name: text("fmi_name").notNull().unique(),
+  fmi_type: text("fmi_type").notNull(),
+  description: text("description"),
+  website: text("website"),
+  membership_url: text("membership_url"),
+  notes: text("notes"),
+  created_at: timestamp("created_at").defaultNow(),
+});
+
+export const fmiResearchJobs = pgTable("fmi_research_jobs", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  fmi_name: text("fmi_name").notNull(),
+  status: text("status").notNull().default("pending"),
+  conversation_id: varchar("conversation_id"),
+  queued_at: timestamp("queued_at").defaultNow(),
+  started_at: timestamp("started_at"),
+  completed_at: timestamp("completed_at"),
+  error_message: text("error_message"),
+  steps_completed: integer("steps_completed").default(0),
+  members_added: integer("members_added").default(0),
+  members_skipped: integer("members_skipped").default(0),
+  summary: text("summary"),
 });
 
 export const dataSources = pgTable("data_sources", {
@@ -138,8 +165,15 @@ export const insertBicSchema = createInsertSchema(bics).omit({ id: true });
 export const insertCorrespondentServiceSchema = createInsertSchema(correspondentServices).omit({ id: true });
 export const insertClsProfileSchema = createInsertSchema(clsProfiles).omit({ id: true });
 export const insertFmiSchema = createInsertSchema(fmis).omit({ id: true });
+export const insertFmiRegistrySchema = createInsertSchema(fmiRegistry).omit({ id: true, created_at: true });
+export const insertFmiResearchJobSchema = createInsertSchema(fmiResearchJobs).omit({ id: true, queued_at: true });
 export const insertConversationSchema = createInsertSchema(conversations).omit({ id: true, created_at: true });
 export const insertMessageSchema = createInsertSchema(chatMessages).omit({ id: true, created_at: true });
+
+export type InsertFmiRegistry = z.infer<typeof insertFmiRegistrySchema>;
+export type FmiRegistry = typeof fmiRegistry.$inferSelect;
+export type InsertFmiResearchJob = z.infer<typeof insertFmiResearchJobSchema>;
+export type FmiResearchJob = typeof fmiResearchJobs.$inferSelect;
 
 export type InsertBankingGroup = z.infer<typeof insertBankingGroupSchema>;
 export type BankingGroup = typeof bankingGroups.$inferSelect;

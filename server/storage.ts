@@ -2,13 +2,15 @@ import { eq, and } from "drizzle-orm";
 import { db } from "./db";
 import {
   bankingGroups, legalEntities, bics, correspondentServices,
-  clsProfiles, fmis, dataSources, conversations, chatMessages, agentJobs,
+  clsProfiles, fmis, fmiRegistry, fmiResearchJobs, dataSources, conversations, chatMessages, agentJobs,
   type BankingGroup, type InsertBankingGroup,
   type LegalEntity, type InsertLegalEntity,
   type Bic, type InsertBic,
   type CorrespondentService, type InsertCorrespondentService,
   type ClsProfile, type InsertClsProfile,
   type Fmi, type InsertFmi,
+  type FmiRegistry, type InsertFmiRegistry,
+  type FmiResearchJob, type InsertFmiResearchJob,
   type DataSource, type InsertDataSource,
   type Conversation, type InsertConversation,
   type ChatMessage, type InsertMessage,
@@ -59,6 +61,20 @@ export interface IStorage {
   createFmi(data: InsertFmi): Promise<Fmi>;
   updateFmi(id: string, data: Partial<InsertFmi>): Promise<Fmi>;
   deleteFmi(id: string): Promise<void>;
+
+  // FMI Registry
+  listFmiRegistry(): Promise<FmiRegistry[]>;
+  getFmiRegistryEntry(id: string): Promise<FmiRegistry | undefined>;
+  getFmiRegistryByName(name: string): Promise<FmiRegistry | undefined>;
+  createFmiRegistryEntry(data: InsertFmiRegistry): Promise<FmiRegistry>;
+  updateFmiRegistryEntry(id: string, data: Partial<InsertFmiRegistry>): Promise<FmiRegistry>;
+  deleteFmiRegistryEntry(id: string): Promise<void>;
+
+  // FMI Research Jobs
+  listFmiResearchJobs(): Promise<FmiResearchJob[]>;
+  getFmiResearchJob(id: string): Promise<FmiResearchJob | undefined>;
+  createFmiResearchJob(data: InsertFmiResearchJob): Promise<FmiResearchJob>;
+  updateFmiResearchJob(id: string, data: Partial<InsertFmiResearchJob>): Promise<FmiResearchJob>;
 
   // DataSources
   listDataSources(): Promise<DataSource[]>;
@@ -132,6 +148,20 @@ export class DatabaseStorage implements IStorage {
   async createFmi(data: InsertFmi) { const [r] = await db.insert(fmis).values(data).returning(); return r; }
   async updateFmi(id: string, data: Partial<InsertFmi>) { const [r] = await db.update(fmis).set(data).where(eq(fmis.id, id)).returning(); return r; }
   async deleteFmi(id: string) { await db.delete(fmis).where(eq(fmis.id, id)); }
+
+  // FMI Registry
+  async listFmiRegistry() { return db.select().from(fmiRegistry); }
+  async getFmiRegistryEntry(id: string) { const [r] = await db.select().from(fmiRegistry).where(eq(fmiRegistry.id, id)); return r; }
+  async getFmiRegistryByName(name: string) { const [r] = await db.select().from(fmiRegistry).where(eq(fmiRegistry.fmi_name, name)); return r; }
+  async createFmiRegistryEntry(data: InsertFmiRegistry) { const [r] = await db.insert(fmiRegistry).values(data).returning(); return r; }
+  async updateFmiRegistryEntry(id: string, data: Partial<InsertFmiRegistry>) { const [r] = await db.update(fmiRegistry).set(data).where(eq(fmiRegistry.id, id)).returning(); return r; }
+  async deleteFmiRegistryEntry(id: string) { await db.delete(fmiRegistry).where(eq(fmiRegistry.id, id)); }
+
+  // FMI Research Jobs
+  async listFmiResearchJobs() { return db.select().from(fmiResearchJobs).orderBy(fmiResearchJobs.queued_at); }
+  async getFmiResearchJob(id: string) { const [r] = await db.select().from(fmiResearchJobs).where(eq(fmiResearchJobs.id, id)); return r; }
+  async createFmiResearchJob(data: InsertFmiResearchJob) { const [r] = await db.insert(fmiResearchJobs).values(data).returning(); return r; }
+  async updateFmiResearchJob(id: string, data: Partial<InsertFmiResearchJob>) { const [r] = await db.update(fmiResearchJobs).set(data).where(eq(fmiResearchJobs.id, id)).returning(); return r; }
 
   // DataSources
   async listDataSources() { return db.select().from(dataSources).orderBy(dataSources.created_at); }

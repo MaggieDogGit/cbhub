@@ -15,6 +15,7 @@ import AgentChat from "@/pages/AgentChat";
 import DatabaseAdmin from "@/pages/DatabaseAdmin";
 import Sources from "@/pages/Sources";
 import Coverage from "@/pages/Coverage";
+import FmiManagement from "@/pages/FmiManagement";
 import Login from "@/pages/Login";
 import NotFound from "@/pages/not-found";
 import { useAuth } from "@/hooks/useAuth";
@@ -26,6 +27,7 @@ function Router() {
         <Route path="/" component={Dashboard} />
         <Route path="/providers" component={Providers} />
         <Route path="/legal-entities" component={LegalEntities} />
+        <Route path="/fmi" component={FmiManagement} />
         <Route path="/cls" component={CLS} />
         <Route path="/currencies" component={Currencies} />
         <Route path="/market-coverage" component={MarketCoverage} />
