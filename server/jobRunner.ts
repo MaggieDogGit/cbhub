@@ -22,15 +22,34 @@ function buildCurrencyInstruction(scope: CurrencyScope, primaryCurrency: string 
   }
 }
 
+type EntityRow = { id: string; legal_name: string; country: string | null; entity_type: string | null };
+type BicRow    = { id: string; bic_code: string; legal_entity_id: string; is_headquarters: boolean | null };
+type ServiceRow = { bic_id: string; currency: string; clearing_model: string | null };
+
+function buildGroupSnapshot(entities: EntityRow[], bics: BicRow[], services: ServiceRow[]): string {
+  if (entities.length === 0) return "No entities, BICs, or services recorded yet for this group.";
+  return entities.map(e => {
+    const entityBics = bics.filter(b => b.legal_entity_id === e.id);
+    const bicLines = entityBics.length === 0
+      ? "    (no BIC recorded)"
+      : entityBics.map(b => {
+          const svcList = services
+            .filter(s => s.bic_id === b.id)
+            .map(s => `${s.currency}/${s.clearing_model ?? "?"}`)
+            .join(", ");
+          return `    BIC: ${b.bic_code}${b.is_headquarters ? " (HQ)" : ""} | Services: ${svcList || "none"}`;
+        }).join("\n");
+    return `• ${e.legal_name} (${e.country ?? "?"}, ${e.entity_type ?? "?"}) — ID: ${e.id}\n${bicLines}`;
+  }).join("\n");
+}
+
 function buildJobPrompt(
   groupName: string,
   groupId: string,
-  entityCount: number,
-  bicCount: number,
-  serviceCount: number,
   primaryCurrency: string | null | undefined,
   cbProbability: string | null | undefined,
   rtgsSystem: string | null | undefined,
+  snapshot: string,
   scope: CurrencyScope,
 ): string {
   const currencyInstruction = buildCurrencyInstruction(scope, primaryCurrency);
@@ -42,36 +61,38 @@ function buildJobPrompt(
 
   return `Run the CB Entity Setup workflow for ${groupName} [Scope: ${scopeLabel}]
 Group ID: ${groupId} | Home currency: ${primaryCurrency || "not set"} | RTGS: ${rtgsLabel} | CB probability: ${cbProbability || "not set"}
-Current DB state: ${entityCount} legal entit${entityCount !== 1 ? "ies" : "y"}, ${bicCount} BIC${bicCount !== 1 ? "s" : ""}, ${serviceCount} service${serviceCount !== 1 ? "s" : ""} recorded.
+
+CURRENT DATABASE STATE — do NOT call list_legal_entities, list_bics, or list_correspondent_services for this group; all existing data is shown below:
+${snapshot}
 
 ---
 STEP 1 — VERIFY BANKING GROUP RECORD
-Locate this group using list_banking_groups (ID: ${groupId}).
-If any of the following fields are missing, research and fill them now using update_banking_group before proceeding:
+Call update_banking_group (ID: ${groupId}) if any of the following fields are missing:
 • primary_currency  • rtgs_system  • rtgs_member (boolean)  • cb_probability (High/Medium/Low/Unconfirmed)  • cb_evidence (one-sentence summary)
+The current values are shown in the header above. Only make an API call if something needs updating.
 
 ---
 STEP 2 — IDENTIFY CORRESPONDENT BANKING LEGAL ENTITIES
 Search: "${groupName} correspondent banking SWIFT BIC legal entity".
 Target ONLY: (a) the primary HQ licensed banking entity, (b) dedicated CB-hub subsidiaries that directly operate CB business for external financial institutions.
 Do NOT add every subsidiary — be selective; prefer fewer high-confidence entities over many speculative ones.
-For each candidate: call find_legal_entity_by_name to check if it already exists.
-• Exists → note its ID; update any missing fields (country, entity_type, notes) using update_legal_entity.
-• Does not exist → create with create_legal_entity linked to group_id ${groupId}.
+Check the snapshot above first — if the entity is already listed, use its ID directly (no lookup needed).
+For any candidate NOT in the snapshot: use find_legal_entity_by_name to confirm before creating.
+• Not found → create with create_legal_entity linked to group_id ${groupId}.
 
 ---
 STEP 3 — BIC CODES
-For every entity identified in Step 2: call list_bics to check if a BIC is already linked to it.
-• BIC exists → use its ID; update any missing fields using update_bic.
+The existing BICs for each entity are shown in the snapshot. Only create BICs for entities that show "(no BIC recorded)".
+• BIC exists in snapshot → use that BIC's code to look up its UUID if needed (call find_legal_entity_by_name then list_bics for that entity only).
 • Missing → add with create_bic. Set is_headquarters=true and swift_member=true for the primary HQ entity's BIC.
 
 ---
 STEP 4 — CORRESPONDENT SERVICES
 ${currencyInstruction}
-Before creating any service: call list_correspondent_services and confirm no existing record exists for that BIC + currency combination.
-• Exists → update with any missing details using update_correspondent_service; do NOT create a duplicate.
+The existing services for each BIC are shown in the snapshot. Only create services not already listed there.
+• Exists in snapshot → skip or update with update_correspondent_service if details are missing.
 • Missing → create with create_correspondent_service. bic_id must be a real UUID obtained from list_bics.
-For clearing_model, apply the ONSHORE vs OFFSHORE rule from the system prompt: Onshore only if the BIC entity's country is the home country/region of that currency's settlement infrastructure. All other currencies are Offshore — even if the bank is internationally active and well-known for that currency.
+For clearing_model, apply the ONSHORE vs OFFSHORE rule from the system prompt: Onshore only if the BIC entity's country is the home country/region of that currency's settlement infrastructure. All other currencies are Offshore.
 
 ---
 STEP 5 — FMI MEMBERSHIPS
@@ -118,15 +139,15 @@ async function processNextJob() {
     const groupBics = groupEntities.flatMap(e => bics.filter(b => b.legal_entity_id === e.id));
     const groupServices = groupBics.flatMap(b => services.filter(s => s.bic_id === b.id));
 
+    const snapshot = buildGroupSnapshot(groupEntities, groupBics, groupServices);
+
     const message = buildJobPrompt(
       group.group_name,
       group.id,
-      groupEntities.length,
-      groupBics.length,
-      groupServices.length,
       group.primary_currency,
       group.cb_probability,
       group.rtgs_system,
+      snapshot,
       scope,
     );
 

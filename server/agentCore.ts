@@ -503,11 +503,28 @@ export async function runAgentLoop(
       return msg.content || "";
     }
 
-    for (const tc of msg.tool_calls) {
-      const args = JSON.parse(tc.function.arguments || "{}");
-      const statusText = getStatusText(tc.function.name, args);
-      if (onStep) await onStep(tc.function.name, args, statusText);
-      const result = await executeTool(tc.function.name, args);
+    // Parse all tool calls upfront
+    const parsedCalls = msg.tool_calls.map(tc => ({
+      tc,
+      args: JSON.parse(tc.function.arguments || "{}"),
+    }));
+
+    // Fire all step callbacks first (progress reporting)
+    if (onStep) {
+      for (const { tc, args } of parsedCalls) {
+        await onStep(tc.function.name, args, getStatusText(tc.function.name, args));
+      }
+    }
+
+    // Execute all tools in parallel — safe because the model only batches
+    // independent calls (it never puts dependent operations in the same response)
+    const toolResults = await Promise.all(
+      parsedCalls.map(({ tc, args }) =>
+        executeTool(tc.function.name, args).then(result => ({ tc, result }))
+      )
+    );
+
+    for (const { tc, result } of toolResults) {
       messages.push({ role: "tool", tool_call_id: tc.id, content: result });
     }
   }
