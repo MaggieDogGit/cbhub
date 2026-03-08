@@ -155,7 +155,8 @@ export default function Providers() {
 
   // Intel dialog
   const [intelDialog, setIntelDialog] = useState<IntelDialog>(null);
-  const [intelObsType, setIntelObsType] = useState<"competitor" | "cb_provider">("competitor");
+  const [intelIsCompetitor, setIntelIsCompetitor] = useState(true);
+  const [intelIsCbProvider, setIntelIsCbProvider] = useState(false);
   const [intelCurrency, setIntelCurrency] = useState("");
   const [intelNotes, setIntelNotes] = useState("");
 
@@ -313,13 +314,16 @@ export default function Providers() {
   const getGroupIntel = (groupId: string) => intel.filter(o => o.banking_group_id === groupId && !o.legal_entity_id);
   const getEntityIntel = (entityId: string) => intel.filter(o => o.legal_entity_id === entityId);
 
+  type IntelPayload = { banking_group_id: string; banking_group_name: string; legal_entity_id?: string; legal_entity_name?: string; obs_type: "competitor" | "cb_provider"; currency?: string; notes?: string };
+
   const addIntelMutation = useMutation({
-    mutationFn: (vars: { banking_group_id: string; banking_group_name: string; legal_entity_id?: string; legal_entity_name?: string; obs_type: "competitor" | "cb_provider"; currency?: string; notes?: string }) =>
-      apiRequest("POST", "/api/intel", vars).then(r => r.json()),
+    mutationFn: (items: IntelPayload[]) =>
+      Promise.all(items.map(vars => apiRequest("POST", "/api/intel", vars).then(r => r.json()))),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["/api/intel"] });
       setIntelDialog(null);
-      setIntelObsType("competitor");
+      setIntelIsCompetitor(true);
+      setIntelIsCbProvider(false);
       setIntelCurrency("");
       setIntelNotes("");
       toast({ title: "Intel saved" });
@@ -338,7 +342,8 @@ export default function Providers() {
 
   const openGroupIntelDialog = (group: BankingGroup, e: React.MouseEvent) => {
     e.stopPropagation();
-    setIntelObsType("competitor");
+    setIntelIsCompetitor(true);
+    setIntelIsCbProvider(false);
     setIntelCurrency("");
     setIntelNotes("");
     setIntelDialog({ type: "group", groupId: group.id, groupName: group.group_name });
@@ -346,7 +351,8 @@ export default function Providers() {
 
   const openEntityIntelDialog = (group: BankingGroup, entity: LegalEntity, e: React.MouseEvent) => {
     e.stopPropagation();
-    setIntelObsType("cb_provider");
+    setIntelIsCompetitor(false);
+    setIntelIsCbProvider(true);
     setIntelCurrency("");
     setIntelNotes("");
     setIntelDialog({ type: "entity", groupId: group.id, groupName: group.group_name, entityId: entity.id, entityName: entity.legal_name });
@@ -354,19 +360,25 @@ export default function Providers() {
 
   const submitIntel = () => {
     if (!intelDialog) return;
-    if (intelObsType === "cb_provider" && !intelCurrency) {
+    if (!intelIsCompetitor && !intelIsCbProvider) {
+      toast({ title: "Select a type", description: "Choose Competitor, CB Provider, or both.", variant: "destructive" });
+      return;
+    }
+    if (intelIsCbProvider && !intelCurrency) {
       toast({ title: "Currency required", description: "Please select a currency for CB Provider.", variant: "destructive" });
       return;
     }
-    addIntelMutation.mutate({
+    const base = {
       banking_group_id: intelDialog.groupId,
       banking_group_name: intelDialog.groupName,
       legal_entity_id: intelDialog.entityId,
       legal_entity_name: intelDialog.entityName,
-      obs_type: intelObsType,
-      currency: intelObsType === "cb_provider" ? intelCurrency : undefined,
       notes: intelNotes || undefined,
-    });
+    };
+    const items: IntelPayload[] = [];
+    if (intelIsCompetitor) items.push({ ...base, obs_type: "competitor" });
+    if (intelIsCbProvider) items.push({ ...base, obs_type: "cb_provider", currency: intelCurrency });
+    addIntelMutation.mutate(items);
   };
 
   // Merge dialog helpers
@@ -913,19 +925,19 @@ export default function Providers() {
 
               {intelDialog.type === "group" && (
                 <div className="space-y-1">
-                  <label className="text-xs font-medium text-slate-700">Type</label>
-                  <div className="flex rounded-lg border border-slate-200 overflow-hidden text-sm">
+                  <label className="text-xs font-medium text-slate-700">Type <span className="text-slate-400 font-normal">(select one or both)</span></label>
+                  <div className="flex gap-2">
                     <button
                       data-testid="intel-type-competitor"
-                      onClick={() => { setIntelObsType("competitor"); setIntelCurrency(""); }}
-                      className={`flex-1 flex items-center justify-center gap-1.5 px-3 py-2 transition-colors border-r border-slate-200 ${intelObsType === "competitor" ? "bg-orange-500 text-white font-medium" : "bg-white text-slate-600 hover:bg-slate-50"}`}
+                      onClick={() => setIntelIsCompetitor(p => !p)}
+                      className={`flex-1 flex items-center justify-center gap-1.5 px-3 py-2 rounded-lg border text-sm transition-colors ${intelIsCompetitor ? "bg-orange-500 border-orange-500 text-white font-medium" : "bg-white border-slate-200 text-slate-600 hover:bg-slate-50"}`}
                     >
                       <Swords className="w-3.5 h-3.5" /> Competitor
                     </button>
                     <button
                       data-testid="intel-type-cb-provider"
-                      onClick={() => setIntelObsType("cb_provider")}
-                      className={`flex-1 flex items-center justify-center gap-1.5 px-3 py-2 transition-colors ${intelObsType === "cb_provider" ? "bg-violet-600 text-white font-medium" : "bg-white text-slate-600 hover:bg-slate-50"}`}
+                      onClick={() => { setIntelIsCbProvider(p => !p); if (intelIsCbProvider) setIntelCurrency(""); }}
+                      className={`flex-1 flex items-center justify-center gap-1.5 px-3 py-2 rounded-lg border text-sm transition-colors ${intelIsCbProvider ? "bg-violet-600 border-violet-600 text-white font-medium" : "bg-white border-slate-200 text-slate-600 hover:bg-slate-50"}`}
                     >
                       <Building2 className="w-3.5 h-3.5" /> CB Provider
                     </button>
@@ -933,7 +945,7 @@ export default function Providers() {
                 </div>
               )}
 
-              {intelObsType === "cb_provider" && (
+              {(intelIsCbProvider || intelDialog.type === "entity") && (
                 <div className="space-y-1">
                   <label className="text-xs font-medium text-slate-700">Currency <span className="text-red-500">*</span></label>
                   <Select value={intelCurrency} onValueChange={setIntelCurrency}>
@@ -966,7 +978,7 @@ export default function Providers() {
               data-testid="confirm-add-intel"
               disabled={addIntelMutation.isPending}
               onClick={submitIntel}
-              className={intelObsType === "competitor" ? "bg-orange-500 hover:bg-orange-600" : "bg-violet-600 hover:bg-violet-700"}
+              className={intelIsCompetitor && intelIsCbProvider ? "bg-slate-700 hover:bg-slate-800" : intelIsCompetitor ? "bg-orange-500 hover:bg-orange-600" : "bg-violet-600 hover:bg-violet-700"}
             >
               {addIntelMutation.isPending ? <><Loader2 className="w-3.5 h-3.5 mr-1 animate-spin" /> Saving…</> : "Save Intel"}
             </Button>
