@@ -56,10 +56,10 @@ Return ONLY a JSON array of the official legal entity names — no commentary, n
 Format: ["Name One", "Name Two", "Name Three"]`;
 
   // Use gpt-4o-search-preview directly — it has native web search and can read pages/PDFs
+  // Note: gpt-4o-search-preview does not support temperature
   const response = await withRetry(() => (openai.chat.completions.create as any)({
     model: "gpt-4o-search-preview",
     messages: [{ role: "user", content: prompt }],
-    temperature: 0,
   }), 5, "fmi-discovery");
 
   const content = response.choices[0].message.content || "[]";
