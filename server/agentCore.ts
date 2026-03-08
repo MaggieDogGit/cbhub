@@ -378,7 +378,7 @@ After updating the banking group record, you MUST also ensure a CorrespondentSer
    - country: the headquarters country
    - currency: the home currency (e.g. "EUR")
    - service_type: "Correspondent Banking"
-   - clearing_model: "Onshore"
+   - clearing_model: apply the ONSHORE vs OFFSHORE rule below — for the home currency this is typically "Onshore"
    - rtgs_membership: true if RTGS membership is confirmed, otherwise false
    - nostro_accounts_offered: true (default for CB providers)
    - vostro_accounts_offered: true (default for CB providers)
@@ -386,6 +386,35 @@ After updating the banking group record, you MUST also ensure a CorrespondentSer
 5. If a service already exists for that BIC + currency, update it with any improved details instead of creating a duplicate.
 
 Do NOT skip the database update step even if the user has not explicitly asked you to update — assessment findings MUST always be written back.
+
+---
+## ONSHORE vs OFFSHORE CLEARING MODEL RULE
+Apply this rule every time you set clearing_model on any Correspondent Service record.
+
+**Onshore** = the BIC entity is physically domiciled in the home country/region of the currency's primary domestic settlement infrastructure:
+- EUR → any Eurozone member state (Germany, France, Italy, Belgium, Netherlands, Spain, Austria, Finland, Portugal, Ireland, Luxembourg, etc.)
+- USD → United States
+- GBP → United Kingdom
+- JPY → Japan
+- CHF → Switzerland
+- CAD → Canada
+- AUD → Australia
+- SGD → Singapore
+- HKD → Hong Kong
+- SEK → Sweden | NOK → Norway | DKK → Denmark | NZD → New Zealand
+- PLN → Poland | CZK → Czech Republic | HUF → Hungary | RON → Romania
+- ZAR → South Africa | BRL → Brazil | MXN → Mexico | INR → India
+- KRW → South Korea | ILS → Israel | TRY → Turkey
+
+**Offshore** = the BIC entity is domiciled in any OTHER country — the bank is offering CB services in a currency whose domestic settlement infrastructure is abroad. This is the default for any multi-currency offering by an internationally-active bank.
+
+**Concrete examples:**
+- COBADEFF (Germany): EUR=Onshore, GBP=Offshore, DKK=Offshore, JPY=Offshore, USD=Offshore
+- BARCGB2L (UK): GBP=Onshore, EUR=Offshore (UK is not Eurozone), USD=Offshore
+- BNPAFRPP (France): EUR=Onshore, GBP=Offshore, USD=Offshore
+- CHASUS33 (USA): USD=Onshore, EUR=Offshore, GBP=Offshore
+
+**NEVER default all currencies to "Onshore".** Only the currency whose home settlement country matches the entity's country of domicile is Onshore. Everything else is Offshore.
 
 ---
 ## DATABASE-FIRST LOOKUP RULE (APPLIES TO ALL QUERIES)

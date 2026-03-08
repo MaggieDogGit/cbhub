@@ -5,7 +5,7 @@ import { z } from "zod";
 
 export const gsibStatusEnum = pgEnum("gsib_status", ["G-SIB", "D-SIB", "N/A"]);
 export const entityTypeEnum = pgEnum("entity_type", ["Bank", "Branch", "Subsidiary", "Representative Office", "Other"]);
-export const currencyEnum = pgEnum("currency", ["EUR","USD","GBP","JPY","CHF","CAD","AUD","SGD","HKD","CNH","SEK","NOK","DKK","PLN","CZK","HUF","RON","TRY","ZAR","BRL","MXN","INR"]);
+export const currencyEnum = pgEnum("currency", ["EUR","USD","GBP","JPY","CHF","CAD","AUD","SGD","HKD","CNH","SEK","NOK","DKK","NZD","PLN","CZK","HUF","RON","TRY","ZAR","BRL","MXN","INR","KRW","ILS"]);
 export const clearingModelEnum = pgEnum("clearing_model", ["Onshore", "Offshore"]);
 export const serviceTypeEnum = pgEnum("service_type", ["Correspondent Banking","Currency Clearing","RTGS Participation","Instant Payments Access","FX Liquidity","CLS Settlement","CLS Third Party Settlement","CLS Nostro Payments","Custody Services","Transaction Banking","Liquidity Services"]);
 export const FMI_CATEGORIES = [

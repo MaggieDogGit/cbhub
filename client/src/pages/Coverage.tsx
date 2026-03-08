@@ -76,6 +76,7 @@ ${currencyInstruction}
 Before creating any service: call list_correspondent_services and confirm no existing record exists for that BIC + currency combination.
 • Exists → update with any missing details using update_correspondent_service; do NOT create a duplicate.
 • Missing → create with create_correspondent_service. bic_id must be a real UUID obtained from list_bics.
+For clearing_model: Onshore ONLY if the BIC entity's country is the home country/region of that currency's settlement infrastructure (e.g. EUR for a Eurozone entity, USD for a US entity, GBP for a UK entity). All other currencies offered by that entity are Offshore.
 
 ---
 STEP 5 — FMI MEMBERSHIPS

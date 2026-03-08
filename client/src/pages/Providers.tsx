@@ -9,7 +9,7 @@ import { Button } from "@/components/ui/button";
 import { ChevronDown, ChevronRight, Search, ShieldCheck, Globe, Radio, TrendingUp, Bot } from "lucide-react";
 import type { BankingGroup, LegalEntity, Bic, CorrespondentService, Fmi } from "@shared/schema";
 
-const CURRENCIES = ["all","EUR","USD","GBP","JPY","CHF","CAD","AUD","SGD","HKD","CNH","SEK","NOK","DKK","PLN","CZK","HUF","RON","TRY","ZAR","BRL","MXN","INR"];
+const CURRENCIES = ["all","EUR","USD","GBP","JPY","CHF","CAD","AUD","SGD","HKD","CNH","SEK","NOK","DKK","NZD","PLN","CZK","HUF","RON","TRY","ZAR","BRL","MXN","INR","KRW","ILS"];
 const SERVICE_TYPES = ["all","Correspondent Banking","Currency Clearing","RTGS Participation","Instant Payments Access","FX Liquidity","CLS Settlement","Custody Services","Transaction Banking","Liquidity Services"];
 
 export default function Providers() {
@@ -207,6 +207,7 @@ For each BIC, identify and add all currencies that entity is known to offer Corr
 Before creating any service: call list_correspondent_services and confirm no existing record exists for that BIC + currency combination.
 • Exists → update with any missing details using update_correspondent_service; do NOT create a duplicate.
 • Missing → create with create_correspondent_service. bic_id must be a real UUID obtained from list_bics.
+For clearing_model: Onshore ONLY if the BIC entity's country is the home country/region of that currency's settlement infrastructure (e.g. EUR for a Eurozone entity, USD for a US entity, GBP for a UK entity). All other currencies offered by that entity are Offshore.
 
 ---
 STEP 5 — FMI MEMBERSHIPS
