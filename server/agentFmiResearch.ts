@@ -45,26 +45,41 @@ const discoveryTools = [{
 export async function runFmiMemberDiscovery(fmiName: string, fmiDetails: any): Promise<string[]> {
   const membershipUrl = fmiDetails?.membership_url || "";
   const website = fmiDetails?.website || "";
+  const isCls = fmiName.toUpperCase().includes("CLS");
 
   const messages: any[] = [{
     role: "user",
-    content: `You are a financial research assistant. Find the COMPLETE list of all direct members/participants of: **${fmiName}**
+    content: `You are a financial research assistant. Your ONLY job is to extract the COMPLETE list of all direct members of: **${fmiName}**
 
-${membershipUrl ? `Official member list URL: ${membershipUrl}` : ""}
+${membershipUrl ? `Start here: ${membershipUrl}` : ""}
 ${website ? `Official website: ${website}` : ""}
 
-Instructions:
-- For CLS: find all "Settlement Members" — there are approximately 75 of them. Do MULTIPLE web searches to get the complete list.
-- Search for the official PDF or page listing all members.
-- Do at least 2-3 searches to ensure you have the complete list.
-- Return ONLY a JSON array of the official legal entity names. No explanations, no commentary.
-- Example format: ["ABN AMRO Bank N.V.", "Barclays Bank PLC", "Citibank N.A."]
+${isCls ? `IMPORTANT — CLS SPECIFIC:
+- This page links to a PDF of all Settlement Members. Search for it.
+- There are exactly 78 Settlement Members on the official list.
+- Members include banks and securities firms from around the world (A to Z alphabetically).
+- Do NOT filter by type — include ALL entities listed, whether bank, securities firm, or other.
+- You MUST do multiple searches to find all 78. A single search will NOT return all of them.
+- Required searches:
+  1. Search: "CLS settlement members site:cls-group.com" 
+  2. Search: "CLS Group settlement members complete list PDF 2024"
+  3. Search: "CLS settlement members Nomura Goldman Sachs Standard Chartered Sumitomo" (to find members in the second half of the alphabet)
+  4. Search: "CLS settlement members Royal Bank of Canada UBS Morgan Stanley" (to fill in more)
+- You have found all members when you have 70+ names. Stop searching only then.
+` : `- Do multiple searches to find the complete list.`}
 
-Start searching now.`,
+OUTPUT FORMAT — CRITICAL:
+After all searches, output ONLY a single JSON array of all member names you found.
+No commentary, no explanations. Just the JSON array.
+Example: ["ABN AMRO Bank N.V.", "Barclays Bank PLC", "Goldman Sachs Bank USA"]
+
+Do all required searches now, then output the complete JSON array.`,
   }];
 
   let steps = 0;
-  while (steps < 8) {
+  let collectedNames: Set<string> = new Set();
+
+  while (steps < 14) {
     const response = await withRetry(() => openai.chat.completions.create({
       model: "gpt-4o",
       messages,
@@ -77,15 +92,40 @@ Start searching now.`,
     messages.push(msg);
 
     if (!msg.tool_calls?.length) {
+      // Model gave a final answer — extract the JSON array
       const content = msg.content || "[]";
-      const match = content.match(/\[[\s\S]*?\]/);
+      // Use greedy match to get the full array including nested content
+      const match = content.match(/\[[\s\S]*\]/);
       if (match) {
         try {
           const arr = JSON.parse(match[0]);
-          if (Array.isArray(arr) && arr.length > 0) return arr;
-        } catch {}
+          if (Array.isArray(arr)) {
+            arr.forEach((n: string) => { if (n && typeof n === "string") collectedNames.add(n.trim()); });
+          }
+        } catch {
+          // Try to extract quoted strings if JSON parse fails
+          const names = content.match(/"([^"]+)"/g);
+          if (names) names.forEach(n => collectedNames.add(n.replace(/"/g, "").trim()));
+        }
       }
-      return [];
+
+      // If we have enough names or this is a non-CLS FMI, return what we have
+      const threshold = isCls ? 60 : 5;
+      if (collectedNames.size >= threshold) {
+        return Array.from(collectedNames);
+      }
+
+      // Not enough — ask for another search
+      if (collectedNames.size > 0 && steps < 12) {
+        messages.push({
+          role: "user",
+          content: `You have found ${collectedNames.size} members so far. There should be ${isCls ? "78" : "more"}. Please do additional searches to find the remaining members (especially those with names starting M-Z that may have been missed).`,
+        });
+        steps++;
+        continue;
+      }
+
+      return Array.from(collectedNames);
     }
 
     for (const call of msg.tool_calls) {
@@ -93,12 +133,21 @@ Start searching now.`,
       try { args = JSON.parse(call.function.arguments); } catch {}
       const result = await executeTool("web_search", args);
       messages.push({ role: "tool", tool_call_id: call.id, content: result });
+
+      // Try to extract names from intermediate search results too
+      const nameMatches = result.match(/"([A-Z][^"]{3,60})"/g);
+      if (nameMatches) {
+        nameMatches.forEach((n: string) => {
+          const name = n.replace(/"/g, "").trim();
+          if (name.length > 4 && /[A-Z]/.test(name[0])) collectedNames.add(name);
+        });
+      }
     }
 
     steps++;
   }
 
-  return [];
+  return Array.from(collectedNames);
 }
 
 // ── Phase 2: Process a single member ─────────────────────────────────────────
