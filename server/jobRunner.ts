@@ -105,10 +105,10 @@ ${currencyInstruction}
 The existing services for each BIC are shown in the snapshot. Only create services not already listed there.
 • Exists in snapshot → skip or update with update_correspondent_service if details are incomplete.
 • Missing → create with create_correspondent_service. bic_id must be a real UUID obtained from list_bics.
-For clearing_model, use the entity's country shown in the snapshot above — NOT the group's home currency:
-• Onshore ONLY if this specific entity's country is the home country/region of that currency's settlement infrastructure (e.g. USD requires a US-domiciled entity, EUR requires a Eurozone-domiciled entity).
-• All other combinations → Offshore.
-TRAP TO AVOID: Do NOT mark a service Onshore just because the currency matches the banking group's primary_currency. A foreign subsidiary offering its parent's home currency is still Offshore (e.g. a US bank's German entity offering USD = Offshore).
+For clearing_model AND service_type, use the entity's country shown in the snapshot — NOT the group's home currency:
+• Onshore ONLY if this entity's country is the home country/region of that currency's settlement infrastructure → service_type = "Correspondent Banking"
+• All other combinations → Offshore → service_type = "Global Currency Clearing"
+TRAP TO AVOID: Do NOT mark a service Onshore just because the currency matches the banking group's primary_currency. A foreign subsidiary offering its parent's home currency is still Offshore (e.g. a US bank's German entity offering USD = Offshore → Global Currency Clearing).
 
 ---
 STEP 5 — FMI MEMBERSHIPS

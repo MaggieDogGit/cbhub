@@ -399,7 +399,7 @@ After updating the banking group record, you MUST also ensure a CorrespondentSer
    - legal_entity_name: the legal entity name
    - country: the headquarters country
    - currency: the home currency (e.g. "EUR")
-   - service_type: "Correspondent Banking"
+   - service_type: "Correspondent Banking" if clearing_model is Onshore, "Global Currency Clearing" if clearing_model is Offshore
    - clearing_model: apply the ONSHORE vs OFFSHORE rule below — for the home currency this is typically "Onshore"
    - rtgs_membership: true if RTGS membership is confirmed, otherwise false
    - nostro_accounts_offered: true (default for CB providers)
@@ -451,6 +451,10 @@ Apply this rule every time you set clearing_model on any Correspondent Service r
 **NEVER default all currencies to "Onshore".** Only the currency whose home settlement country matches the entity's country of domicile is Onshore. Everything else is Offshore.
 
 **CRITICAL ANTI-PATTERN — Do NOT do this:** Setting a service to Onshore because the currency matches the banking group's home currency. The group's home currency is irrelevant. What matters is the specific entity's country. A US bank's UK subsidiary offering USD clearing is Offshore — the entity is UK-domiciled, not US-domiciled. Always look at the entity's country field, not the group's primary_currency.
+
+**service_type MUST follow clearing_model — this is mandatory:**
+- clearing_model = "Onshore" → service_type = "Correspondent Banking"
+- clearing_model = "Offshore" → service_type = "Global Currency Clearing"
 
 ---
 ## DATABASE-FIRST LOOKUP RULE (APPLIES TO ALL QUERIES)
