@@ -71,6 +71,24 @@ export function getStatusText(name: string, args: any): string {
   }
 }
 
+// ── Lean response helpers (strip columns the agent never needs) ────────────────
+
+function leanGroup(g: any) {
+  return { id: g.id, group_name: g.group_name, headquarters_country: g.headquarters_country, primary_currency: g.primary_currency, rtgs_system: g.rtgs_system, rtgs_member: g.rtgs_member, cb_probability: g.cb_probability, cb_evidence: g.cb_evidence, gsib_status: g.gsib_status };
+}
+function leanEntity(e: any) {
+  return { id: e.id, legal_name: e.legal_name, country: e.country, entity_type: e.entity_type, group_id: e.group_id };
+}
+function leanBic(b: any) {
+  return { id: b.id, bic_code: b.bic_code, legal_entity_id: b.legal_entity_id, is_headquarters: b.is_headquarters, swift_member: b.swift_member };
+}
+function leanService(s: any) {
+  return { id: s.id, bic_id: s.bic_id, bic_code: s.bic_code, currency: s.currency, service_type: s.service_type, clearing_model: s.clearing_model, rtgs_membership: s.rtgs_membership };
+}
+function leanFmi(f: any) {
+  return { id: f.id, legal_entity_id: f.legal_entity_id, legal_entity_name: f.legal_entity_name, fmi_name: f.fmi_name, fmi_type: f.fmi_type, member_since: f.member_since };
+}
+
 // ── Tool executor ─────────────────────────────────────────────────────────────
 
 export async function executeTool(name: string, args: any): Promise<string> {
@@ -80,29 +98,30 @@ export async function executeTool(name: string, args: any): Promise<string> {
         const needle = (args.name_contains || "").toLowerCase();
         const all = await storage.listBankingGroups();
         const matches = all.filter(g => g.group_name.toLowerCase().includes(needle));
-        return JSON.stringify(matches.length ? matches.slice(0, 5) : { not_found: true, message: `No banking group found containing "${args.name_contains}"` });
+        return JSON.stringify(matches.length ? matches.slice(0, 5).map(leanGroup) : { not_found: true, message: `No banking group found containing "${args.name_contains}"` });
       }
       case "find_legal_entity_by_name": {
         const needle = (args.name_contains || "").toLowerCase();
         const all = await storage.listLegalEntities();
         const matches = all.filter(e => e.legal_name.toLowerCase().includes(needle));
-        return JSON.stringify(matches.length ? matches.slice(0, 5) : { not_found: true, message: `No legal entity found containing "${args.name_contains}"` });
+        return JSON.stringify(matches.length ? matches.slice(0, 5).map(leanEntity) : { not_found: true, message: `No legal entity found containing "${args.name_contains}"` });
       }
       case "check_fmi_membership": {
         const all = await storage.listFmis();
         const match = all.find(f => f.legal_entity_id === args.legal_entity_id && f.fmi_name === args.fmi_name);
         return JSON.stringify(match ? { exists: true, id: match.id } : { exists: false });
       }
-      case "list_banking_groups": return JSON.stringify(await storage.listBankingGroups());
+      case "list_banking_groups": return JSON.stringify((await storage.listBankingGroups()).map(leanGroup));
       case "create_banking_group": {
         const existing = await storage.listBankingGroups();
         const duplicate = existing.find(g => g.group_name.toLowerCase() === (args.group_name || "").toLowerCase());
         if (duplicate) return JSON.stringify({ duplicate: true, existing_id: duplicate.id, message: `Banking group "${duplicate.group_name}" already exists (id=${duplicate.id}). Use update_banking_group instead.` });
-        return JSON.stringify(await storage.createBankingGroup(args));
+        const created = await storage.createBankingGroup(args);
+        return JSON.stringify({ ok: true, id: created.id, group_name: created.group_name });
       }
-      case "update_banking_group": { const { id, ...data } = args; return JSON.stringify(await storage.updateBankingGroup(id, data)); }
+      case "update_banking_group": { const { id, ...data } = args; const updated = await storage.updateBankingGroup(id, data); return JSON.stringify({ ok: true, id: updated.id }); }
       case "delete_banking_group": await storage.deleteBankingGroup(args.id); return JSON.stringify({ ok: true, id: args.id });
-      case "list_legal_entities": return JSON.stringify(await storage.listLegalEntities());
+      case "list_legal_entities": return JSON.stringify((await storage.listLegalEntities()).map(leanEntity));
       case "create_legal_entity": {
         const allGroups = await storage.listBankingGroups();
         const groupExists = allGroups.find(g => g.id === args.group_id);
@@ -110,13 +129,14 @@ export async function executeTool(name: string, args: any): Promise<string> {
         const existing = await storage.listLegalEntities();
         const duplicate = existing.find(e => e.legal_name.toLowerCase() === (args.legal_name || "").toLowerCase() && e.group_id === args.group_id);
         if (duplicate) return JSON.stringify({ duplicate: true, existing_id: duplicate.id, message: `Legal entity "${duplicate.legal_name}" already exists under this banking group (id=${duplicate.id}). Use update_legal_entity instead.` });
-        return JSON.stringify(await storage.createLegalEntity(args));
+        const created = await storage.createLegalEntity(args);
+        return JSON.stringify({ ok: true, id: created.id, legal_name: created.legal_name, group_id: created.group_id });
       }
-      case "update_legal_entity": { const { id, ...data } = args; return JSON.stringify(await storage.updateLegalEntity(id, data)); }
+      case "update_legal_entity": { const { id, ...data } = args; const updated = await storage.updateLegalEntity(id, data); return JSON.stringify({ ok: true, id: updated.id }); }
       case "delete_legal_entity": await storage.deleteLegalEntity(args.id); return JSON.stringify({ ok: true, id: args.id });
       case "merge_legal_entities": return JSON.stringify(await storage.mergeLegalEntities(args.keep_id, args.delete_id));
       case "merge_banking_groups": return JSON.stringify(await storage.mergeBankingGroups(args.keep_id, args.delete_id));
-      case "list_bics": return JSON.stringify(await storage.listBics());
+      case "list_bics": return JSON.stringify((await storage.listBics()).map(leanBic));
       case "create_bic": {
         const allEntities = await storage.listLegalEntities();
         const entityExists = allEntities.find(e => e.id === args.legal_entity_id);
@@ -124,11 +144,12 @@ export async function executeTool(name: string, args: any): Promise<string> {
         const existing = await storage.listBics();
         const duplicate = existing.find(b => b.bic_code.toLowerCase() === (args.bic_code || "").toLowerCase());
         if (duplicate) return JSON.stringify({ duplicate: true, existing_id: duplicate.id, message: `BIC "${duplicate.bic_code}" already exists (id=${duplicate.id}). Use update_bic instead.` });
-        return JSON.stringify(await storage.createBic(args));
+        const created = await storage.createBic(args);
+        return JSON.stringify({ ok: true, id: created.id, bic_code: created.bic_code, legal_entity_id: created.legal_entity_id });
       }
-      case "update_bic": { const { id, ...data } = args; return JSON.stringify(await storage.updateBic(id, data)); }
+      case "update_bic": { const { id, ...data } = args; const updated = await storage.updateBic(id, data); return JSON.stringify({ ok: true, id: updated.id }); }
       case "delete_bic": await storage.deleteBic(args.id); return JSON.stringify({ ok: true, id: args.id });
-      case "list_correspondent_services": return JSON.stringify(await storage.listCorrespondentServices(args.currency));
+      case "list_correspondent_services": return JSON.stringify((await storage.listCorrespondentServices(args.currency)).map(leanService));
       case "create_correspondent_service": {
         const uuidPattern = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
         if (!args.bic_id || !uuidPattern.test(args.bic_id)) return JSON.stringify({ error: `bic_id must be a valid BIC record UUID — call list_bics first. Received: "${args.bic_id}"` });
@@ -138,11 +159,12 @@ export async function executeTool(name: string, args: any): Promise<string> {
         const existing = await storage.listCorrespondentServices();
         const duplicate = existing.find(s => s.bic_id === args.bic_id && s.currency === args.currency);
         if (duplicate) return JSON.stringify({ duplicate: true, existing_id: duplicate.id, message: `A correspondent service for currency "${args.currency}" already exists on BIC ${args.bic_id} (id=${duplicate.id}). Use update_correspondent_service instead.` });
-        return JSON.stringify(await storage.createCorrespondentService(args));
+        const created = await storage.createCorrespondentService(args);
+        return JSON.stringify({ ok: true, id: created.id, bic_id: created.bic_id, currency: created.currency, clearing_model: created.clearing_model });
       }
-      case "update_correspondent_service": { const { id, ...data } = args; return JSON.stringify(await storage.updateCorrespondentService(id, data)); }
+      case "update_correspondent_service": { const { id, ...data } = args; const updated = await storage.updateCorrespondentService(id, data); return JSON.stringify({ ok: true, id: updated.id }); }
       case "delete_correspondent_service": await storage.deleteCorrespondentService(args.id); return JSON.stringify({ ok: true, id: args.id });
-      case "list_fmis": return JSON.stringify(await storage.listFmis());
+      case "list_fmis": return JSON.stringify((await storage.listFmis()).map(leanFmi));
       case "create_fmi": {
         const uuidPattern = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
         if (!args.legal_entity_id || !uuidPattern.test(args.legal_entity_id))
@@ -154,7 +176,8 @@ export async function executeTool(name: string, args: any): Promise<string> {
         const existingFmis = await storage.listFmis();
         const fmiDuplicate = existingFmis.find(f => f.legal_entity_id === args.legal_entity_id && f.fmi_name === args.fmi_name);
         if (fmiDuplicate) return JSON.stringify({ duplicate: true, existing_id: fmiDuplicate.id, message: `FMI membership "${args.fmi_name}" already exists for this entity (id=${fmiDuplicate.id}). No action needed.` });
-        return JSON.stringify(await storage.createFmi(args));
+        const created = await storage.createFmi(args);
+        return JSON.stringify({ ok: true, id: created.id, fmi_name: created.fmi_name, legal_entity_id: created.legal_entity_id });
       }
       case "delete_fmi": await storage.deleteFmi(args.id); return JSON.stringify({ ok: true, id: args.id });
       case "web_search": {
