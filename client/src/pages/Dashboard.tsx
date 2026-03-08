@@ -1,6 +1,6 @@
 import { useQuery } from "@tanstack/react-query";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { Building2, Globe, CreditCard, ShieldCheck, BarChart3 } from "lucide-react";
+import { Building2, Globe, CreditCard, ShieldCheck, BarChart3, Target } from "lucide-react";
 import { Link } from "wouter";
 import { BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, PieChart, Pie, Cell } from "recharts";
 import type { BankingGroup, LegalEntity, Bic, CorrespondentService, Fmi } from "@shared/schema";
@@ -18,7 +18,14 @@ export default function Dashboard() {
   const gsibCount = groups.filter(g => g.gsib_status === "G-SIB").length;
   const dsibCount = groups.filter(g => g.gsib_status === "D-SIB").length;
   const naCount = groups.filter(g => !g.gsib_status || g.gsib_status === "N/A").length;
-  const clsMembers = fmis.filter(f => f.fmi_type === "CLS_Settlement_Member").length;
+  const clsMembers = fmis.filter(f => f.fmi_name === "CLS").length;
+
+  const covHigh = groups.filter(g => g.cb_probability === "High").length;
+  const covMedium = groups.filter(g => g.cb_probability === "Medium").length;
+  const covLow = groups.filter(g => g.cb_probability === "Low").length;
+  const covUnconfirmed = groups.filter(g => g.cb_probability === "Unconfirmed").length;
+  const covAssessed = covHigh + covMedium + covLow + covUnconfirmed;
+  const covPct = groups.length > 0 ? Math.round((covAssessed / groups.length) * 100) : 0;
 
   const currencyMap: Record<string, Set<string>> = {};
   services.forEach(s => {
@@ -84,6 +91,41 @@ export default function Dashboard() {
           </Card>
         ))}
       </div>
+
+      <Link href="/coverage">
+        <Card className="border-0 shadow-sm hover:shadow-md transition-shadow cursor-pointer" data-testid="card-coverage-overview">
+          <CardContent className="p-5">
+            <div className="flex items-center justify-between mb-3">
+              <div className="flex items-center gap-2">
+                <div className="p-2 rounded-lg text-orange-600 bg-orange-50">
+                  <Target className="w-5 h-5" />
+                </div>
+                <div>
+                  <div className="text-xs text-slate-500">CB Coverage</div>
+                  <div className="text-2xl font-bold text-slate-900">{covPct}%</div>
+                </div>
+              </div>
+              <div className="text-right text-sm text-slate-500">
+                <div><span className="font-semibold text-slate-700">{covAssessed}</span> of {groups.length} groups assessed</div>
+                <div className="text-xs mt-0.5">click to manage queue</div>
+              </div>
+            </div>
+            <div className="w-full h-3 rounded-full bg-slate-100 overflow-hidden flex">
+              {covHigh > 0 && <div className="h-full bg-emerald-500 transition-all" style={{ width: `${(covHigh / groups.length) * 100}%` }} title={`High: ${covHigh}`} />}
+              {covMedium > 0 && <div className="h-full bg-blue-400 transition-all" style={{ width: `${(covMedium / groups.length) * 100}%` }} title={`Medium: ${covMedium}`} />}
+              {covLow > 0 && <div className="h-full bg-amber-400 transition-all" style={{ width: `${(covLow / groups.length) * 100}%` }} title={`Low: ${covLow}`} />}
+              {covUnconfirmed > 0 && <div className="h-full bg-slate-300 transition-all" style={{ width: `${(covUnconfirmed / groups.length) * 100}%` }} title={`Unconfirmed: ${covUnconfirmed}`} />}
+            </div>
+            <div className="flex gap-4 mt-2 text-xs text-slate-500">
+              {covHigh > 0 && <span className="flex items-center gap-1"><span className="w-2 h-2 rounded-full bg-emerald-500 inline-block" />High: {covHigh}</span>}
+              {covMedium > 0 && <span className="flex items-center gap-1"><span className="w-2 h-2 rounded-full bg-blue-400 inline-block" />Medium: {covMedium}</span>}
+              {covLow > 0 && <span className="flex items-center gap-1"><span className="w-2 h-2 rounded-full bg-amber-400 inline-block" />Low: {covLow}</span>}
+              {covUnconfirmed > 0 && <span className="flex items-center gap-1"><span className="w-2 h-2 rounded-full bg-slate-300 inline-block" />Unconfirmed: {covUnconfirmed}</span>}
+              {groups.length - covAssessed > 0 && <span className="flex items-center gap-1"><span className="w-2 h-2 rounded-full bg-slate-100 border border-slate-300 inline-block" />Not assessed: {groups.length - covAssessed}</span>}
+            </div>
+          </CardContent>
+        </Card>
+      </Link>
 
       <div className="grid lg:grid-cols-3 gap-6">
         <Card className="lg:col-span-2 border-0 shadow-sm">
