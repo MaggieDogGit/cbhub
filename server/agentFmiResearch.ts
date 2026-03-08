@@ -56,20 +56,7 @@ export async function runFmiMemberDiscovery(fmiName: string, fmiDetails: any): P
   const website = fmiDetails?.website || "";
   const isCls = fmiName.toUpperCase().includes("CLS");
 
-  const prompt = `You are a financial research assistant. Fetch the direct member list for: **${fmiName}**
-
-${membershipUrl ? `Official source: ${membershipUrl}` : ""}
-${website ? `Website: ${website}` : ""}
-
-${isCls ? `This page lists all CLS Settlement Members (there are 78 of them).
-The page links to a PDF. Read that PDF or the page itself and extract every single member name.
-Do NOT filter, validate, or exclude any name from the official list.
-Include all entities exactly as they appear — banks, securities firms, broker-dealers.
-If one search doesn't return all 78, search again with different terms to find the rest (especially members M-Z).
-` : `Browse the official URL above and extract every direct member/participant name exactly as listed.`}
-
-Return ONLY a JSON array of the official legal entity names — no commentary, no explanation.
-Format: ["Name One", "Name Two", "Name Three"]`;
+  const prompt = buildDiscoveryPrompt(fmiName, membershipUrl, website, isCls);
 
   // Use gpt-4o-search-preview directly — it has native web search and can read pages/PDFs
   // Note: gpt-4o-search-preview does not support temperature
@@ -79,19 +66,8 @@ Format: ["Name One", "Name Two", "Name Three"]`;
   }), 5, "fmi-discovery");
 
   const content = response.choices[0].message.content || "[]";
-
-  // Extract the JSON array — greedy match to capture the whole array
-  const discovered = new Set<string>();
-  const match = content.match(/\[[\s\S]*\]/);
-  if (match) {
-    try {
-      const arr = JSON.parse(match[0]);
-      if (Array.isArray(arr)) arr.forEach((n: string) => { if (n) discovered.add(String(n).trim()); });
-    } catch {
-      const names = content.match(/"([^"]+)"/g);
-      if (names) names.forEach(n => { const s = n.replace(/"/g, "").trim(); if (s.length > 2) discovered.add(s); });
-    }
-  }
+  const discovered = extractAndValidateNames(content);
+  console.log(`[FmiDiscovery] Initial discovery returned ${discovered.size} valid names`);
 
   // For CLS: merge with known supplement (confirmed members that web search consistently misses)
   if (isCls) {
@@ -100,50 +76,144 @@ Format: ["Name One", "Name Two", "Name Three"]`;
     // If still well short of 78, try a second targeted search for the remaining unknowns
     if (discovered.size < 75) {
       console.log(`[FmiDiscovery] Got ${discovered.size} after supplement. Doing targeted follow-up search...`);
-      const followUpPrompt = `Search for CLS Settlement Members that are subsidiary legal entities of large banking groups, not typically listed on overview pages. Specifically look for:
-- Any additional Goldman Sachs entities (besides Goldman Sachs Bank USA) listed as CLS Settlement Members
-- Any additional JPMorgan/J.P. Morgan entities beyond JPMorgan Chase Bank and JPMorgan Securities
-- MUFG Bank or Mitsubishi UFJ entities as CLS Settlement Members
-- Any additional HSBC entities (HSBC USA, HSBC Bank USA)
-- Société Générale subsidiaries (SG Americas)
-- Any Barclays entities beyond Barclays Bank plc and Barclays Bank UK PLC
-- Any UniCredit entities beyond UniCredit Bank AG
-- China Construction Bank as CLS member
-- Hang Seng Bank as CLS member
-- Bank of Communications as CLS member
+      try {
+        const followUp = await withRetry(() => (openai.chat.completions.create as any)({
+          model: "gpt-4o-search-preview",
+          messages: [{ role: "user", content: CLS_FOLLOWUP_PROMPT }],
+        }), 5, "fmi-discovery-followup");
+        const extra = extractAndValidateNames(followUp.choices[0].message.content || "[]");
+        extra.forEach(n => discovered.add(n));
+        console.log(`[FmiDiscovery] After follow-up: ${discovered.size} total members`);
+      } catch (err: any) {
+        console.warn("[FmiDiscovery] Follow-up search failed:", err.message);
+      }
+    }
+
+    if (discovered.size > 0) return Array.from(discovered);
+    // Last resort: multi-search fallback
+    return runClsDiscoveryFallback(fmiName, membershipUrl);
+  }
+
+  // For non-CLS: if first attempt returned nothing, run a search-based fallback
+  if (discovered.size === 0) {
+    console.log(`[FmiDiscovery] URL-based discovery returned 0 for ${fmiName}. Trying search fallback...`);
+    return runGenericDiscoveryFallback(fmiName, website);
+  }
+
+  return Array.from(discovered);
+}
+
+// ── Helpers ────────────────────────────────────────────────────────────────
+
+// Bad-string patterns that indicate the model returned a page title / heading, not a member name
+const BAD_PATTERNS = [
+  /^list of/i, /^overview of/i, /^participants of/i, /^members of/i,
+  /^table of/i, /^annex/i, /^appendix/i, /^page \d/i, /^click here/i,
+  /^download/i, /^see also/i, /^source:/i, /^\d+$/, /^[^a-zA-Z]/,
+];
+
+function isValidMemberName(name: string): boolean {
+  if (!name || name.length < 3 || name.length > 120) return false;
+  if (BAD_PATTERNS.some(p => p.test(name.trim()))) return false;
+  // Must contain at least one real word (not just abbreviations or punctuation)
+  if (!/[a-zA-Z]{2}/.test(name)) return false;
+  return true;
+}
+
+function extractAndValidateNames(content: string): Set<string> {
+  const result = new Set<string>();
+  const match = content.match(/\[[\s\S]*\]/);
+  if (match) {
+    try {
+      const arr = JSON.parse(match[0]);
+      if (Array.isArray(arr)) {
+        arr.forEach((n: string) => {
+          const s = String(n).trim();
+          if (isValidMemberName(s)) result.add(s);
+        });
+        return result;
+      }
+    } catch {}
+  }
+  // Fallback: extract quoted strings
+  const names = content.match(/"([^"]{3,120})"/g);
+  if (names) {
+    names.forEach(n => {
+      const s = n.replace(/"/g, "").trim();
+      if (isValidMemberName(s)) result.add(s);
+    });
+  }
+  return result;
+}
+
+function buildDiscoveryPrompt(fmiName: string, membershipUrl: string, website: string, isCls: boolean): string {
+  if (isCls) {
+    return `You are a financial research assistant. Fetch the direct member list for: **${fmiName}**
+
+${membershipUrl ? `Official source: ${membershipUrl}` : ""}
+${website ? `Website: ${website}` : ""}
+
+This page lists all CLS Settlement Members (there are 78 of them).
+The page links to a PDF. Read that PDF or the page itself and extract every single member name.
+Do NOT filter, validate, or exclude any name from the official list.
+Include all entities exactly as they appear — banks, securities firms, broker-dealers.
+If one search doesn't return all 78, search again with different terms to find the rest.
+
+Return ONLY a JSON array of the official legal entity names — no commentary, no explanation.
+Format: ["ABN AMRO Bank N.V.", "Barclays Bank plc", "Goldman Sachs Bank USA"]`;
+  }
+
+  return `You are a financial research assistant. Find the direct participants/members of **${fmiName}**.
+
+${membershipUrl ? `Official source: ${membershipUrl}` : ""}
+${website ? `Website: ${website}` : ""}
+
+Instructions:
+- Browse the official URL and extract ALL direct participants or members listed there.
+- Return the official legal entity names exactly as written in the source.
+- Do NOT return page titles, section headings, navigation text, or document names.
+- Each entry in the array must be a real financial institution name (bank, financial firm, etc.).
+- If the source is a large RTGS system (like TARGET2 or Fedwire) with thousands of participants, focus on the major international banks that are listed as direct participants on the official page.
+
+Return ONLY a JSON array of institution names. No commentary, no explanation.
+Format: ["Institution Name One", "Institution Name Two"]`;
+}
+
+const CLS_FOLLOWUP_PROMPT = `Search for CLS Settlement Members that are subsidiary legal entities of large banking groups. Specifically search for:
+- Goldman Sachs entities as CLS Settlement Members (besides Goldman Sachs Bank USA)
+- MUFG Bank, Ltd. or Mitsubishi UFJ Financial Group as CLS Settlement Member
+- Additional HSBC entities (HSBC Bank USA) as CLS Settlement Members
+- Société Générale Americas as CLS Settlement Member
+- China Construction Bank as CLS Settlement Member
+- Hang Seng Bank as CLS Settlement Member
 
 Source: https://www.cls-group.com/communities/settlement-members/
 
 Return ONLY a JSON array of entity names you can CONFIRM are on the official CLS Settlement Members list. Do not include guesses.`;
 
-      try {
-        const followUp = await withRetry(() => (openai.chat.completions.create as any)({
-          model: "gpt-4o-search-preview",
-          messages: [{ role: "user", content: followUpPrompt }],
-        }), 5, "fmi-discovery-followup");
-        const fc = followUp.choices[0].message.content || "[]";
-        const fm = fc.match(/\[[\s\S]*\]/);
-        if (fm) {
-          try {
-            const arr = JSON.parse(fm[0]);
-            if (Array.isArray(arr)) arr.forEach((n: string) => { if (n) discovered.add(String(n).trim()); });
-          } catch {}
-        }
-        console.log(`[FmiDiscovery] After follow-up: ${discovered.size} total members found`);
-      } catch (err: any) {
-        console.warn("[FmiDiscovery] Follow-up search failed:", err.message);
-      }
-    }
+// Search-based fallback for non-CLS FMIs when URL-based discovery fails
+async function runGenericDiscoveryFallback(fmiName: string, website: string): Promise<string[]> {
+  const prompt = `Search for the direct participants or members of **${fmiName}**.
+
+${website ? `Official website: ${website}` : ""}
+
+Search for "${fmiName} direct participants list" or "${fmiName} member banks" and return the major financial institutions that are official direct participants.
+Return only real institution names — banks, financial firms. Not headings, not document titles.
+
+Return ONLY a JSON array of institution names.`;
+
+  try {
+    const response = await withRetry(() => (openai.chat.completions.create as any)({
+      model: "gpt-4o-search-preview",
+      messages: [{ role: "user", content: prompt }],
+    }), 5, "fmi-discovery-generic-fallback");
+    const names = extractAndValidateNames(response.choices[0].message.content || "[]");
+    console.log(`[FmiDiscovery] Generic fallback found ${names.size} members`);
+    return Array.from(names);
+  } catch (err: any) {
+    console.warn("[FmiDiscovery] Generic fallback failed:", err.message);
+    return [];
   }
-
-  if (discovered.size > 0) return Array.from(discovered);
-
-  // Last resort fallback: multi-search with gpt-4o + web_search tool
-  if (isCls) {
-    return runClsDiscoveryFallback(fmiName, membershipUrl);
-  }
-
-  return [];
 }
 
 // Fallback: multi-search approach using gpt-4o + web_search tool
