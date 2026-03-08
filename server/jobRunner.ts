@@ -9,6 +9,8 @@ const JOB_COOLDOWN_MS = 90_000; // 90 seconds
 
 type CurrencyScope = "home_only" | "major" | "all";
 
+const CLS_CURRENCIES = new Set(["AUD","CAD","CHF","DKK","EUR","GBP","HKD","JPY","MXN","NOK","NZD","SEK","SGD","USD","ILS","ZAR","KRW","HUF"]);
+
 function buildCurrencyInstruction(scope: CurrencyScope, primaryCurrency: string | null | undefined): string {
   switch (scope) {
     case "home_only":
@@ -28,24 +30,58 @@ function buildJobPrompt(
   serviceCount: number,
   primaryCurrency: string | null | undefined,
   cbProbability: string | null | undefined,
+  rtgsSystem: string | null | undefined,
   scope: CurrencyScope,
 ): string {
   const currencyInstruction = buildCurrencyInstruction(scope, primaryCurrency);
   const scopeLabel = scope === "home_only" ? "home currency only" : scope === "major" ? "EUR/GBP/USD" : "all currencies";
+  const rtgsLabel = rtgsSystem || (primaryCurrency ? `identify RTGS for ${primaryCurrency}` : "not identified");
+  const clsLine = primaryCurrency && CLS_CURRENCIES.has(primaryCurrency)
+    ? `CLS (fmi_type "FX Settlement Systems") — ${primaryCurrency} is a CLS-eligible currency; check direct settlement membership`
+    : `CLS — verify whether ${primaryCurrency || "the home currency"} participates in CLS`;
 
-  return `Run the CB Entity Setup workflow for ${groupName} [Currency scope: ${scopeLabel}]:
+  return `Run the CB Entity Setup workflow for ${groupName} [Scope: ${scopeLabel}]
+Group ID: ${groupId} | Home currency: ${primaryCurrency || "not set"} | RTGS: ${rtgsLabel} | CB probability: ${cbProbability || "not set"}
+Current DB state: ${entityCount} legal entit${entityCount !== 1 ? "ies" : "y"}, ${bicCount} BIC${bicCount !== 1 ? "s" : ""}, ${serviceCount} service${serviceCount !== 1 ? "s" : ""} recorded.
 
-1. Search the web to identify which legal entities within ${groupName} actively provide Correspondent Banking services to other financial institutions. For each entity found, check if it already exists in the database before creating it.
+---
+STEP 1 — VERIFY BANKING GROUP RECORD
+Locate this group using list_banking_groups (ID: ${groupId}).
+If any of the following fields are missing, research and fill them now using update_banking_group before proceeding:
+• primary_currency  • rtgs_system  • rtgs_member (boolean)  • cb_probability (High/Medium/Low/Unconfirmed)  • cb_evidence (one-sentence summary)
 
-2. For each identified CB legal entity, find their primary BIC/SWIFT code. Add it using create_bic if not already present (check list_bics first).
+---
+STEP 2 — IDENTIFY CORRESPONDENT BANKING LEGAL ENTITIES
+Search: "${groupName} correspondent banking SWIFT BIC legal entity".
+Target ONLY: (a) the primary HQ licensed banking entity, (b) dedicated CB-hub subsidiaries that directly operate CB business for external financial institutions.
+Do NOT add every subsidiary — be selective; prefer fewer high-confidence entities over many speculative ones.
+For each candidate: call find_legal_entity_by_name to check if it already exists.
+• Exists → note its ID; update any missing fields (country, entity_type, notes) using update_legal_entity.
+• Does not exist → create with create_legal_entity linked to group_id ${groupId}.
 
-3. ${currencyInstruction}
+---
+STEP 3 — BIC CODES
+For every entity identified in Step 2: call list_bics to check if a BIC is already linked to it.
+• BIC exists → use its ID; update any missing fields using update_bic.
+• Missing → add with create_bic. Set is_headquarters=true and swift_member=true for the primary HQ entity's BIC.
 
-4. If any FMI memberships are discovered (e.g. SWIFT, TARGET2, CLS, Euroclear), record them using create_fmi with the correct fmi_type category and fmi_name.
+---
+STEP 4 — CORRESPONDENT SERVICES
+${currencyInstruction}
+Before creating any service: call list_correspondent_services and confirm no existing record exists for that BIC + currency combination.
+• Exists → update with any missing details using update_correspondent_service; do NOT create a duplicate.
+• Missing → create with create_correspondent_service. bic_id must be a real UUID obtained from list_bics.
 
-Current database state for this group (ID: ${groupId}): ${entityCount} legal entit${entityCount !== 1 ? "ies" : "y"}, ${bicCount} BIC${bicCount !== 1 ? "s" : ""}, ${serviceCount} service${serviceCount !== 1 ? "s" : ""} recorded. CB probability: ${cbProbability || "not set"}. Home currency: ${primaryCurrency || "not set"}.
+---
+STEP 5 — FMI MEMBERSHIPS
+For the primary HQ entity, proactively check and record the following (call check_fmi_membership before each create_fmi):
+• SWIFT (fmi_type "Messaging Networks") — virtually all major international banks are SWIFT members; confirm and record
+• ${rtgsLabel} (fmi_type "Payment Systems") — check whether this entity is a direct participant; search "${groupName} ${rtgsLabel} direct participant" to confirm
+• ${clsLine}
+• Any additional FMIs discovered during research (Euroclear, Clearstream, Fedwire, CHAPS, CHIPS, LCH, etc.)
 
-Check for duplicates before creating any record. Work through each step fully before moving to the next.`;
+---
+Work all 5 steps fully. End with a summary: entities added/updated | BICs added | services created | FMI memberships recorded | any issues.`;
 }
 
 async function processNextJob() {
@@ -89,6 +125,7 @@ async function processNextJob() {
       groupServices.length,
       group.primary_currency,
       group.cb_probability,
+      group.rtgs_system,
       scope,
     );
 

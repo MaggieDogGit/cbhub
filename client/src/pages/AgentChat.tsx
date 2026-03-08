@@ -116,13 +116,13 @@ export default function AgentChat() {
     setConfirmingClear(false);
   }, [activeTopic]);
 
-  // Handle ?prompt= and ?conv= from CB Setup workflow buttons — land on general tab
+  // Handle ?prompt= and ?conv= from CB Setup workflow buttons — land on banking-groups tab
   useEffect(() => {
     const params = new URLSearchParams(window.location.search);
     const prompt = params.get("prompt");
     const convName = params.get("conv");
     if (prompt || convName) {
-      setActiveTopic("general");
+      setActiveTopic("banking-groups");
       if (prompt) setInput(decodeURIComponent(prompt));
       const url = new URL(window.location.href);
       url.searchParams.delete("prompt");
