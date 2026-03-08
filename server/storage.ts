@@ -179,14 +179,31 @@ export class DatabaseStorage implements IStorage {
 
   // Merge operations
   async mergeLegalEntities(keepId: string, deleteId: string) {
-    const movedBics = await db.update(bics).set({ legal_entity_id: keepId }).where(eq(bics.legal_entity_id, deleteId));
-    const movedFmis = await db.update(fmis).set({ legal_entity_id: keepId }).where(eq(fmis.legal_entity_id, deleteId));
+    const [keeper] = await db.select().from(legalEntities).where(eq(legalEntities.id, keepId));
+    if (!keeper) throw new Error(`Keep entity ${keepId} not found`);
+    const keeperName = keeper.legal_name;
+    const movedBics = await db.update(bics)
+      .set({ legal_entity_id: keepId, legal_entity_name: keeperName })
+      .where(eq(bics.legal_entity_id, deleteId));
+    const movedFmis = await db.update(fmis)
+      .set({ legal_entity_id: keepId, legal_entity_name: keeperName })
+      .where(eq(fmis.legal_entity_id, deleteId));
     await db.delete(legalEntities).where(eq(legalEntities.id, deleteId));
     return { moved_bics: movedBics.rowCount ?? 0, moved_fmis: movedFmis.rowCount ?? 0, deleted_entity_id: deleteId };
   }
   async mergeBankingGroups(keepId: string, deleteId: string) {
-    const movedEntities = await db.update(legalEntities).set({ group_id: keepId }).where(eq(legalEntities.group_id, deleteId));
-    const movedCls = await db.update(clsProfiles).set({ group_id: keepId }).where(eq(clsProfiles.group_id, deleteId));
+    const [keeper] = await db.select().from(bankingGroups).where(eq(bankingGroups.id, keepId));
+    if (!keeper) throw new Error(`Keep group ${keepId} not found`);
+    const keeperName = keeper.group_name;
+    const movedEntities = await db.update(legalEntities)
+      .set({ group_id: keepId, group_name: keeperName })
+      .where(eq(legalEntities.group_id, deleteId));
+    const movedCls = await db.update(clsProfiles)
+      .set({ group_id: keepId, group_name: keeperName })
+      .where(eq(clsProfiles.group_id, deleteId));
+    await db.update(agentJobs)
+      .set({ banking_group_id: keepId, banking_group_name: keeperName })
+      .where(eq(agentJobs.banking_group_id, deleteId));
     await db.delete(bankingGroups).where(eq(bankingGroups.id, deleteId));
     return { moved_entities: movedEntities.rowCount ?? 0, moved_cls_profiles: movedCls.rowCount ?? 0, deleted_group_id: deleteId };
   }
