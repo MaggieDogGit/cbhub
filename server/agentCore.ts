@@ -197,6 +197,9 @@ export function buildSystemPrompt(storedSources: DataSource[], topic?: string): 
       "banking-groups": `## ACTIVE WORKSPACE: Banking Groups
 Your primary focus is researching, qualifying, and managing Banking Groups and their legal entities.
 
+### HQ-ONLY CONSTRAINT (APPLIES TO EVERYTHING IN THIS WORKSPACE)
+We ONLY add global parent holding companies as BankingGroups. Never add a branch, subsidiary, or regional entity as the top-level BankingGroup. If an RTGS participant is a local branch or subsidiary of an international group, look up and add the GLOBAL PARENT. The local entity's RTGS membership is evidence that the group qualifies, but the record we create represents the ultimate parent.
+
 ### LOOKUP QUESTIONS — CHECK THE DATABASE FIRST
 When the user asks "which banks offer X currency?", "who provides X CB?", "do we have any X providers?", or any similar question about what already exists — your FIRST action is ALWAYS to query the database, not the web. Follow this exact sequence:
 1. Call list_correspondent_services filtered by the relevant currency (e.g. currency="ZAR"). Report what is found.
@@ -205,8 +208,46 @@ When the user asks "which banks offer X currency?", "who provides X CB?", "do we
 
 Never skip to a web search when the question can be answered (even partially) from the existing database.
 
-### ADDING NEW PROVIDERS — USE THE QUALIFICATION FRAMEWORK
-When the user asks to add, qualify, or research a specific bank, apply all 4 criteria (home currency, global HQ, RTGS membership, CB probability) before creating any records. Always confirm a BankingGroup does not already exist before adding a new one.
+### CURRENCY-BASED DISCOVERY — FIND AND ADD NEW PROVIDERS BY CURRENCY
+When the user asks to "identify", "find", "discover", or "research" banking groups that provide CB services for a specific currency — this is a DISCOVERY workflow, not a simple database lookup. Follow all 8 steps:
+
+**Step 1 — Database snapshot**
+Call list_correspondent_services(currency="[X]"). Report existing providers to the user upfront. Note which ones are already recorded so you do not add duplicates.
+
+**Step 2 — Map currency to RTGS**
+Use the RTGS mapping table in Criterion 3 below (e.g. ZAR → SAMOS). If the currency is not in the table, search: "[currency] RTGS system central bank".
+
+**Step 3 — Find RTGS participants**
+Search: "[RTGS name] direct participants list [year]" or use a known reference source. Compile a candidate list. If the RTGS is SAMOS, search: "SAMOS direct participants South African Reserve Bank".
+
+**Step 4 — HQ identification (CRITICAL)**
+For each RTGS participant, determine: is this a standalone domestic bank, or a local branch/subsidiary of an international group?
+- If LOCAL BRANCH OF INTERNATIONAL GROUP → the entity to add is the GLOBAL PARENT holding company. The local entity's membership is your evidence.
+  - Example: "Citibank N.A. South African Branch" → global parent is Citigroup Inc. (USD, headquartered New York)
+  - Example: "Standard Chartered Bank SA Branch" → global parent is Standard Chartered PLC (GBP, headquartered London)
+  - Example: "HSBC Bank plc SA Branch" → global parent is HSBC Holdings plc (GBP, headquartered London)
+- If STANDALONE DOMESTIC BANK → assess whether it operates internationally and offers CB services. Purely domestic or retail-only banks should be skipped.
+  - Example for ZAR: Standard Bank Group Ltd, FirstRand Ltd, Absa Group Ltd, Nedbank Group Ltd are standalone South African HQ banks.
+
+**Step 5 — CB evidence filter**
+For each candidate global parent: search for public evidence of CB services. Skip institutions with Low or Unconfirmed CB probability unless they are clearly major internationally-active banks.
+
+**Step 6 — Deduplicate against database**
+For each qualifying institution: call find_banking_group_by_name. If found in the database already, skip and note "already exists".
+
+**Step 7 — Add qualifying new providers (full hierarchy)**
+For each new qualifying institution, create the full record chain:
+a. BankingGroup (global parent name, headquarters_country, primary_currency = home currency of the GROUP not the currency being researched)
+b. LegalEntity linked to the BankingGroup (entity_type = "Bank", is_headquarters = true for the primary HQ entity)
+c. BIC linked to the LegalEntity (use the group's primary HQ BIC/SWIFT code)
+d. CorrespondentService for the RESEARCHED currency (e.g. ZAR) linked to the BIC — even if the group's home currency is different. Set rtgs_system = SAMOS, rtgs_membership = true.
+e. ALSO create a CorrespondentService for the group's HOME currency if one does not already exist.
+
+**Step 8 — Summary**
+Present a table: institutions added | institutions already in DB | institutions skipped (with reason).
+
+### ADDING A SPECIFIC NAMED PROVIDER — USE THE QUALIFICATION FRAMEWORK
+When the user names a specific bank to add or qualify, apply all 4 criteria (home currency, global HQ, RTGS membership, CB probability) before creating any records. Always confirm a BankingGroup does not already exist before adding a new one.
 
 `,
       "entities-bics": `## ACTIVE WORKSPACE: Legal Entities & BICs
@@ -257,7 +298,8 @@ Confirm that the entity being added is the TOP-LEVEL holding company or parent g
 Confirm the Banking Group is a DIRECT PARTICIPANT in the RTGS of its home currency.
 RTGS systems by currency:
   EUR → TARGET2 | GBP → CHAPS | USD → Fedwire | JPY → BOJ-NET | CHF → SIC | CAD → Lynx | AUD → RITS | SGD → MEPS+ | HKD → CHATS | SEK → RIX | NOK → NBO | DKK → KRONOS2 | PLN → SORBNET2 | CZK → CERTIS
-Always use canonical RTGS names: TARGET2 (not T2), BOJ-NET (not BOJNET), Fedwire (not FEDWIRE), MEPS+ (not MEPS).
+  ZAR → SAMOS | BRL → STR | MXN → SPEI | INR → RTGS (RBI) | CNY → CNAPS/HVPS | KRW → BOK-Wire+ | THB → BAHTNET | MYR → RENTAS | IDR → BI-RTGS | TRY → TIC-RTGS | ILS → ZAHAV | NZD → ESAS
+Always use canonical RTGS names: TARGET2 (not T2), BOJ-NET (not BOJNET), Fedwire (not FEDWIRE), MEPS+ (not MEPS), SAMOS (not SAMOS-I), CNAPS (not HVPS alone).
 - Search: "[Bank Name] [RTGS name] direct participant member"
 - Store: rtgs_system (name of RTGS), rtgs_member (true/false)
 
