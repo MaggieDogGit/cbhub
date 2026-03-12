@@ -3,17 +3,19 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Building2, Globe, CreditCard, ShieldCheck, BarChart3, Target } from "lucide-react";
 import { Link } from "wouter";
 import { BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, PieChart, Pie, Cell } from "recharts";
-import type { BankingGroup, LegalEntity, Bic, CorrespondentService, Fmi } from "@shared/schema";
+import type { BankingGroup, LegalEntity, Fmi } from "@shared/schema";
 
 const COLORS = ["#3b82f6","#10b981","#f59e0b","#ef4444","#8b5cf6","#ec4899","#06b6d4","#84cc16"];
+
+type CurrencyProviderRow = { currency: string; count: number; banks: string[] };
 
 export default function Dashboard() {
   const { data: groups = [], isLoading: loadingGroups } = useQuery<BankingGroup[]>({ queryKey: ["/api/banking-groups"] });
   const { data: entities = [], isLoading: loadingEntities } = useQuery<LegalEntity[]>({ queryKey: ["/api/legal-entities"] });
-  const { data: services = [], isLoading: loadingServices } = useQuery<CorrespondentService[]>({ queryKey: ["/api/correspondent-services"] });
+  const { data: currencyData = [], isLoading: loadingCurrency } = useQuery<CurrencyProviderRow[]>({ queryKey: ["/api/dashboard/currency-providers"] });
   const { data: fmis = [], isLoading: loadingFmis } = useQuery<Fmi[]>({ queryKey: ["/api/fmis"] });
 
-  const loading = loadingGroups || loadingEntities || loadingServices || loadingFmis;
+  const loading = loadingGroups || loadingEntities || loadingCurrency || loadingFmis;
 
   const gsibCount = groups.filter(g => g.gsib_status === "G-SIB").length;
   const dsibCount = groups.filter(g => g.gsib_status === "D-SIB").length;
@@ -26,17 +28,6 @@ export default function Dashboard() {
   const covUnconfirmed = groups.filter(g => g.cb_probability === "Unconfirmed").length;
   const covAssessed = covHigh + covMedium + covLow + covUnconfirmed;
   const covPct = groups.length > 0 ? Math.round((covAssessed / groups.length) * 100) : 0;
-
-  const currencyMap: Record<string, Set<string>> = {};
-  services.forEach(s => {
-    if (!s.currency) return;
-    if (!currencyMap[s.currency]) currencyMap[s.currency] = new Set();
-    if (s.group_name) currencyMap[s.currency].add(s.group_name);
-  });
-  const currencyData = Object.entries(currencyMap)
-    .map(([currency, banks]) => ({ currency, count: banks.size }))
-    .sort((a, b) => b.count - a.count)
-    .slice(0, 12);
 
   const gsibData = [
     { name: "G-SIB", value: gsibCount },
@@ -131,21 +122,41 @@ export default function Dashboard() {
         <Card className="lg:col-span-2 border-0 shadow-sm">
           <CardHeader className="pb-2">
             <CardTitle className="text-sm font-semibold text-slate-700 flex items-center gap-2">
-              <BarChart3 className="w-4 h-4" /> Providers per Currency
+              <BarChart3 className="w-4 h-4" /> Providers per Currency (Onshore)
             </CardTitle>
           </CardHeader>
           <CardContent>
             {currencyData.length === 0 ? (
               <div className="h-48 flex items-center justify-center text-slate-400 text-sm">No data yet — add providers to see chart</div>
             ) : (
-              <ResponsiveContainer width="100%" height={220}>
-                <BarChart data={currencyData} margin={{ top: 5, right: 10, left: -20, bottom: 5 }}>
-                  <XAxis dataKey="currency" tick={{ fontSize: 11 }} />
-                  <YAxis tick={{ fontSize: 11 }} />
-                  <Tooltip />
-                  <Bar dataKey="count" fill="#3b82f6" radius={[4, 4, 0, 0]} />
-                </BarChart>
-              </ResponsiveContainer>
+              <div className="overflow-x-auto">
+                <div style={{ width: Math.max(500, currencyData.length * 52), height: 240 }}>
+                  <BarChart
+                    width={Math.max(500, currencyData.length * 52)}
+                    height={240}
+                    data={currencyData}
+                    margin={{ top: 5, right: 10, left: -20, bottom: 5 }}
+                  >
+                    <XAxis dataKey="currency" tick={{ fontSize: 11 }} />
+                    <YAxis tick={{ fontSize: 11 }} allowDecimals={false} />
+                    <Tooltip content={({ active, payload }) => {
+                      if (!active || !payload?.length) return null;
+                      const d = payload[0].payload as { currency: string; count: number; banks: string[] };
+                      return (
+                        <div className="bg-white border border-slate-200 rounded-lg shadow-lg p-3 max-w-xs z-50">
+                          <p className="font-semibold text-slate-800 mb-2 text-sm">{d.currency} — {d.count} provider{d.count !== 1 ? "s" : ""}</p>
+                          <ul className="text-xs text-slate-600 space-y-0.5">
+                            {d.banks.map((b: string) => (
+                              <li key={b} className="flex items-start gap-1"><span className="text-blue-400 mt-0.5">•</span>{b}</li>
+                            ))}
+                          </ul>
+                        </div>
+                      );
+                    }} />
+                    <Bar dataKey="count" fill="#3b82f6" radius={[4, 4, 0, 0]} />
+                  </BarChart>
+                </div>
+              </div>
             )}
           </CardContent>
         </Card>
