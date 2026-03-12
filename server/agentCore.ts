@@ -63,6 +63,7 @@ export function getStatusText(name: string, args: any): string {
     case "create_fmi":                  return `Adding FMI membership: ${q(args.fmi_type || args.fmi_name)}`;
     case "delete_fmi":                  return "Removing FMI membership…";
     case "web_search":                  return `Searching: ${q(args.query)}`;
+    case "validate_cb_structure":       return `Validating CB structure for ${q(args.bank_name || "group")}`;
     case "list_data_sources":           return "Checking data sources library…";
     case "create_data_source":          return `Saving data source: ${q(args.name)}`;
     case "update_data_source":          return "Updating data source…";
@@ -186,6 +187,62 @@ export async function executeTool(name: string, args: any): Promise<string> {
           messages: [{ role: "user", content: args.query }],
         } as any), 5, `web_search: ${args.query}`);
         return searchResponse.choices[0].message.content || "No search results found.";
+      }
+      case "validate_cb_structure": {
+        const groupId = args.group_id;
+        const bankName = args.bank_name || "Unknown";
+        const [allEntities, allBics, allServices, allFmis] = await Promise.all([
+          storage.listLegalEntities(),
+          storage.listBics(),
+          storage.listCorrespondentServices(),
+          storage.listFmis(),
+        ]);
+        const groupEntities = allEntities.filter(e => e.group_id === groupId);
+        const groupBics = groupEntities.flatMap(e => allBics.filter(b => b.legal_entity_id === e.id));
+        const groupServices = groupBics.flatMap(b => allServices.filter(s => s.bic_id === b.id));
+        const groupFmis = groupEntities.flatMap(e => allFmis.filter(f => f.legal_entity_id === e.id));
+
+        const dataSnapshot = JSON.stringify({
+          entities: groupEntities.map(e => ({ id: e.id, legal_name: e.legal_name, country: e.country, entity_type: e.entity_type })),
+          bics: groupBics.map(b => ({ id: b.id, bic_code: b.bic_code, legal_entity_id: b.legal_entity_id, is_headquarters: b.is_headquarters })),
+          services: groupServices.map(s => ({ id: s.id, bic_id: s.bic_id, bic_code: s.bic_code, currency: s.currency, service_type: s.service_type, clearing_model: s.clearing_model, rtgs_membership: s.rtgs_membership })),
+          fmis: groupFmis.map(f => ({ id: f.id, legal_entity_id: f.legal_entity_id, fmi_name: f.fmi_name, fmi_type: f.fmi_type })),
+        }, null, 2);
+
+        const validationPrompt = `You are a correspondent banking data quality reviewer. Analyse the following database records for banking group "${bankName}" and return a JSON validation report.
+
+DATA:
+${dataSnapshot}
+
+VALIDATION CHECKS:
+1. Are the legal entities plausible clearing/banking entities for this group? Flag any that look like non-bank subsidiaries (insurance, asset management, holding companies without banking licences).
+2. Are Onshore/Offshore classifications correct? For each service: if the entity's country is the home settlement country of that currency, clearing_model should be "Onshore" and service_type "Correspondent Banking". Otherwise "Offshore" and "Global Currency Clearing".
+3. Are RTGS system FMI memberships correctly assigned? Each entity should have an FMI membership for its local RTGS system matching its country. Flag mismatches (e.g. a UK entity with TARGET2 instead of CHAPS).
+4. Are any obvious entities missing? For a major international bank, check if the HQ entity is present. If the group is a G-SIB, flag if major clearing centres (US, UK, Eurozone, Singapore, Hong Kong, Japan) are absent.
+
+RESPOND WITH ONLY THIS JSON (no markdown fences, no extra text):
+{
+  "structure_valid": true/false,
+  "issues": ["issue 1 description", "issue 2 description"],
+  "missing_entities": ["description of missing entity 1"],
+  "notes": "brief overall assessment"
+}
+
+If everything looks correct, set structure_valid=true with an empty issues array and empty missing_entities array.`;
+
+        const validationResponse = await withRetry(() => openai.chat.completions.create({
+          model: "gpt-4o",
+          messages: [{ role: "user", content: validationPrompt }],
+        }), 5, `validate_cb_structure: ${bankName}`);
+
+        const rawContent = validationResponse.choices[0].message.content || "{}";
+        const cleaned = rawContent.replace(/```json\s*/g, "").replace(/```\s*/g, "").trim();
+        try {
+          const parsed = JSON.parse(cleaned);
+          return JSON.stringify(parsed);
+        } catch {
+          return JSON.stringify({ structure_valid: false, issues: ["Validation response was not valid JSON"], missing_entities: [], notes: rawContent });
+        }
       }
       case "list_data_sources": return JSON.stringify(await storage.listDataSources());
       case "create_data_source": return JSON.stringify(await storage.createDataSource(args));
@@ -512,6 +569,7 @@ export function getTools(): any[] {
     { type: "function", function: { name: "list_fmis", description: "List all FMI memberships", parameters: { type: "object", properties: {} } } },
     { type: "function", function: { name: "create_fmi", description: "Create a new FMI membership record. IMPORTANT: legal_entity_id must be a real UUID from list_legal_entities — call list_legal_entities first to confirm the entity exists before calling this tool.", parameters: { type: "object", required: ["legal_entity_id", "fmi_type", "fmi_name"], properties: { legal_entity_id: { type: "string" }, legal_entity_name: { type: "string" }, fmi_type: { type: "string", enum: ["Payment Systems","Instant Payment Systems","Securities Settlement Systems","Central Securities Depositories","Central Counterparties","Trade Repositories","FX Settlement Systems","Messaging Networks"] }, fmi_name: { type: "string" }, member_since: { type: "string" }, notes: { type: "string" } } } } },
     { type: "function", function: { name: "delete_fmi", description: "Delete an FMI membership record by ID", parameters: { type: "object", required: ["id"], properties: { id: { type: "string" } } } } },
+    { type: "function", function: { name: "validate_cb_structure", description: "Run an AI validation check on the current database structure for a banking group. Checks entity plausibility, Onshore/Offshore classification, RTGS assignments, and missing entities. Returns a JSON report with structure_valid, issues, missing_entities, and notes. Call this ONLY after completing all entity/BIC/service/FMI setup steps.", parameters: { type: "object", required: ["group_id", "bank_name"], properties: { group_id: { type: "string", description: "The banking group UUID" }, bank_name: { type: "string", description: "The banking group name for context" } } } } },
     { type: "function", function: { name: "web_search", description: "Search the web for current information about banks, correspondent banking services, SWIFT codes, regulatory news, or any real-time financial data", parameters: { type: "object", required: ["query"], properties: { query: { type: "string" } } } } },
     { type: "function", function: { name: "list_data_sources", description: "List all stored data sources", parameters: { type: "object", properties: {} } } },
     { type: "function", function: { name: "create_data_source", description: "Store a new data source reference", parameters: { type: "object", required: ["name", "category"], properties: { name: { type: "string" }, category: { type: "string" }, url: { type: "string" }, publisher: { type: "string" }, description: { type: "string" }, update_frequency: { type: "string" }, notes: { type: "string" } } } } },

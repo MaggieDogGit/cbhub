@@ -173,7 +173,18 @@ B) Local RTGS (fmi_type "Payment Systems") — Follow this 3-step procedure for 
 C) CLS (HQ entity only, fmi_type "FX Settlement Systems") — ${clsLine || "skip (home currency is not CLS-eligible)"}
 
 ---
-Work all 5 steps fully. End with a summary: entities added/updated | BICs added | services created | FMI memberships recorded | web searches performed | any issues.`;
+STEP 6 — VALIDATE CB STRUCTURE
+After completing Steps 1–5, call validate_cb_structure(group_id="${groupId}", bank_name="${groupName}").
+This runs an independent AI review of the entities, services, and FMI records you just created/updated.
+Review the returned JSON. If structure_valid is false or issues are non-empty, list every issue in your summary — but do NOT delete or modify any records based on the validation. The issues are flags for human review.
+
+---
+STEP 7 — FINAL OUTPUT
+Work all 6 steps fully. End with a summary in this exact format:
+Entities added/updated: X | BICs added: X | Services created: X | FMI memberships recorded: X | Web searches performed: X
+Validations performed: 1 | Issues detected: X
+VALIDATION_JSON: <paste the raw JSON returned by validate_cb_structure here>
+If any issues were detected, list them below the summary.`;
 }
 
 function buildLightJobPrompt(
@@ -559,6 +570,31 @@ async function processNextJob() {
         newGroupNames: allTouchedGroups.map(g => g.group_name),
         createdCount: newGroups.length,
         updatedCount: touchedExistingGroups.length,
+      });
+    } else if (!isMarketScan) {
+      const validationMatch = assistantContent.match(/VALIDATION_JSON:\s*(\{[\s\S]*?\})\s*(?:\n|$)/);
+      let validationValid = true;
+      let issues: string[] = [];
+      let missingEntities: string[] = [];
+      let notes = "";
+      if (validationMatch) {
+        try {
+          const vJson = JSON.parse(validationMatch[1]);
+          validationValid = !!vJson.structure_valid;
+          issues = Array.isArray(vJson.issues) ? vJson.issues : [];
+          missingEntities = Array.isArray(vJson.missing_entities) ? vJson.missing_entities : [];
+          notes = vJson.notes || "";
+        } catch {}
+      }
+      const summaryLines = assistantContent.match(/Entities added[\s\S]*/i);
+      const summaryText = summaryLines ? summaryLines[0].trim() : assistantContent.slice(-500).trim();
+      scanSummaryJson = JSON.stringify({
+        summaryText,
+        validationValid,
+        issueCount: issues.length,
+        issues,
+        missingEntities,
+        notes,
       });
     }
 

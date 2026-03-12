@@ -99,6 +99,7 @@ Two job types (dispatched by `job_type` field):
 - Queue workflows for banking groups via the Coverage page or Providers page multi-select
 - Normal mode: gpt-4o, up to 15 iterations, full tool set; Light mode: gpt-4o-mini, 3 iterations, 13 subset tools
 - Jobs table tracks: `banking_group_id`, `banking_group_name`, status, conversation_id, steps_completed
+- **AI Validation Step** (Normal mode only): After Steps 1–5, agent calls `validate_cb_structure` tool which makes a secondary gpt-4o call to validate entity plausibility, Onshore/Offshore classification, RTGS assignments, and missing entities. Results stored in `scan_summary` as JSON with `validationValid`, `issueCount`, `issues`, `missingEntities`, `notes`. UI shows green "Valid" or amber "X issues" badge on Coverage and Providers pages.
 
 ### Market Coverage Scan (`job_type = "market_scan"`)
 - Breadth-first discovery: finds 8–15 CB providers in a market, creates banking groups / entities / BICs / one service per currency

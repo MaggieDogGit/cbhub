@@ -530,7 +530,20 @@ export default function Coverage() {
                     </Badge>
                   </td>
                   <td className="px-3 py-3">
-                    {job ? <JobStatusBadge job={job} /> : <span className="text-slate-400 text-xs">—</span>}
+                    <div className="flex items-center gap-1.5 flex-wrap">
+                      {job ? <JobStatusBadge job={job} /> : <span className="text-slate-400 text-xs">—</span>}
+                      {job?.status === "completed" && job.scan_summary && (() => {
+                        try {
+                          const vs = JSON.parse(job.scan_summary);
+                          if (typeof vs.validationValid !== "undefined") {
+                            return vs.validationValid && vs.issueCount === 0
+                              ? <Badge className="bg-emerald-100 text-emerald-700 border-emerald-200 text-xs gap-1" data-testid={`validation-valid-${job.id}`}><CheckCircle2 className="w-3 h-3" /> Valid</Badge>
+                              : <Badge className="bg-amber-100 text-amber-700 border-amber-200 text-xs gap-1 cursor-help" data-testid={`validation-issues-${job.id}`} title={vs.issues?.join("\n")}><AlertCircle className="w-3 h-3" /> {vs.issueCount} issue{vs.issueCount !== 1 ? "s" : ""}</Badge>;
+                          }
+                        } catch {}
+                        return null;
+                      })()}
+                    </div>
                   </td>
                   <td className="px-3 py-3">
                     <div className="flex items-center gap-1">

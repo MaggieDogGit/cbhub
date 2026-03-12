@@ -11,7 +11,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
 import {
   ChevronDown, ChevronRight, Search, ShieldCheck, Globe, Radio, TrendingUp,
-  Bot, Zap, ExternalLink, CheckCircle2, XCircle, Clock, Loader2, RefreshCw, X,
+  Bot, Zap, ExternalLink, CheckCircle2, AlertCircle, XCircle, Clock, Loader2, RefreshCw, X,
   CheckSquare, Square, PlusCircle, Trash2, User, BotIcon, Swords, Building2, Cpu,
 } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
@@ -881,6 +881,17 @@ export default function Providers() {
                     </div>
 
                     {job && <JobStatusBadge job={job} />}
+                    {job?.status === "completed" && job.scan_summary && (() => {
+                      try {
+                        const vs = JSON.parse(job.scan_summary);
+                        if (typeof vs.validationValid !== "undefined") {
+                          return vs.validationValid && vs.issueCount === 0
+                            ? <Badge className="bg-emerald-100 text-emerald-700 border-emerald-200 text-xs gap-1" data-testid={`validation-valid-${job.id}`}><CheckCircle2 className="w-3 h-3" /> Valid</Badge>
+                            : <Badge className="bg-amber-100 text-amber-700 border-amber-200 text-xs gap-1" data-testid={`validation-issues-${job.id}`} title={vs.issues?.join("; ")}><AlertCircle className="w-3 h-3" /> {vs.issueCount} issue{vs.issueCount !== 1 ? "s" : ""}</Badge>;
+                        }
+                      } catch {}
+                      return null;
+                    })()}
 
                     {/* Action buttons */}
                     <div className="flex items-center gap-1">
