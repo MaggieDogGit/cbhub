@@ -401,9 +401,11 @@ Only include currencies and services you found evidence for in the research.`,
     }
     // Derive missing value using lookup maps
     if (market_country && !market_currency) {
-      market_currency = COUNTRY_CURRENCY[market_country];
-      if (!market_currency) return res.status(400).json({ message: `No home currency known for "${market_country}". Please specify market_currency explicitly.` });
+      market_currency = COUNTRY_CURRENCY[market_country] || "EUR"; // Eurozone countries → EUR
     } else if (market_currency && !market_country) {
+      if (market_currency === "EUR") {
+        return res.status(400).json({ message: "EUR covers multiple countries. Please specify a market_country (e.g. Germany, France, Italy)." });
+      }
       market_country = CURRENCY_COUNTRY[market_currency];
       if (!market_country) return res.status(400).json({ message: `No home country known for "${market_currency}". Please specify market_country explicitly.` });
     }

@@ -313,19 +313,26 @@ async function processNextJob() {
     // Snapshot before a market scan so we can identify newly created vs touched groups
     let preExistingGroupIds: Set<string> = new Set();
     let preExistingEntityIds: Set<string> = new Set();
+    let preExistingBicIds: Set<string> = new Set();
+    // entityGroupMap: entity id → group_id (for reverse-lookup of BIC additions)
+    let entityGroupMap: Map<string, string> = new Map();
     if (isMarketScan) {
-      const [allGroups, allEntities] = await Promise.all([
+      const [allGroups, allEntities, allBics] = await Promise.all([
         storage.listBankingGroups(),
         storage.listLegalEntities(),
+        storage.listBics(),
       ]);
       preExistingGroupIds = new Set(allGroups.map(g => g.id));
       preExistingEntityIds = new Set(allEntities.map(e => e.id));
+      preExistingBicIds = new Set(allBics.map(b => b.id));
+      for (const e of allEntities) entityGroupMap.set(e.id, e.group_id);
     }
 
     if (isMarketScan) {
       const mCountry = pending.market_country as string;
       const mCurrency = pending.market_currency as string;
-      const rtgs = COUNTRY_RTGS[mCountry] || null;
+      // EUR always uses TARGET2; otherwise look up RTGS by country
+      const rtgs = mCurrency === "EUR" ? "TARGET2" : (COUNTRY_RTGS[mCountry] || null);
       message = buildMarketScanPrompt(mCountry, mCurrency, rtgs);
     } else {
       const group = await storage.getBankingGroup(pending.banking_group_id!);
@@ -382,27 +389,43 @@ async function processNextJob() {
 
     await storage.createMessage({ conversation_id: conv.id, role: "assistant", content: assistantContent });
 
-    // For market scans: identify all touched groups (created + existing with new entities)
+    // For market scans: identify all touched groups (created + existing with new entities/BICs)
     let scanSummaryJson: string | undefined;
     if (isMarketScan) {
-      const [allGroupsAfter, allEntitiesAfter] = await Promise.all([
+      const [allGroupsAfter, allEntitiesAfter, allBicsAfter] = await Promise.all([
         storage.listBankingGroups(),
         storage.listLegalEntities(),
+        storage.listBics(),
       ]);
+      const groupLookup = new Map(allGroupsAfter.map(g => [g.id, g]));
+      // Build post-scan entity → group map (includes new entities)
+      const postEntityGroupMap = new Map(allEntitiesAfter.map(e => [e.id, e.group_id]));
       // New groups (created during scan)
       const newGroups = allGroupsAfter.filter(g => !preExistingGroupIds.has(g.id));
-      // Existing groups that received new entities during scan
-      const newEntityGroupIds = new Set(
-        allEntitiesAfter
-          .filter(e => !preExistingEntityIds.has(e.id) && preExistingGroupIds.has(e.group_id))
-          .map(e => e.group_id)
-      );
-      const touchedExistingGroups = allGroupsAfter.filter(g => newEntityGroupIds.has(g.id));
+      const newGroupIds = new Set(newGroups.map(g => g.id));
+      // Touched existing groups: those that received new entities OR new BICs
+      const touchedExistingGroupIds = new Set<string>();
+      // New entities added to pre-existing groups
+      for (const e of allEntitiesAfter) {
+        if (!preExistingEntityIds.has(e.id) && preExistingGroupIds.has(e.group_id)) {
+          touchedExistingGroupIds.add(e.group_id);
+        }
+      }
+      // New BICs added to pre-existing entities (look up group via pre-scan or post-scan entity map)
+      for (const b of allBicsAfter) {
+        if (!preExistingBicIds.has(b.id)) {
+          const groupId = entityGroupMap.get(b.legal_entity_id) || postEntityGroupMap.get(b.legal_entity_id);
+          if (groupId && preExistingGroupIds.has(groupId)) {
+            touchedExistingGroupIds.add(groupId);
+          }
+        }
+      }
+      const touchedExistingGroups = [...touchedExistingGroupIds]
+        .filter(gid => !newGroupIds.has(gid))
+        .map(gid => groupLookup.get(gid))
+        .filter(Boolean) as typeof allGroupsAfter;
       // All touched groups = new + updated existing, deduped
-      const allTouchedGroups = [
-        ...newGroups,
-        ...touchedExistingGroups.filter(g => !newGroups.find(ng => ng.id === g.id)),
-      ];
+      const allTouchedGroups = [...newGroups, ...touchedExistingGroups];
       // Extract the structured summary block from the assistant's final message
       const summaryMatch = assistantContent.match(/Providers found[\s\S]*?(?:(?:\r?\n\r?\n)|$)/i);
       const summaryText = summaryMatch ? summaryMatch[0].trim() : "";
