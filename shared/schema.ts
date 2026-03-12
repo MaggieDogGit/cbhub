@@ -234,6 +234,7 @@ export const agentJobs = pgTable("agent_jobs", {
   job_type: text("job_type").notNull().default("cb_setup"),
   market_country: text("market_country"),
   market_currency: text("market_currency"),
+  scan_summary: text("scan_summary"),
 });
 
 export const insertAgentJobSchema = createInsertSchema(agentJobs).omit({ id: true, queued_at: true });

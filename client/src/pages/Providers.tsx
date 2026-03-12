@@ -12,7 +12,7 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "
 import {
   ChevronDown, ChevronRight, Search, ShieldCheck, Globe, Radio, TrendingUp,
   Bot, Zap, ExternalLink, CheckCircle2, XCircle, Clock, Loader2, RefreshCw, X,
-  CheckSquare, Square, PlusCircle, Trash2, User, BotIcon, Swords, Building2,
+  CheckSquare, Square, PlusCircle, Trash2, User, BotIcon, Swords, Building2, Cpu,
 } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import type { BankingGroup, LegalEntity, Bic, CorrespondentService, Fmi, AgentJob, IntelObservation } from "@shared/schema";
@@ -612,21 +612,20 @@ export default function Providers() {
             <div className="flex items-end gap-3 flex-wrap">
               <div className="space-y-1">
                 <label className="text-xs font-medium text-slate-700">Country</label>
-                <Select value={scanCountry} onValueChange={handleScanCountryChange}>
-                  <SelectTrigger className="w-44 h-9 text-sm" data-testid="scan-country-select">
-                    <SelectValue placeholder="Select country…" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {[
-                      "Australia","Austria","Belgium","Brazil","Canada","China","Croatia","Czech Republic",
-                      "Denmark","Estonia","Finland","France","Germany","Greece","Hong Kong","Hungary",
-                      "India","Ireland","Israel","Italy","Japan","Latvia","Lithuania","Luxembourg",
-                      "Malta","Mexico","Netherlands","New Zealand","Norway","Poland","Portugal",
-                      "Romania","Singapore","Slovakia","Slovenia","South Africa","South Korea",
-                      "Spain","Sweden","Switzerland","Turkey","UAE","United Kingdom","United States",
-                    ].map(c => <SelectItem key={c} value={c}>{c}</SelectItem>)}
-                  </SelectContent>
-                </Select>
+                <div className="relative">
+                  <input
+                    list="scan-country-list"
+                    value={scanCountry}
+                    onChange={e => handleScanCountryChange(e.target.value)}
+                    placeholder="e.g. Canada"
+                    className="h-9 w-44 rounded-md border border-input bg-background px-3 py-1 text-sm shadow-sm focus:outline-none focus:ring-1 focus:ring-ring"
+                    data-testid="scan-country-input"
+                    autoComplete="off"
+                  />
+                  <datalist id="scan-country-list">
+                    {Object.keys(SCAN_COUNTRY_CCY).map(c => <option key={c} value={c} />)}
+                  </datalist>
+                </div>
               </div>
               <div className="space-y-1">
                 <label className="text-xs font-medium text-slate-700">Currency</label>
@@ -688,18 +687,50 @@ export default function Providers() {
                           )}
                         </div>
                       </div>
-                      {job.status === "completed" && (
-                        <div className="flex items-center gap-3 text-xs text-slate-500">
-                          <span>{job.steps_completed} steps completed</span>
-                          <button
-                            className="text-blue-600 hover:text-blue-800 underline"
-                            onClick={() => { setSearch((job as any).market_country); setShowScanPanel(false); window.scrollTo({ top: 0, behavior: "smooth" }); }}
-                            title={`Filter banking groups by ${(job as any).market_country}`}
-                          >
-                            Browse {(job as any).market_country} groups →
-                          </button>
-                        </div>
-                      )}
+                      {job.status === "completed" && (() => {
+                        let parsed: { summaryText?: string; newGroupIds?: string[]; newGroupNames?: string[] } = {};
+                        try { if ((job as any).scan_summary) parsed = JSON.parse((job as any).scan_summary); } catch {}
+                        const newGroups = (parsed.newGroupIds || []).map((id, i) => ({ id, name: (parsed.newGroupNames || [])[i] || id }));
+                        return (
+                          <div className="space-y-2">
+                            {parsed.summaryText && (
+                              <pre className="text-xs text-slate-600 whitespace-pre-wrap font-sans bg-white rounded border border-slate-100 px-2.5 py-1.5">
+                                {parsed.summaryText}
+                              </pre>
+                            )}
+                            <div className="flex items-center gap-3 text-xs text-slate-500 flex-wrap">
+                              <span>{job.steps_completed} steps</span>
+                              <button
+                                className="text-blue-600 hover:text-blue-800 underline"
+                                onClick={() => { setSearch((job as any).market_country); setShowScanPanel(false); window.scrollTo({ top: 0, behavior: "smooth" }); }}
+                              >
+                                Browse {(job as any).market_country} groups →
+                              </button>
+                            </div>
+                            {newGroups.length > 0 && (
+                              <div className="space-y-1">
+                                <p className="text-xs font-medium text-slate-600">New groups created — queue CB Setup:</p>
+                                <div className="flex flex-wrap gap-1.5">
+                                  {newGroups.map(g => (
+                                    <button
+                                      key={g.id}
+                                      className="inline-flex items-center gap-1 text-xs px-2 py-0.5 rounded bg-blue-50 border border-blue-200 text-blue-700 hover:bg-blue-100"
+                                      onClick={() => {
+                                        apiRequest("POST", "/api/jobs", { banking_group_id: g.id, banking_group_name: g.name, currency_scope: "home_only", job_mode: "normal" })
+                                          .then(() => queryClient.invalidateQueries({ queryKey: ["/api/jobs"] }))
+                                          .then(() => toast({ title: "Job queued", description: `CB Setup queued for ${g.name}` }));
+                                      }}
+                                      data-testid={`queue-cb-setup-${g.id}`}
+                                    >
+                                      <Cpu className="w-3 h-3" /> {g.name}
+                                    </button>
+                                  ))}
+                                </div>
+                              </div>
+                            )}
+                          </div>
+                        );
+                      })()}
                       {job.status === "failed" && job.error_message && (
                         <div className="text-xs text-red-500 truncate" title={job.error_message}>{job.error_message}</div>
                       )}

@@ -305,6 +305,13 @@ async function processNextJob() {
     const sources = await storage.listDataSources();
     let message: string;
 
+    // Snapshot group IDs before a market scan so we can identify newly created groups
+    let preExistingGroupIds: Set<string> = new Set();
+    if (isMarketScan) {
+      const allGroups = await storage.listBankingGroups();
+      preExistingGroupIds = new Set(allGroups.map(g => g.id));
+    }
+
     if (isMarketScan) {
       const mCountry = (pending as any).market_country as string;
       const mCurrency = (pending as any).market_currency as string;
@@ -364,10 +371,27 @@ async function processNextJob() {
     );
 
     await storage.createMessage({ conversation_id: conv.id, role: "assistant", content: assistantContent });
+
+    // For market scans: identify newly created banking groups + extract summary
+    let scanSummaryJson: string | undefined;
+    if (isMarketScan) {
+      const allGroupsAfter = await storage.listBankingGroups();
+      const newGroups = allGroupsAfter.filter(g => !preExistingGroupIds.has(g.id));
+      // Extract the structured summary block from the assistant's final message
+      const summaryMatch = assistantContent.match(/Providers found[\s\S]*?(?:(?:\r?\n\r?\n)|$)/i);
+      const summaryText = summaryMatch ? summaryMatch[0].trim() : "";
+      scanSummaryJson = JSON.stringify({
+        summaryText,
+        newGroupIds: newGroups.map(g => g.id),
+        newGroupNames: newGroups.map(g => g.group_name),
+      });
+    }
+
     await storage.updateJob(pending.id, {
       status: "completed",
       completed_at: new Date(),
       steps_completed: stepCount,
+      ...(scanSummaryJson ? { scan_summary: scanSummaryJson } : {}),
     } as any);
 
     console.log(`[JobRunner] Completed job ${pending.id} — ${jobLabel} (${stepCount} steps). Cooling down ${JOB_COOLDOWN_MS / 1000}s before next job.`);
