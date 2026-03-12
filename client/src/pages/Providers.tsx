@@ -55,7 +55,8 @@ If any of the following fields are missing, research and fill them now using upd
 ---
 STEP 2 — IDENTIFY CORRESPONDENT BANKING LEGAL ENTITIES
 Search: "${group.group_name} correspondent banking SWIFT BIC legal entity".
-Target ONLY: (a) the primary HQ licensed banking entity, (b) dedicated CB-hub subsidiaries.
+Include: (a) the primary HQ licensed banking entity, (b) dedicated CB-hub or transaction-banking subsidiaries, and (c) regional or national banking subsidiaries that hold a local banking licence and are direct participants in a local RTGS or payment clearing system — even if they are primarily retail/commercial banks. Local RTGS/clearing participation is sufficient qualification.
+Exclude: holding companies, insurance or asset-management arms, dormant entities, and any subsidiary that does not hold a direct banking licence or payment system membership.
 For each candidate: call find_legal_entity_by_name to check if it already exists.
 • Exists → note its ID; update missing fields using update_legal_entity.
 • Does not exist → create with create_legal_entity linked to group_id ${group.id}.

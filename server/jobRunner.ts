@@ -59,14 +59,23 @@ function buildJobPrompt(
   const hasEntities = !snapshot.startsWith("No entities");
   const rtgsMemberKnown = !!rtgsMember && !!rtgsSystem;
 
-  const step2 = hasEntities
+  // Entity targeting rule used in all Step 2 branches
+  const entityTargetingRule = `Include: (a) the primary HQ licensed banking entity, (b) dedicated CB-hub or transaction-banking subsidiaries, and (c) regional or national banking subsidiaries that hold a local banking licence and are direct participants in a local RTGS or payment clearing system — even if they are primarily retail/commercial banks. Local RTGS/clearing participation is sufficient qualification.
+Exclude: holding companies, insurance or asset-management arms, dormant entities, and any subsidiary that does not hold a direct banking licence or payment system membership.`;
+
+  const step2 = hasEntities && scope === "home_only"
     ? `STEP 2 — IDENTIFY CORRESPONDENT BANKING LEGAL ENTITIES
-All entities for this group are already in the snapshot above. DO NOT run a web search.
+Scope is home currency only. Entities already in the database are shown in the snapshot — no additional entity search is needed.
 Review each entity in the snapshot: use find_legal_entity_by_name to confirm the ID if needed, then update any missing fields (country, entity_type) with update_legal_entity.`
+    : hasEntities
+    ? `STEP 2 — IDENTIFY CORRESPONDENT BANKING LEGAL ENTITIES
+Entities already in the database are shown in the snapshot. Because scope is "${scopeLabel}", also check whether this banking group has additional regional or national banking subsidiaries that are not yet recorded.
+Run ONE search: "${groupName} banking subsidiaries correspondent banking clearing RTGS".
+${entityTargetingRule}
+For each candidate not already in the snapshot: use find_legal_entity_by_name to check, then create if missing (create_legal_entity, group_id ${groupId}).`
     : `STEP 2 — IDENTIFY CORRESPONDENT BANKING LEGAL ENTITIES
 The snapshot shows no entities yet. Run ONE search: "${groupName} correspondent banking SWIFT BIC legal entity".
-Target ONLY: (a) the primary HQ licensed banking entity, (b) dedicated CB-hub subsidiaries that directly operate CB business.
-Do NOT add every subsidiary — prefer fewer high-confidence entities.
+${entityTargetingRule}
 For each candidate: use find_legal_entity_by_name to confirm before creating.
 • Not found → create with create_legal_entity linked to group_id ${groupId}.`;
 
