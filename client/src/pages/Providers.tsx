@@ -40,7 +40,7 @@ const CLS_CURRENCIES = new Set(["AUD","CAD","CHF","DKK","EUR","GBP","HKD","JPY",
 function buildAgentPrompt(group: BankingGroup, entityCount: number, bicCount: number, serviceCount: number): string {
   const rtgsLabel = group.rtgs_system || (group.primary_currency ? `identify RTGS for ${group.primary_currency}` : "not identified");
   const clsLine = group.primary_currency && CLS_CURRENCIES.has(group.primary_currency)
-    ? `CLS (fmi_type "FX Settlement Systems") — ${group.primary_currency} is a CLS-eligible currency; check direct settlement membership`
+    ? `CLS (fmi_type "FX Settlement Systems") — ${group.primary_currency} is CLS-eligible. First call check_fmi_membership for the HQ entity + "CLS". If not already recorded, run ONE search "${group.group_name} CLS settlement member" to confirm, then create if confirmed.`
     : `CLS — verify whether ${group.primary_currency || "the home currency"} participates in CLS`;
   return `Run the CB Entity Setup workflow for ${group.group_name}${group.headquarters_country ? ` (${group.headquarters_country})` : ""} [Scope: all currencies]
 Group ID: ${group.id} | Home currency: ${group.primary_currency || "not set"} | RTGS: ${rtgsLabel} | CB probability: ${group.cb_probability || "not set"}
@@ -89,10 +89,9 @@ Order of precedence: (1) call check_fmi_membership — if the record exists, ski
 A) SWIFT (fmi_type "Messaging Networks") — All licensed banking entities are SWIFT members. For each entity: call check_fmi_membership(entity, "SWIFT"). If not recorded, create with create_fmi. No web search required.
 
 B) Local RTGS (fmi_type "Payment Systems") — Follow this 3-step procedure for each entity:
-   Step 1: Determine the RTGS system from the reference table below using the entity's country.
-   Step 2: Call check_fmi_membership for the entity + RTGS system name. If the record already exists, skip.
-   Step 3: If not recorded, create with create_fmi. Do NOT search the web.
-   If the entity's country is NOT in the reference table: run ONE search "[entity name] RTGS direct participant" to identify the system, then check and create.
+   Step 1: Determine the RTGS system from the reference table below using the entity's country, then call check_fmi_membership for the entity + RTGS system name. If the record already exists, skip — do nothing more for this entity.
+   Step 2: If not recorded, create with create_fmi. Do NOT search the web.
+   Step 3: If the entity's country is NOT in the reference table, run ONE search "[entity name] RTGS direct participant" to identify the system, then call check_fmi_membership before creating.
    Reference table:
    Eurozone countries (AT, DE, FR, IT, ES, NL, BE, PT, IE, FI, SK, SI, EE, LV, LT, MT, CY, GR, LU, HR since Jan 2023): TARGET2
    Czech Republic: CERTIS | Hungary: VIBER | Poland: SORBNET2 | Romania: ReGIS | Sweden: RIX | Denmark: Kronos2 | Norway: NICS | Switzerland: SIC

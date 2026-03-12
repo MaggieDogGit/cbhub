@@ -160,10 +160,9 @@ Order of precedence: (1) call check_fmi_membership — if the record exists, ski
 A) SWIFT (fmi_type "Messaging Networks") — All licensed banking entities are SWIFT members. For each entity: call check_fmi_membership(entity, "SWIFT"). If not recorded, create with create_fmi. No web search required.
 
 B) Local RTGS (fmi_type "Payment Systems") — Follow this 3-step procedure for each entity:
-   Step 1: Determine the RTGS system from the reference table below using the entity's country.
-   Step 2: Call check_fmi_membership for the entity + RTGS system name. If the record already exists, skip.
-   Step 3: If not recorded, create with create_fmi. Do NOT search the web.
-   If the entity's country is NOT in the reference table: run ONE search "[entity name] RTGS direct participant" to identify the system, then check and create.
+   Step 1: Determine the RTGS system from the reference table below using the entity's country, then call check_fmi_membership for the entity + RTGS system name. If the record already exists, skip — do nothing more for this entity.
+   Step 2: If not recorded, create with create_fmi. Do NOT search the web.
+   Step 3: If the entity's country is NOT in the reference table, run ONE search "[entity name] RTGS direct participant" to identify the system, then call check_fmi_membership before creating.
    Reference table:
    Eurozone countries (AT, DE, FR, IT, ES, NL, BE, PT, IE, FI, SK, SI, EE, LV, LT, MT, CY, GR, LU, HR since Jan 2023): TARGET2
    Czech Republic: CERTIS | Hungary: VIBER | Poland: SORBNET2 | Romania: ReGIS | Sweden: RIX | Denmark: Kronos2 | Norway: NICS | Switzerland: SIC
