@@ -1,0 +1,285 @@
+Below is a clean copy-paste version designed to be pasted directly into your Replit AI agent prompt or workflow definition.
+
+I removed explanations and kept clear deterministic instructions, because agents perform better with short, direct instructions rather than narrative descriptions.
+
+⸻
+
+Correspondent Banking Market Scan Workflow
+
+Objective
+
+Identify onshore correspondent banking providers for a specific currency market.
+
+Create the following database structure for each provider:
+
+banking group
+ → local legal entity (domiciled in settlement country)
+ → BIC
+ → correspondent service (currency-specific)
+
+This workflow performs market discovery only.
+
+Do NOT record:
+	•	FMI memberships
+	•	non-target currencies
+	•	offshore-only providers
+
+Detailed setup for each bank will be handled later by the CB Entity Setup workflow.
+
+⸻
+
+Market Definition
+
+Currency: [CCY]
+Settlement Country: [COUNTRY]
+RTGS System: [SYSTEM]
+
+Onshore rule:
+
+A provider qualifies only if a licensed banking entity exists in the settlement country.
+
+Example:
+
+Currency: AUD
+Settlement Country: Australia
+RTGS: RITS
+
+
+⸻
+
+Provider Qualification Rules
+
+A bank qualifies as a Correspondent Banking Provider only if ALL of the following are true:
+	1.	A licensed banking entity exists in the settlement country
+	2.	The entity participates in or has access to the local RTGS system
+	3.	The entity has a confirmed SWIFT BIC
+	4.	Evidence exists that the bank supports financial institutions or correspondent banking services
+
+Acceptable evidence includes:
+	•	FI services
+	•	transaction banking
+	•	institutional banking
+	•	nostro/vostro services
+	•	clearing or settlement banking
+	•	known market role as a settlement bank
+
+Exclude:
+	•	offshore-only clearing models
+	•	holding companies
+	•	insurers or asset managers
+	•	inactive or divested entities
+	•	retail banks with no FI capabilities
+
+⸻
+
+Discovery Strategy
+
+Use a layered discovery approach.
+
+Source priority:
+	1.	Central bank or RTGS participant lists
+	2.	Banking regulator licence registers
+	3.	Bank official websites
+	4.	SWIFT/BIC evidence
+	5.	Web search confirmation
+
+Web search should only be used to confirm correspondent banking activity, not to discover banks from scratch.
+
+⸻
+
+Candidate Identification
+
+Identify candidate banks domiciled in the settlement country using:
+	•	RTGS participant lists
+	•	banking licence registers
+	•	domestic major banks
+	•	foreign bank subsidiaries
+	•	foreign bank branches
+
+Candidate types include:
+	•	Domestic banks headquartered in the settlement country
+	•	Foreign bank subsidiaries licensed locally
+	•	Foreign bank branches licensed locally
+
+⸻
+
+Candidate Evaluation
+
+Evaluate each candidate using the following signals:
+
+Signal	Meaning
+Local presence	licensed entity in settlement country
+RTGS participation	direct participant or confirmed access
+SWIFT/BIC presence	confirmed BIC
+FI/correspondent evidence	institutional banking or clearing
+Market reputation	known clearing bank
+
+Candidates without local presence must be rejected immediately.
+
+⸻
+
+Confidence Scoring
+
+Use the following scoring model:
+
+Direct RTGS participant = +30
+Confirmed BIC = +15
+Explicit FI / correspondent evidence = +35
+Market reputation as clearing bank = +20
+
+Local licensed entity is mandatory.
+
+Decision rules:
+
+Score ≥ 80 → High confidence → create provider
+Score 60–79 → Medium confidence → create provider
+Score < 60 → Reject candidate
+
+
+⸻
+
+Scan Stop Conditions
+
+Stop scanning when one of the following occurs:
+
+10 high-confidence providers identified
+OR
+no new credible candidates found after 3 searches
+OR
+20 candidates reviewed
+
+
+⸻
+
+Banking Group Resolution
+
+For each confirmed provider call:
+
+find_banking_group_by_name
+
+If found:
+	•	use existing group_id
+	•	update missing fields only if needed
+
+If not found:
+
+Check if the entity belongs to an existing parent group.
+
+Examples:
+
+HSBC Bank Australia → HSBC
+Citibank Australia Branch → Citigroup
+
+If parent group exists:
+	•	link entity to parent group
+
+Only create a new group if no parent match exists.
+
+⸻
+
+Legal Entity Creation
+
+Record only the entity domiciled in the settlement country.
+
+Call:
+
+find_legal_entity_by_name
+
+If missing create:
+
+create_legal_entity
+
+Fields:
+
+group_id
+legal_name
+country = settlement country
+entity_type = domestic bank | subsidiary | branch
+
+Do NOT create foreign parent entities.
+
+⸻
+
+BIC Codes
+
+For each entity call:
+
+list_bics
+
+If BIC exists:
+	•	use existing BIC
+
+If missing and confirmed:
+
+create_bic
+
+Never guess BIC codes.
+
+If BIC cannot be confirmed, leave unresolved.
+
+⸻
+
+Correspondent Service Creation
+
+Create one service record for the target currency.
+
+Call:
+
+list_correspondent_services
+
+If missing create:
+
+create_correspondent_service
+
+Fields:
+
+currency = [CCY]
+service_type = Correspondent Banking
+clearing_model = Onshore
+
+Only set RTGS membership if confirmed.
+
+Do NOT create services for other currencies.
+
+⸻
+
+Rejected Candidates
+
+Track rejected candidates with reasons such as:
+
+no licensed entity in settlement country
+offshore-only clearing model
+no correspondent banking evidence
+retail-only bank
+entity inactive or divested
+
+
+⸻
+
+Output Summary
+
+At completion output:
+
+Providers discovered: X
+High confidence providers: X
+Medium confidence providers: X
+
+New banking groups created: X
+Existing groups used: X
+
+Legal entities created: X
+BICs created: X
+Services created: X
+
+Candidates reviewed: X
+Candidates rejected: X
+
+Web searches performed: X
+Unresolved items: X
+
+
+⸻
+
+If you want, I can also give you one more extremely useful prompt improvement for your Replit app:
+
+A global market scanning prompt that automatically works for ANY currency (AUD, EUR, SGD, ZAR, BRL, HUF, etc.) without rewriting the workflow. It will make your agent much easier to scale to 100+ markets.
