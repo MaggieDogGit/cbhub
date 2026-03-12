@@ -32,7 +32,7 @@ const SCOPE_LABELS: Record<CurrencyScope, string> = {
   all:       "All CCY",
 };
 
-const CURRENCIES = ["all","EUR","USD","GBP","JPY","CHF","CAD","AUD","SGD","HKD","CNH","SEK","NOK","DKK","NZD","PLN","CZK","HUF","RON","TRY","ZAR","BRL","MXN","INR","KRW","ILS"];
+const CURRENCIES = ["all","USD","EUR","GBP","AED","AUD","BGN","BHD","BRL","CAD","CHF","CLP","CNH","CNY","COP","CZK","DKK","EGP","HKD","HUF","IDR","ILS","INR","JPY","KES","KRW","KWD","MAD","MXN","MYR","NGN","NOK","NZD","OMR","PEN","PHP","PLN","QAR","RON","SAR","SEK","SGD","THB","TRY","TWD","ZAR"];
 const SERVICE_TYPES = ["all","Correspondent Banking","Global Currency Clearing","Currency Clearing","RTGS Participation","Instant Payments Access","FX Liquidity","CLS Settlement","Custody Services","Transaction Banking","Liquidity Services"];
 
 const CLS_CURRENCIES = new Set(["AUD","CAD","CHF","DKK","EUR","GBP","HKD","JPY","MXN","NOK","NZD","SEK","SGD","USD","ILS","ZAR","KRW","HUF"]);
@@ -135,7 +135,7 @@ function JobStatusBadge({ job }: { job: AgentJob }) {
   return null;
 }
 
-const CB_CURRENCIES = ["EUR","USD","GBP","JPY","CHF","CAD","AUD","SGD","HKD","CNH","SEK","NOK","DKK","NZD","PLN","CZK","HUF","RON","TRY","ZAR","BRL","MXN","INR","KRW","ILS"];
+const CB_CURRENCIES = ["USD","EUR","GBP","AED","AUD","BGN","BHD","BRL","CAD","CHF","CLP","CNH","CNY","COP","CZK","DKK","EGP","HKD","HUF","IDR","ILS","INR","JPY","KES","KRW","KWD","MAD","MXN","MYR","NGN","NOK","NZD","OMR","PEN","PHP","PLN","QAR","RON","SAR","SEK","SGD","THB","TRY","TWD","ZAR"];
 
 type MergeDialog =
   | { type: "group"; keepId: string; keepName: string; deleteId: string; deleteName: string }

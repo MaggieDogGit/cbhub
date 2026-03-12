@@ -6,7 +6,7 @@ import { CheckCircle2, XCircle } from "lucide-react";
 import { useState } from "react";
 import type { CorrespondentService } from "@shared/schema";
 
-const CURRENCIES = ["EUR","USD","GBP","JPY","CHF","CAD","AUD","SGD","HKD","CNH","SEK","NOK","DKK","PLN","CZK","HUF","RON","TRY","ZAR","BRL","MXN","INR"];
+const CURRENCIES = ["USD","EUR","GBP","AED","AUD","BGN","BHD","BRL","CAD","CHF","CLP","CNH","CNY","COP","CZK","DKK","EGP","HKD","HUF","IDR","ILS","INR","JPY","KES","KRW","KWD","MAD","MXN","MYR","NGN","NOK","NZD","OMR","PEN","PHP","PLN","QAR","RON","SAR","SEK","SGD","THB","TRY","TWD","ZAR"];
 
 const BoolIcon = ({ val }: { val: boolean | null | undefined }) =>
   val ? <CheckCircle2 className="w-4 h-4 text-emerald-500 mx-auto" /> : <XCircle className="w-4 h-4 text-slate-300 mx-auto" />;

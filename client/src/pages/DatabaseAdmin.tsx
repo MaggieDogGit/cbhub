@@ -12,7 +12,7 @@ import { Badge } from "@/components/ui/badge";
 import { Plus, Trash2, Edit2, Save, X } from "lucide-react";
 import type { BankingGroup, LegalEntity, Bic, CorrespondentService, Fmi } from "@shared/schema";
 
-const CURRENCIES = ["EUR","USD","GBP","JPY","CHF","CAD","AUD","SGD","HKD","CNH","SEK","NOK","DKK","PLN","CZK","HUF","RON","TRY","ZAR","BRL","MXN","INR"];
+const CURRENCIES = ["USD","EUR","GBP","AED","AUD","BGN","BHD","BRL","CAD","CHF","CLP","CNH","CNY","COP","CZK","DKK","EGP","HKD","HUF","IDR","ILS","INR","JPY","KES","KRW","KWD","MAD","MXN","MYR","NGN","NOK","NZD","OMR","PEN","PHP","PLN","QAR","RON","SAR","SEK","SGD","THB","TRY","TWD","ZAR"];
 const SERVICE_TYPES = ["Correspondent Banking","Currency Clearing","RTGS Participation","Instant Payments Access","FX Liquidity","CLS Settlement","CLS Third Party Settlement","CLS Nostro Payments","Custody Services","Transaction Banking","Liquidity Services"];
 
 function GroupForm({ initial, groups, onSave, onCancel }: { initial?: Partial<BankingGroup>; groups?: BankingGroup[]; onSave: (d: any) => void; onCancel: () => void }) {

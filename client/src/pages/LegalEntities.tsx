@@ -12,9 +12,9 @@ import { ChevronDown, ChevronRight, Search, ShieldCheck, Globe, Building2, Sword
 import { useToast } from "@/hooks/use-toast";
 import type { BankingGroup, LegalEntity, Bic, CorrespondentService, Fmi, IntelObservation } from "@shared/schema";
 
-const CURRENCIES = ["all","EUR","USD","GBP","JPY","CHF","CAD","AUD","SGD","HKD","CNH","SEK","NOK","DKK","PLN","CZK","HUF","RON","TRY","ZAR","BRL","MXN","INR"];
+const CURRENCIES = ["all","USD","EUR","GBP","AED","AUD","BGN","BHD","BRL","CAD","CHF","CLP","CNH","CNY","COP","CZK","DKK","EGP","HKD","HUF","IDR","ILS","INR","JPY","KES","KRW","KWD","MAD","MXN","MYR","NGN","NOK","NZD","OMR","PEN","PHP","PLN","QAR","RON","SAR","SEK","SGD","THB","TRY","TWD","ZAR"];
 const SERVICE_TYPES = ["all","Correspondent Banking","Currency Clearing","RTGS Participation","Instant Payments Access","FX Liquidity","CLS Settlement","Custody Services","Transaction Banking","Liquidity Services"];
-const CB_CURRENCIES = ["EUR","USD","GBP","JPY","CHF","CAD","AUD","SGD","HKD","CNH","SEK","NOK","DKK","NZD","PLN","CZK","HUF","RON","TRY","ZAR","BRL","MXN","INR","KRW","ILS"];
+const CB_CURRENCIES = ["USD","EUR","GBP","AED","AUD","BGN","BHD","BRL","CAD","CHF","CLP","CNH","CNY","COP","CZK","DKK","EGP","HKD","HUF","IDR","ILS","INR","JPY","KES","KRW","KWD","MAD","MXN","MYR","NGN","NOK","NZD","OMR","PEN","PHP","PLN","QAR","RON","SAR","SEK","SGD","THB","TRY","TWD","ZAR"];
 
 type IntelDialog =
   | { entityId: string; entityName: string; groupId: string; groupName: string }
