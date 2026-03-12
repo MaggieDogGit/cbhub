@@ -167,6 +167,11 @@ export default function Providers() {
   // Merge dialog
   const [mergeDialog, setMergeDialog] = useState<MergeDialog>(null);
 
+  // Market Scan
+  const [scanCountry, setScanCountry] = useState("");
+  const [scanCurrency, setScanCurrency] = useState("");
+  const [showScanPanel, setShowScanPanel] = useState(false);
+
   // Intel dialog
   const [intelDialog, setIntelDialog] = useState<IntelDialog>(null);
   const [intelIsCompetitor, setIntelIsCompetitor] = useState(true);
@@ -266,6 +271,16 @@ export default function Providers() {
       clearSelection();
     },
     onError: (err: any) => toast({ title: "Queue all failed", description: err.message, variant: "destructive" }),
+  });
+
+  const marketScanMutation = useMutation({
+    mutationFn: (vars: { market_country: string; market_currency: string }) =>
+      apiRequest("POST", "/api/jobs/market-scan", vars).then(r => r.json()),
+    onSuccess: (_data, vars) => {
+      queryClient.invalidateQueries({ queryKey: ["/api/jobs"] });
+      toast({ title: "Market scan queued", description: `${vars.market_country} / ${vars.market_currency}` });
+    },
+    onError: (err: any) => toast({ title: "Could not queue scan", description: err.message, variant: "destructive" }),
   });
 
   const mergeGroupsMutation = useMutation({
@@ -547,6 +562,118 @@ export default function Providers() {
                 {opt.label}
               </button>
             ))}
+          </div>
+        )}
+      </div>
+
+      {/* Market Coverage Scan panel */}
+      <div className="rounded-xl border border-slate-200 bg-white shadow-sm overflow-hidden" data-testid="market-scan-panel">
+        <button
+          data-testid="market-scan-toggle"
+          onClick={() => setShowScanPanel(p => !p)}
+          className="w-full flex items-center justify-between px-4 py-3 text-sm font-medium text-slate-700 hover:bg-slate-50 transition-colors"
+        >
+          <div className="flex items-center gap-2">
+            <Globe className="w-4 h-4 text-blue-500" />
+            <span>Market Coverage Scan</span>
+            {jobs.filter(j => (j as any).job_type === "market_scan").length > 0 && (
+              <Badge className="bg-blue-100 text-blue-700 text-xs px-2 py-0.5 border-0">
+                {jobs.filter(j => (j as any).job_type === "market_scan").length} scan{jobs.filter(j => (j as any).job_type === "market_scan").length !== 1 ? "s" : ""}
+              </Badge>
+            )}
+          </div>
+          {showScanPanel ? <ChevronDown className="w-4 h-4 text-slate-400" /> : <ChevronRight className="w-4 h-4 text-slate-400" />}
+        </button>
+
+        {showScanPanel && (
+          <div className="border-t border-slate-100 px-4 py-4 space-y-4">
+            <p className="text-xs text-slate-500">
+              Discover 8–15 active CB providers in a market. Creates banking groups, entities, BICs and one correspondent service per currency. No FMI memberships (deferred to CB Setup).
+            </p>
+            {/* Queue new scan */}
+            <div className="flex items-end gap-3 flex-wrap">
+              <div className="space-y-1">
+                <label className="text-xs font-medium text-slate-700">Country</label>
+                <Select value={scanCountry} onValueChange={setScanCountry}>
+                  <SelectTrigger className="w-44 h-9 text-sm" data-testid="scan-country-select">
+                    <SelectValue placeholder="Select country…" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {[
+                      "Australia","Austria","Belgium","Brazil","Canada","China","Croatia","Czech Republic",
+                      "Denmark","Estonia","Finland","France","Germany","Greece","Hong Kong","Hungary",
+                      "India","Ireland","Israel","Italy","Japan","Latvia","Lithuania","Luxembourg",
+                      "Malta","Mexico","Netherlands","New Zealand","Norway","Poland","Portugal",
+                      "Romania","Singapore","Slovakia","Slovenia","South Africa","South Korea",
+                      "Spain","Sweden","Switzerland","Turkey","UAE","United Kingdom","United States",
+                    ].map(c => <SelectItem key={c} value={c}>{c}</SelectItem>)}
+                  </SelectContent>
+                </Select>
+              </div>
+              <div className="space-y-1">
+                <label className="text-xs font-medium text-slate-700">Currency</label>
+                <Select value={scanCurrency} onValueChange={setScanCurrency}>
+                  <SelectTrigger className="w-28 h-9 text-sm" data-testid="scan-currency-select">
+                    <SelectValue placeholder="CCY…" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {CB_CURRENCIES.map(c => <SelectItem key={c} value={c}>{c}</SelectItem>)}
+                  </SelectContent>
+                </Select>
+              </div>
+              <Button
+                size="sm"
+                data-testid="queue-market-scan"
+                disabled={!scanCountry || !scanCurrency || marketScanMutation.isPending}
+                onClick={() => marketScanMutation.mutate({ market_country: scanCountry, market_currency: scanCurrency })}
+                className="h-9 bg-blue-600 hover:bg-blue-700 text-white gap-1.5"
+              >
+                {marketScanMutation.isPending
+                  ? <><Loader2 className="w-3.5 h-3.5 animate-spin" /> Queuing…</>
+                  : <><Globe className="w-3.5 h-3.5" /> Queue Scan</>}
+              </Button>
+            </div>
+
+            {/* Active + recent market scans */}
+            {jobs.filter(j => (j as any).job_type === "market_scan").length > 0 && (
+              <div className="space-y-2">
+                <div className="text-xs font-medium text-slate-500 uppercase tracking-wide">Scan History</div>
+                {jobs
+                  .filter(j => (j as any).job_type === "market_scan")
+                  .slice()
+                  .sort((a, b) => new Date(b.queued_at!).getTime() - new Date(a.queued_at!).getTime())
+                  .map(job => (
+                    <div key={job.id} className="flex items-center gap-3 p-2.5 rounded-lg border border-slate-100 bg-slate-50 text-sm" data-testid={`scan-job-${job.id}`}>
+                      <JobStatusBadge status={job.status} />
+                      <span className="font-medium text-slate-800">
+                        {(job as any).market_country} / {(job as any).market_currency}
+                      </span>
+                      {job.steps_completed! > 0 && (
+                        <span className="text-xs text-slate-500">{job.steps_completed} steps</span>
+                      )}
+                      {job.conversation_id && (
+                        <button
+                          className="ml-auto text-xs text-blue-600 hover:text-blue-800 underline"
+                          onClick={() => setLocation(`/agent?conv=${job.conversation_id}`)}
+                        >
+                          View
+                        </button>
+                      )}
+                      {job.status === "pending" && (
+                        <button
+                          className="text-xs text-slate-400 hover:text-red-500 ml-auto"
+                          onClick={() => apiRequest("DELETE", `/api/jobs/${job.id}`).then(() => queryClient.invalidateQueries({ queryKey: ["/api/jobs"] }))}
+                        >
+                          <X className="w-3.5 h-3.5" />
+                        </button>
+                      )}
+                      {job.status === "failed" && job.error_message && (
+                        <span className="ml-auto text-xs text-red-500 truncate max-w-48" title={job.error_message}>{job.error_message}</span>
+                      )}
+                    </div>
+                  ))}
+              </div>
+            )}
           </div>
         )}
       </div>

@@ -394,6 +394,28 @@ Only include currencies and services you found evidence for in the research.`,
     res.json({ queued: queued.length, jobs: queued });
   });
 
+  app.post("/api/jobs/market-scan", async (req, res) => {
+    const { market_country, market_currency } = req.body;
+    if (!market_country || !market_currency) return res.status(400).json({ message: "market_country and market_currency required" });
+    const existing = await storage.listJobs();
+    const dupe = existing.find(j =>
+      (j as any).job_type === "market_scan" &&
+      (j as any).market_country === market_country &&
+      (j as any).market_currency === market_currency &&
+      (j.status === "pending" || j.status === "running")
+    );
+    if (dupe) return res.status(409).json({ message: "A market scan for this country/currency is already queued or running.", job: dupe });
+    const job = await storage.createJob({
+      status: "pending",
+      currency_scope: "home_only",
+      job_mode: "normal",
+      job_type: "market_scan",
+      market_country,
+      market_currency,
+    } as any);
+    res.json(job);
+  });
+
   // Intel Observations
   app.get("/api/intel", async (req, res) => {
     try {

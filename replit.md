@@ -42,7 +42,7 @@ server/
   index.ts      – Express app entry point
   routes.ts     – All REST API routes; /api/chat uses agentCore; starts jobRunner on init
   agentCore.ts  – Shared agent logic: buildSystemPrompt, getTools, executeTool, runAgentLoop
-  jobRunner.ts  – Background job runner: polls agent_jobs every 30s, runs CB Setup workflows
+  jobRunner.ts  – Background job runner: polls agent_jobs every 30s, runs CB Setup and Market Scan workflows
   storage.ts    – DatabaseStorage class implementing IStorage
   db.ts         – Drizzle ORM + pg pool setup
 
@@ -62,7 +62,7 @@ shared/
 | FMI | legal_entity_id, fmi_type (CLS_Settlement_Member), member_since |
 | Conversation | name, created_at |
 | ChatMessage | conversation_id, role (user/assistant), content |
-| AgentJob | banking_group_id, banking_group_name, status (pending/running/completed/failed), conversation_id, steps_completed |
+| AgentJob | banking_group_id (nullable for market scans), banking_group_name (nullable), status, job_type (cb_setup/market_scan), market_country, market_currency, conversation_id, steps_completed |
 
 ## API Endpoints
 
@@ -76,7 +76,7 @@ All prefixed with `/api`:
 - `GET|POST /fmis`, `PATCH|DELETE /fmis/:id`
 - `GET|POST /conversations`, `DELETE /conversations/:id`
 - `GET|POST /conversations/:id/messages`
-- `GET|POST /jobs`, `DELETE /jobs/:id`, `POST /jobs/queue-all`
+- `GET|POST /jobs`, `DELETE /jobs/:id`, `POST /jobs/queue-all`, `POST /jobs/stop-queue`, `POST /jobs/market-scan`
 - `POST /research` – AI bank research (OpenAI structured JSON output)
 - `POST /chat` – Streaming SSE AI agent (calls agentCore.runAgentLoop)
 
@@ -93,11 +93,25 @@ All prefixed with `/api`:
 
 ## Background Job System
 
-- Queue CB Setup workflows for banking groups via the Coverage page
-- Jobs table (`agent_jobs`) tracks: status, conversation_id, steps_completed, error_message
-- Job runner starts automatically on server start; polls every 30s; processes one job at a time
-- Coverage page polls `/api/jobs` every 5s when jobs are active, 15s otherwise
-- "Queue Empty" and "Queue All Incomplete" buttons for batch processing
+Two job types (dispatched by `job_type` field):
+
+### CB Setup (`job_type = "cb_setup"`)
+- Queue workflows for banking groups via the Coverage page or Providers page multi-select
+- Normal mode: gpt-4o, up to 15 iterations, full tool set; Light mode: gpt-4o-mini, 3 iterations, 13 subset tools
+- Jobs table tracks: `banking_group_id`, `banking_group_name`, status, conversation_id, steps_completed
+
+### Market Coverage Scan (`job_type = "market_scan"`)
+- Breadth-first discovery: finds 8–15 CB providers in a market, creates banking groups / entities / BICs / one service per currency
+- Uses `market_country` and `market_currency` fields; `banking_group_id`/`banking_group_name` are NULL
+- No FMI memberships recorded (deferred to CB Setup)
+- Always runs in Normal mode with gpt-4o; max 20 iterations
+- Queued via `POST /api/jobs/market-scan`; UI panel in Providers page
+- COUNTRY_RTGS and CURRENCY_COUNTRY lookup maps exported from `server/jobRunner.ts`
+- Parent-company matching: prompt instructs the agent to search for parent groups before creating regional subsidiaries
+
+### Common
+- Job runner starts automatically on server start; polls every 30s; 90s cooldown between jobs
+- Coverage page polls `/api/jobs` every 5s when active, 15s otherwise
 
 ## Data Quality
 

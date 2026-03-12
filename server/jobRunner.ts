@@ -238,7 +238,9 @@ Target 8–15 banks. Categorize each as:
 STEP 2 — BANKING GROUPS
 For each provider: call find_banking_group_by_name.
   • Found → note ID. Update any null fields (headquarters_country, primary_currency, cb_probability, cb_evidence) using update_banking_group.
-  • Not found → evaluate using the standard 4-criterion CB Provider assessment (SWIFT membership, RTGS participation, Nostro/Vostro evidence, Market reputation), then create with create_banking_group. Set cb_probability based on evidence found.
+  • Not found →
+    - If the name contains a country/regional suffix (e.g. "HSBC Bank Canada", "Citibank NA", "Deutsche Bank Canada Branch"), FIRST search for the parent group without the suffix (e.g. "HSBC", "Citigroup", "Deutsche Bank AG"). If the parent exists, use that group — do NOT create a duplicate. The entity (Step 3) will be linked to the parent group.
+    - Only create a new banking group if no parent match is found. Evaluate using the standard 4-criterion CB Provider assessment (SWIFT membership, RTGS participation, Nostro/Vostro evidence, Market reputation), then create with create_banking_group. Set cb_probability based on evidence found.
 
 ---
 STEP 3 — LEGAL ENTITIES
