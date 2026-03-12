@@ -1,0 +1,296 @@
+Run the Correspondent Banking Market Scan workflow for:
+
+Currency: [CCY]
+Settlement country: [COUNTRY]
+RTGS system: [SYSTEM]
+
+OBJECTIVE
+Identify credible ONSHORE correspondent banking providers for the target currency market.
+
+A provider qualifies only if:
+1. it has a licensed banking entity domiciled or licensed in the settlement country
+2. it participates in or has access to the local RTGS / settlement infrastructure
+3. it has a confirmed BIC or SWIFT presence
+4. there is evidence of financial-institution, correspondent-banking, transaction-banking, clearing, settlement, or nostro/vostro services
+5. the service is not purely offshore
+
+Create records only for the target currency.
+Do NOT create FMI memberships in this workflow.
+Do NOT create services for other currencies.
+Do NOT create foreign HQ entities unless they are also the local licensed entity in the settlement country.
+
+OUTPUT STRUCTURE
+banking group
+→ local legal entity
+→ BIC
+→ one correspondent service for [CCY]
+
+IMPORTANT OPERATING MODEL
+This workflow must use a 3-layer process:
+
+LAYER 1 — RULES AND SOURCES
+Use deterministic logic and source hierarchy.
+
+LAYER 2 — CHATGPT CLASSIFICATION
+Use ChatGPT API to classify whether each candidate is likely a real correspondent banking provider in this market.
+
+LAYER 3 — DATABASE WRITE
+Only create or update records after the candidate passes the qualification test.
+
+SOURCE PRIORITY
+Use sources in this order:
+1. central bank / RTGS participant lists
+2. banking regulator licensed bank or branch registers
+3. bank official websites
+4. confirmed BIC / SWIFT evidence
+5. targeted web search only for missing confirmation
+
+Do NOT rely on generic web results alone if an authoritative source exists.
+
+STEP 0 — BUILD MARKET CANDIDATE UNIVERSE
+Build a list of candidate providers in the settlement country using:
+- RTGS participant lists
+- banking licence registers
+- domestic major banks
+- foreign bank branches or subsidiaries licensed locally
+
+Candidate types allowed:
+- domestic banks headquartered in the settlement country
+- foreign bank subsidiaries licensed locally
+- foreign bank branches licensed locally
+
+Exclude immediately:
+- entities with no local licensed presence
+- holding companies
+- insurance or asset management entities
+- inactive or divested entities
+
+STEP 1 — GATHER EVIDENCE FOR EACH CANDIDATE
+For each candidate, gather evidence fields:
+
+- candidate_name
+- local_entity_name
+- local_entity_country
+- parent_group_candidate
+- licensed_in_country (true/false/unclear)
+- rtgs_participation (confirmed/unclear/none)
+- rtgs_source
+- bic_code (or null)
+- bic_confirmed (true/false)
+- fi_services_evidence
+- correspondent_banking_evidence
+- transaction_banking_evidence
+- nostro_vostro_evidence
+- market_reputation_evidence
+- official_website
+- source_list
+
+If evidence is missing, use targeted searches only as needed.
+
+STEP 2 — CALL CHATGPT API TO CLASSIFY THE CANDIDATE
+After gathering evidence for a candidate, call ChatGPT API with a prompt like this:
+
+---
+You are assessing whether a bank is a credible ONshore correspondent banking provider in a specific currency market.
+
+Market:
+- Currency: [CCY]
+- Settlement country: [COUNTRY]
+- RTGS: [SYSTEM]
+
+Candidate evidence:
+- Candidate name: {candidate_name}
+- Local entity name: {local_entity_name}
+- Local entity country: {local_entity_country}
+- Parent group candidate: {parent_group_candidate}
+- Licensed in country: {licensed_in_country}
+- RTGS participation: {rtgs_participation}
+- BIC code: {bic_code}
+- BIC confirmed: {bic_confirmed}
+- FI services evidence: {fi_services_evidence}
+- Correspondent banking evidence: {correspondent_banking_evidence}
+- Transaction banking evidence: {transaction_banking_evidence}
+- Nostro/vostro evidence: {nostro_vostro_evidence}
+- Market reputation evidence: {market_reputation_evidence}
+- Sources: {source_list}
+
+Rules:
+- Local licensed presence is mandatory
+- Offshore-only models must be rejected
+- RTGS participation is a strong signal but not sufficient by itself
+- Domestic retail banking alone is not enough
+- FI / clearing / settlement / transaction banking evidence increases confidence
+- A confirmed BIC is supportive but not sufficient on its own
+
+Return JSON only:
+{
+  "include_candidate": true,
+  "confidence": "High | Medium | Low",
+  "confidence_score": 0,
+  "service_model": "Onshore | Reject",
+  "reasoning": "",
+  "parent_group_name": "",
+  "local_entity_name_final": "",
+  "entity_type": "Domestic Bank | Subsidiary | Branch | Unknown",
+  "rejection_reason": ""
+}
+---
+
+The agent must parse the JSON and use it as a validation layer.
+Do NOT create records if:
+- include_candidate = false
+- service_model != Onshore
+- confidence = Low
+
+If confidence = Medium, create only if the evidence is still acceptable under the qualification rules.
+
+STEP 3 — APPLY SCORING LOGIC
+Use the following scoring logic alongside ChatGPT’s classification:
+
+Mandatory:
+- licensed local entity in settlement country
+
+Score additions:
+- direct RTGS participant = +30
+- confirmed BIC = +15
+- explicit FI / correspondent / clearing / nostro-vostro evidence = +35
+- market reputation as settlement / clearing bank = +20
+
+Decision thresholds:
+- 80 or above = High confidence
+- 60 to 79 = Medium confidence
+- below 60 = Reject
+
+If the numeric score and ChatGPT classification conflict, do not auto-create the record. Mark as unresolved for review.
+
+STEP 4 — STOP CONDITIONS
+Stop scanning when one of these occurs:
+- 10 high-confidence providers identified
+- no new credible candidates found after 3 searches
+- 20 candidates reviewed
+
+Do not force a provider count if the market is smaller.
+
+STEP 5 — BANKING GROUP RESOLUTION
+For each accepted candidate:
+Call find_banking_group_by_name.
+
+If found:
+- use existing group_id
+- update only missing fields if necessary
+
+If not found:
+- first check whether the local entity belongs to an existing parent group
+- examples:
+  - HSBC Bank Australia → HSBC
+  - Citibank Australia Branch → Citigroup
+
+Use ChatGPT API if needed to normalize parent-group matching with a prompt like:
+
+---
+Determine the most likely parent banking group for this local banking entity.
+
+Entity name: {local_entity_name}
+Candidate parent: {parent_group_candidate}
+Evidence: {source_list}
+
+Return JSON only:
+{
+  "parent_group_name": "",
+  "confidence": "High | Medium | Low",
+  "entity_type": "Subsidiary | Branch | Domestic Bank | Unknown"
+}
+---
+
+Only create a new banking group if no parent match exists.
+
+STEP 6 — LEGAL ENTITY CREATION
+Record only the legal entity domiciled in the settlement country.
+
+Call find_legal_entity_by_name.
+If missing, create with create_legal_entity.
+
+Fields:
+- group_id
+- legal_name = local_entity_name_final
+- country = [COUNTRY]
+- entity_type = Domestic Bank | Subsidiary | Branch
+
+Do NOT create foreign HQ entities in this workflow.
+
+STEP 7 — BIC CODES
+For each accepted local entity:
+Call list_bics.
+
+If BIC exists:
+- use existing BIC
+
+If missing:
+- create with create_bic only if the BIC was confirmed from evidence
+- never guess a BIC
+
+If no BIC can be confirmed, leave unresolved and do not invent data.
+
+STEP 8 — CORRESPONDENT SERVICE CREATION
+For each accepted BIC:
+Call list_correspondent_services.
+
+If target currency service already exists:
+- skip or update only if incorrect
+
+If missing:
+Create one service with:
+- currency = [CCY]
+- service_type = Correspondent Banking
+- clearing_model = Onshore
+
+Only set RTGS membership if confirmed.
+Do NOT create services for other currencies.
+
+STEP 9 — REJECTED CANDIDATES LOG
+Maintain a rejected_candidates list with:
+- candidate_name
+- rejection_reason
+- supporting_note
+
+Possible rejection reasons:
+- no licensed local entity
+- offshore-only model
+- no FI/correspondent evidence
+- domestic retail bank only
+- inactive or divested
+- BIC unconfirmed and evidence too weak
+- classification conflict between rules and ChatGPT
+
+STEP 10 — FINAL OUTPUT
+Return a structured summary:
+
+Providers discovered: X
+High confidence providers: X
+Medium confidence providers: X
+
+New banking groups created: X
+Existing groups used: X
+
+Legal entities created: X
+BICs created: X
+Services created: X
+
+Candidates reviewed: X
+Candidates rejected: X
+Unresolved items: X
+Web searches performed: X
+ChatGPT API classifications performed: X
+
+Also return:
+1. accepted providers list
+2. rejected candidates list
+3. unresolved candidates list
+
+IMPORTANT EXECUTION RULES
+- Prefer authoritative sources over generic web results
+- Use ChatGPT API as a classifier and validator, not as the sole source of truth
+- Never invent legal entities, BICs, or correspondent services
+- Never classify a provider as Onshore unless the entity is locally licensed in the settlement country
+- Never rely on RTGS participation alone as proof of correspondent banking capability
+- Keep the workflow lightweight: market scan only, no FMI creation
