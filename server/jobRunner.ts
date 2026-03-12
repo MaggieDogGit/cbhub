@@ -225,34 +225,35 @@ function buildMarketScanPrompt(
 
   return `Market Coverage Scan — ${country} / ${currency}
 
-GOAL: Discover 8–15 correspondent banking providers active in the ${currency} market (${country}).
-Record each provider as a banking group → legal entity → BIC → one ${currency} correspondent service.
+GOAL: Discover 8–15 ONSHORE correspondent banking providers active in the ${currency} market in ${country}.
+An eligible provider must have a legal entity domiciled IN ${country} — either a domestic bank headquartered there, or a foreign bank group with a licensed local subsidiary or branch in ${country}.
+EXCLUDE any provider that only offers ${currency} clearing from an entity outside ${country} (pure offshore / correspondent-only models without a local presence).
+Record each eligible provider as: banking group → local legal entity (country = ${country}) → BIC → one ${currency} correspondent service (service_type = "Correspondent Banking", clearing_model = "Onshore").
 This is a BREADTH-FIRST market scan. Do NOT record FMI memberships — those are handled by the CB Setup workflow.
 Only create services for ${currency} — do NOT research other currencies.
 
 ---
-STEP 1 — DISCOVER ACTIVE CB PROVIDERS
+STEP 1 — DISCOVER ACTIVE ONSHORE CB PROVIDERS
 Run TWO web searches:
   Search 1: "${country} correspondent banking ${currency} providers SWIFT ${rtgsSystem ? rtgsSystem + " direct participant" : "clearing"}"
-  Search 2: "banks offering ${currency} nostro vostro correspondent banking clearing"
-Target 8–15 banks. Categorize each as:
-  • Onshore (domestic) — entity domiciled in ${country}, likely direct ${rtgsSystem || "local RTGS"} participant → service_type "Correspondent Banking"
-  • Offshore (foreign) — non-domestic entity offering ${currency} clearing → service_type "Global Currency Clearing"
+  Search 2: "${country} licensed banks ${currency} nostro vostro clearing ${rtgsSystem || "RTGS"} member"
+Target 8–15 providers. For each candidate, confirm they have a legal entity (subsidiary or branch) licensed and domiciled IN ${country}.
+Discard any candidate that only offers ${currency} clearing from a foreign entity with no local presence in ${country}.${isEurozone ? `\nNote: For EUR, any entity in a Eurozone country (AT, DE, FR, IT, ES, NL, BE, PT, IE, FI, SK, SI, EE, LV, LT, MT, CY, GR, LU, HR) is Onshore → "Correspondent Banking" + TARGET2.` : ""}
 
 ---
 STEP 2 — BANKING GROUPS
 For each provider: call find_banking_group_by_name.
   • Found → note ID. Update any null fields (headquarters_country, primary_currency, cb_probability, cb_evidence) using update_banking_group.
   • Not found →
-    - If the name contains a country/regional suffix (e.g. "HSBC Bank Canada", "Citibank NA", "Deutsche Bank Canada Branch"), FIRST search for the parent group without the suffix (e.g. "HSBC", "Citigroup", "Deutsche Bank AG"). If the parent exists, use that group — do NOT create a duplicate. The entity (Step 3) will be linked to the parent group.
-    - Only create a new banking group if no parent match is found. Evaluate using the standard 4-criterion CB Provider assessment (SWIFT membership, RTGS participation, Nostro/Vostro evidence, Market reputation), then create with create_banking_group. Set cb_probability based on evidence found.
+    - If the name contains a country/regional suffix (e.g. "HSBC Bank ${country}", "Citibank ${country} Branch"), FIRST search for the parent group without the suffix (e.g. "HSBC", "Citigroup"). If the parent exists, use that group — do NOT create a duplicate. The local entity (Step 3) will be linked to the parent group.
+    - Only create a new banking group if no parent match is found. Evaluate using the standard 4-criterion CB Provider assessment (SWIFT membership, RTGS participation, Nostro/Vostro evidence, Market reputation), then create with create_banking_group.
 
 ---
-STEP 3 — LEGAL ENTITIES
-For each banking group:
-  • Onshore provider → the relevant entity is domiciled in ${country}. Call find_legal_entity_by_name.
-  • Offshore provider → the relevant entity is the group's primary HQ banking entity. Call find_legal_entity_by_name.
-If not found → create with create_legal_entity linked to the group. Set country accurately.
+STEP 3 — LOCAL LEGAL ENTITIES
+For each provider, the relevant entity is the one domiciled IN ${country} (not the foreign HQ).
+Call find_legal_entity_by_name to check if it already exists.
+If not found → create with create_legal_entity linked to the group. Set country = "${country}".
+IMPORTANT: Do NOT create or link a foreign HQ entity. Only the ${country}-domiciled entity should be recorded.
 
 ---
 STEP 4 — BIC CODES
@@ -263,17 +264,17 @@ For each entity: call list_bics.
 ---
 STEP 5 — ${currency} CORRESPONDENT SERVICE
 For each BIC: call list_correspondent_services to check for an existing ${currency} service.
-  • Exists → skip or update clearing_model if incorrect.
+  • Exists → skip or update if clearing_model is not "Onshore".
   • Missing → create with create_correspondent_service:
     - currency = "${currency}"
-    - Onshore (entity country = ${country}) → service_type = "Correspondent Banking", clearing_model = "Onshore", rtgs_membership = true
-    - Offshore (entity country ≠ ${country}) → service_type = "Global Currency Clearing", clearing_model = "Offshore"
-    - Do NOT create services for any other currency.
-TRAP 1 — PARENT CURRENCY: Do NOT mark Onshore just because ${currency} matches the banking group's primary_currency. A foreign subsidiary offering its parent's home currency is still Offshore (e.g. a US bank's German entity offering USD → Offshore).${eurozoneTrap}
+    - service_type = "Correspondent Banking"
+    - clearing_model = "Onshore"
+    - rtgs_membership = true (all included providers have direct ${rtgsSystem || "local RTGS"} access)
+    - Do NOT create services for any other currency.${eurozoneTrap}
 
 ---
 End with a structured summary:
-  Providers found: X (Y Onshore + Z Offshore)
+  Providers found: X (all Onshore)
   New banking groups created: X | Existing groups updated: X
   Entities created: X | BICs created: X | Services created: X
 For full details (FMI memberships, other currencies), run the CB Setup workflow on individual providers.`;
@@ -285,21 +286,23 @@ function buildDryRunSuffix(country: string, currency: string): string {
 ---
 ⚠️ DRY RUN MODE — READ-ONLY ⚠️
 You have NO create/update/delete tools available. Do NOT attempt to call them.
-Instead, complete ALL 5 discovery steps using only read and search tools, then produce a structured Markdown report listing every provider you found and what you WOULD have created:
+Instead, complete ALL 5 discovery steps using only read and search tools, then produce a structured Markdown report listing every ONSHORE provider you found and what you WOULD have created:
 
 ## Dry-Run Discovery Report — ${country} / ${currency}
 
+Only include providers with a legal entity domiciled IN ${country}. Exclude any pure-offshore providers.
+
 For each provider discovered, include:
-| # | Banking Group | HQ Country | Entity Name | Entity Country | BIC Code | Service Type | Clearing Model |
-|---|---|---|---|---|---|---|---|
+| # | Banking Group | HQ Country | Entity Name (${country}-domiciled) | BIC Code | RTGS Direct Participant? |
+|---|---|---|---|---|---|
 
 Then include:
-- **Total providers found**: X (Y Onshore + Z Offshore)
+- **Total onshore providers found**: X
 - **New groups that would be created**: list names
 - **Existing groups that would be updated**: list names
 - **Entities / BICs / Services that would be created**: counts
 
-Be thorough — research all 8–15 providers as if this were a real scan.`;
+Be thorough — research all 8–15 onshore providers as if this were a real scan.`;
 }
 
 async function processNextJob() {
