@@ -1,0 +1,424 @@
+Below is an updated copy-paste version of the CB Entity Setup workflow that explicitly instructs the AI agent to use locally stored FMI data first before searching externally.
+
+This is important because it will:
+	•	reduce web searches
+	•	ensure consistency with your database
+	•	prevent duplicate FMI records
+	•	make the workflow faster and cheaper to run
+
+The additions mainly affect STEP 5 (FMI memberships) and the general instructions.
+
+⸻
+
+Correspondent Banking Entity Setup Workflow
+
+Objective
+
+Build the full correspondent banking structure for a banking group.
+
+This workflow records:
+
+banking group
+ → legal entities
+ → BICs
+ → correspondent services
+ → FMI memberships
+
+Scope of currencies is determined by the workflow input.
+
+⸻
+
+Workflow Inputs
+
+Bank name: [BANK NAME]
+Group ID: [UUID]
+
+Home currency: [CCY]
+Home RTGS system: [SYSTEM]
+
+Scope: [home_only | global]
+CB probability: High
+
+Example:
+
+Bank name: Erste Group
+Home currency: EUR
+RTGS: TARGET2
+Scope: home_only
+
+
+⸻
+
+Database Snapshot
+
+The system provides a snapshot of existing database records.
+
+Example:
+
+Existing legal entities:
+[list]
+
+Existing BICs:
+[list]
+
+Existing correspondent services:
+[list]
+
+Use this snapshot to avoid duplicate creation.
+
+Do NOT call:
+
+list_legal_entities
+list_bics
+list_correspondent_services
+
+for the group unless needed to resolve IDs.
+
+⸻
+
+STEP 1 — Verify Banking Group Record
+
+Check the group fields provided in the workflow header.
+
+Only update fields that are missing or null.
+
+Fields include:
+
+headquarters_country
+primary_currency
+cb_probability
+cb_evidence
+
+If a field is missing:
+	1.	Research the value
+	2.	Call:
+
+update_banking_group
+
+Do not update fields that are already populated.
+
+⸻
+
+STEP 2 — Identify Correspondent Banking Legal Entities
+
+Determine which legal entities within the banking group provide correspondent banking services.
+
+Use the database snapshot as the starting point.
+
+⸻
+
+If No Entities Exist Yet
+
+Run one search:
+
+"[BANK NAME] correspondent banking SWIFT BIC legal entity"
+
+Identify:
+
+Primary HQ banking entity
+Correspondent banking subsidiaries
+Transaction banking hubs
+
+Exclude:
+
+holding companies
+asset management firms
+insurance companies
+inactive entities
+divested subsidiaries
+
+
+⸻
+
+If Entities Exist and Scope = Home Only
+
+Use only entities shown in the snapshot.
+
+For each entity:
+	1.	Confirm identity using:
+
+find_legal_entity_by_name
+
+	2.	Update missing fields using:
+
+update_legal_entity
+
+Do NOT search for additional entities.
+
+⸻
+
+If Entities Exist and Scope = Global
+
+Run one search:
+
+"[BANK NAME] banking subsidiaries correspondent banking clearing RTGS"
+
+Include entities that meet any of the following:
+
+licensed banking subsidiaries
+licensed banking branches
+regional transaction banking hubs
+national subsidiaries participating in local RTGS systems
+
+Also check major clearing centres:
+
+Singapore (MEPS+)
+Hong Kong (CHATS)
+Japan (BOJ-NET)
+Australia (RITS)
+United States (Fedwire)
+United Kingdom (CHAPS)
+Eurozone (TARGET2)
+
+For each candidate:
+	1.	Verify ownership
+	2.	Call:
+
+find_legal_entity_by_name
+
+	3.	If missing create:
+
+create_legal_entity
+
+Fields:
+
+group_id
+legal_name
+country
+entity_type = HQ | subsidiary | branch
+
+
+⸻
+
+STEP 3 — BIC Codes
+
+Each legal entity must have at least one BIC.
+
+For each entity:
+
+If BIC exists in snapshot:
+
+list_bics (filtered by entity)
+
+Retrieve the UUID.
+
+If BIC missing and confirmed:
+
+create_bic
+
+Fields:
+
+entity_id
+bic_code
+swift_member = true
+
+For HQ entity:
+
+is_headquarters = true
+
+Never guess BIC codes.
+
+⸻
+
+STEP 4 — Correspondent Services
+
+Create correspondent services only for the currency scope.
+
+Example:
+
+home_only → only home currency
+global → multiple currencies
+
+
+⸻
+
+Service Classification
+
+Determine service type based on entity country vs settlement country.
+
+Onshore → entity country matches settlement country
+service_type = Correspondent Banking
+
+Offshore → entity country differs
+service_type = Global Currency Clearing
+
+
+⸻
+
+Parent Currency Trap
+
+Do NOT classify Onshore only because the currency equals the group’s home currency.
+
+Example:
+
+US bank German entity offering USD → Offshore
+
+
+⸻
+
+Eurozone Rule
+
+If entity is in a Eurozone country offering EUR:
+
+service_type = Correspondent Banking
+clearing system = TARGET2
+
+Eurozone:
+
+AT BE CY DE EE ES FI FR GR HR IE IT LV LT LU MT NL PT SK SI
+
+
+⸻
+
+Service Creation
+
+For each BIC:
+
+list_correspondent_services
+
+If service missing:
+
+create_correspondent_service
+
+Fields:
+
+bic_id
+currency = [CCY]
+service_type
+clearing_model = Onshore | Offshore
+
+
+⸻
+
+STEP 5 — FMI Memberships
+
+The agent must first check locally stored FMI data before performing web searches.
+
+Use the following order of precedence:
+
+1. Local database FMI records
+2. Known RTGS mapping table
+3. Web search confirmation (only if necessary)
+
+Always check existing records before creating new ones.
+
+Call:
+
+check_fmi_membership
+
+before any new membership creation.
+
+⸻
+
+A — SWIFT
+
+All licensed banking entities are SWIFT members.
+
+Before creating:
+
+check_fmi_membership
+
+If missing create:
+
+create_fmi
+fmi_type = Messaging Networks
+name = SWIFT
+
+No web search required.
+
+⸻
+
+B — Local RTGS
+
+Determine RTGS system using the entity’s country.
+
+Reference table:
+
+Eurozone → TARGET2
+Czech Republic → CERTIS
+Hungary → VIBER
+Poland → SORBNET2
+Romania → ReGIS
+Sweden → RIX
+Denmark → Kronos2
+Norway → NICS
+Switzerland → SIC
+United Kingdom → CHAPS
+United States → Fedwire
+Canada → Lynx
+Australia → RITS
+Japan → BOJ-NET
+Singapore → MEPS+
+Hong Kong → CHATS
+China → CNAPS
+India → RBI RTGS
+South Africa → SAMOS
+Brazil → STR
+South Korea → BOK-Wire+
+Israel → ZAHAV
+Turkey → EFT
+UAE → UAEFTS
+
+Procedure:
+	1.	Check local database for existing FMI record.
+	2.	If missing, create membership using the reference table.
+	3.	Only run a web search if the country is not in the table.
+
+Search example:
+
+"[entity name] RTGS direct participant"
+
+Important rule:
+
+Assign the RTGS system only when the entity country matches the RTGS jurisdiction.
+
+Examples:
+
+CHAPS → UK entities only
+Fedwire → US entities only
+TARGET2 → Eurozone entities only
+MEPS+ → Singapore entities only
+
+
+⸻
+
+C — CLS Membership
+
+CLS membership applies only to the HQ entity.
+
+First check local FMI records.
+
+If not recorded run one search:
+
+"[BANK NAME] CLS settlement member"
+
+Record membership if confirmed.
+
+CLS eligible currencies:
+
+AUD CAD CHF DKK EUR GBP HKD JPY MXN NOK NZD SEK SGD USD ILS ZAR KRW HUF
+
+Skip if home currency is not CLS eligible.
+
+⸻
+
+Workflow Completion
+
+Ensure all steps are executed.
+
+Return summary:
+
+Entities created or updated: X
+BICs created: X
+Correspondent services created: X
+FMI memberships recorded: X
+
+Web searches performed: X
+Issues encountered: X
+
+
+⸻
+
+If you’d like, I can also show you a very powerful structural improvement for your Replit system:
+
+A single global FMI reference table design that will allow your agent to map all RTGS systems, instant payment systems, and FX settlement systems worldwide automatically. It dramatically improves accuracy when building a global correspondent banking database.
