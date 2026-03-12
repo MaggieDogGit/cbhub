@@ -97,7 +97,7 @@ function buildJobPrompt(
 
   // Entity targeting rule used in all Step 2 branches
   const entityTargetingRule = `Include: (a) the primary HQ licensed banking entity, (b) dedicated CB-hub or transaction-banking subsidiaries, and (c) regional or national banking subsidiaries that hold a local banking licence and are direct participants in a local RTGS or payment clearing system — even if they are primarily retail/commercial banks. Local RTGS/clearing participation is sufficient qualification.
-For globally active or G-SIB banks, additionally check for documented CB operations in the following major clearing centres: Singapore (SGD/MEPS+), Hong Kong (HKD/CHATS), Japan (JPY/BOJ-NET), Australia (AUD/RITS). If the bank has a licensed branch or subsidiary with confirmed RTGS direct participation in any of these markets, include it.
+For globally active or G-SIB banks, additionally check for documented CB operations in the following major clearing centres: United States (USD/Fedwire), United Kingdom (GBP/CHAPS), Singapore (SGD/MEPS+), Hong Kong (HKD/CHATS), Japan (JPY/BOJ-NET), Australia (AUD/RITS). If the bank has a licensed branch or subsidiary with confirmed RTGS direct participation in any of these markets, include it.
 Exclude: holding companies, insurance or asset-management arms, dormant entities, and any subsidiary that does not hold a direct banking licence or payment system membership.
 Ownership check: verify each candidate is currently owned/operated by ${groupName} — do not add subsidiaries that have been divested or are under a different parent.`;
 
@@ -118,7 +118,7 @@ For each candidate: use find_legal_entity_by_name to confirm before creating.
 • Not found → create with create_legal_entity linked to group_id ${groupId}.`;
 
   const clsLine = primaryCurrency && CLS_CURRENCIES.has(primaryCurrency)
-    ? `• CLS (fmi_type "FX Settlement Systems") — ${primaryCurrency} is CLS-eligible. Run ONE search to confirm the HQ entity's direct settlement membership, then record if confirmed.`
+    ? `• CLS (fmi_type "FX Settlement Systems") — ${primaryCurrency} is CLS-eligible. First call check_fmi_membership for the HQ entity + "CLS". If not already recorded, run ONE search "${groupName} CLS settlement member" to confirm, then create if confirmed.`
     : ``;
 
   return `Run the CB Entity Setup workflow for ${groupName} [Scope: ${scopeLabel}]
@@ -154,15 +154,23 @@ TRAP 2 — EUROZONE SUBSIDIARIES: A subsidiary in any Eurozone country (AT, DE, 
 
 ---
 STEP 5 — FMI MEMBERSHIPS
-For EVERY entity identified in this workflow (not just the HQ), call check_fmi_membership before each create_fmi to avoid duplicates. Record:
-A) SWIFT (fmi_type "Messaging Networks") — Record for each entity without searching; all licensed banking subsidiaries are SWIFT members.
-B) Local RTGS (fmi_type "Payment Systems") — Use the entity's country to determine the system from this reference table (do NOT search for these):
+For EVERY entity identified in this workflow (not just the HQ), always check locally stored FMI data before searching externally.
+Order of precedence: (1) call check_fmi_membership — if the record exists, skip creation; (2) if missing, create from the reference table or known rules below; (3) only run a web search if the reference table has no answer.
+
+A) SWIFT (fmi_type "Messaging Networks") — All licensed banking entities are SWIFT members. For each entity: call check_fmi_membership(entity, "SWIFT"). If not recorded, create with create_fmi. No web search required.
+
+B) Local RTGS (fmi_type "Payment Systems") — Follow this 3-step procedure for each entity:
+   Step 1: Determine the RTGS system from the reference table below using the entity's country.
+   Step 2: Call check_fmi_membership for the entity + RTGS system name. If the record already exists, skip.
+   Step 3: If not recorded, create with create_fmi. Do NOT search the web.
+   If the entity's country is NOT in the reference table: run ONE search "[entity name] RTGS direct participant" to identify the system, then check and create.
+   Reference table:
    Eurozone countries (AT, DE, FR, IT, ES, NL, BE, PT, IE, FI, SK, SI, EE, LV, LT, MT, CY, GR, LU, HR since Jan 2023): TARGET2
    Czech Republic: CERTIS | Hungary: VIBER | Poland: SORBNET2 | Romania: ReGIS | Sweden: RIX | Denmark: Kronos2 | Norway: NICS | Switzerland: SIC
    United Kingdom: CHAPS | United States: Fedwire | Canada: Lynx | Australia: RITS | Japan: BOJ-NET | Singapore: MEPS+ | Hong Kong: CHATS
    China: CNAPS | India: RTGS (RBI) | South Africa: SAMOS | Brazil: STR | South Korea: BOK-Wire+ | Israel: ZAHAV | Turkey: EFT | UAE: UAEFTS
-   If the entity's country is not in this list: run ONE search "[entity name] RTGS direct participant" to identify the system before recording.
    TRAP — COUNTRY MATCHING: Each payment system must only be assigned to an entity whose country matches the system's home jurisdiction. Never assign a foreign system to the HQ by default. Examples: CHAPS → UK entities only; Fedwire → US entities only; TARGET2 → Eurozone entities only; MEPS+ → Singapore entities only; CHATS → Hong Kong entities only; BOJ-NET → Japan entities only.
+
 C) CLS (HQ entity only, fmi_type "FX Settlement Systems") — ${clsLine || "skip (home currency is not CLS-eligible)"}
 
 ---

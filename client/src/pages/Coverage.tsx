@@ -59,7 +59,7 @@ For each candidate: use find_legal_entity_by_name to confirm before creating.
       ? `• ${rtgsLabel} (fmi_type "Payment Systems") — RTGS membership is already confirmed; record directly without searching.`
       : `• ${rtgsLabel} (fmi_type "Payment Systems") — Run ONE search: "${group.group_name} ${rtgsLabel} direct participant" to confirm, then record.`,
     group.primary_currency && CLS_CURRENCIES.has(group.primary_currency)
-      ? `• CLS (fmi_type "FX Settlement Systems") — ${group.primary_currency} is CLS-eligible. Run ONE search to confirm direct settlement membership, then record.`
+      ? `• CLS (fmi_type "FX Settlement Systems") — ${group.primary_currency} is CLS-eligible. First call check_fmi_membership for the HQ entity + "CLS". If not already recorded, run ONE search "${group.group_name} CLS settlement member" to confirm, then create if confirmed.`
       : ``,
   ].filter(Boolean).join("\n");
 
@@ -93,7 +93,8 @@ TRAP TO AVOID: Do NOT mark a service Onshore just because the currency matches t
 
 ---
 STEP 5 — FMI MEMBERSHIPS
-For the primary HQ entity, check and record the following (call check_fmi_membership before each create_fmi):
+For the primary HQ entity, always check locally stored FMI data before searching externally.
+Order of precedence: (1) call check_fmi_membership — if the record exists, skip creation; (2) if missing, create from the reference table or known rules below; (3) only run a web search if the reference table has no answer.
 ${step5FmiLines}
 
 ---
