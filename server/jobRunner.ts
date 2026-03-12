@@ -61,7 +61,8 @@ function buildJobPrompt(
 
   // Entity targeting rule used in all Step 2 branches
   const entityTargetingRule = `Include: (a) the primary HQ licensed banking entity, (b) dedicated CB-hub or transaction-banking subsidiaries, and (c) regional or national banking subsidiaries that hold a local banking licence and are direct participants in a local RTGS or payment clearing system — even if they are primarily retail/commercial banks. Local RTGS/clearing participation is sufficient qualification.
-Exclude: holding companies, insurance or asset-management arms, dormant entities, and any subsidiary that does not hold a direct banking licence or payment system membership.`;
+Exclude: holding companies, insurance or asset-management arms, dormant entities, and any subsidiary that does not hold a direct banking licence or payment system membership.
+Ownership check: verify each candidate is currently owned/operated by ${groupName} — do not add subsidiaries that have been divested or are under a different parent.`;
 
   const step2 = hasEntities && scope === "home_only"
     ? `STEP 2 — IDENTIFY CORRESPONDENT BANKING LEGAL ENTITIES
@@ -79,15 +80,9 @@ ${entityTargetingRule}
 For each candidate: use find_legal_entity_by_name to confirm before creating.
 • Not found → create with create_legal_entity linked to group_id ${groupId}.`;
 
-  const step5FmiLines = [
-    `• SWIFT (fmi_type "Messaging Networks") — Record directly without searching; all major international banks are SWIFT members.`,
-    rtgsMemberKnown
-      ? `• ${rtgsLabel} (fmi_type "Payment Systems") — rtgs_member is already confirmed; record directly without searching.`
-      : `• ${rtgsLabel} (fmi_type "Payment Systems") — Run ONE search: "${groupName} ${rtgsLabel} direct participant" to confirm membership, then record.`,
-    primaryCurrency && CLS_CURRENCIES.has(primaryCurrency)
-      ? `• CLS (fmi_type "FX Settlement Systems") — ${primaryCurrency} is CLS-eligible. Run ONE search to confirm direct settlement membership, then record.`
-      : ``,
-  ].filter(Boolean).join("\n");
+  const clsLine = primaryCurrency && CLS_CURRENCIES.has(primaryCurrency)
+    ? `• CLS (fmi_type "FX Settlement Systems") — ${primaryCurrency} is CLS-eligible. Run ONE search to confirm the HQ entity's direct settlement membership, then record if confirmed.`
+    : ``;
 
   return `Run the CB Entity Setup workflow for ${groupName} [Scope: ${scopeLabel}]
 Group ID: ${groupId} | Home currency: ${primaryCurrency || "not set"} | RTGS: ${rtgsLabel} | RTGS member: ${rtgsMemberKnown ? "yes" : "unconfirmed"} | CB probability: ${cbProbability || "not set"}
@@ -114,15 +109,23 @@ ${currencyInstruction}
 The existing services for each BIC are shown in the snapshot. Only create services not already listed there.
 • Exists in snapshot → skip or update with update_correspondent_service if details are incomplete.
 • Missing → create with create_correspondent_service. bic_id must be a real UUID obtained from list_bics.
-For clearing_model AND service_type, use the entity's country shown in the snapshot — NOT the group's home currency:
-• Onshore ONLY if this entity's country is the home country/region of that currency's settlement infrastructure → service_type = "Correspondent Banking"
-• All other combinations → Offshore → service_type = "Global Currency Clearing"
-TRAP TO AVOID: Do NOT mark a service Onshore just because the currency matches the banking group's primary_currency. A foreign subsidiary offering its parent's home currency is still Offshore (e.g. a US bank's German entity offering USD = Offshore → Global Currency Clearing).
+Onshore vs Offshore — base this on the ENTITY'S country, not the group's home country:
+• Onshore → entity's country is the home settlement country for that currency → service_type = "Correspondent Banking"
+• Offshore → any other combination → service_type = "Global Currency Clearing"
+TRAP 1 — PARENT CURRENCY: Do NOT mark Onshore just because the currency matches the banking group's primary_currency. A foreign subsidiary offering its parent's home currency is still Offshore (e.g. a US bank's German entity offering USD → Offshore).
+TRAP 2 — EUROZONE SUBSIDIARIES: A subsidiary in any Eurozone country (AT, DE, FR, IT, ES, NL, BE, PT, IE, FI, SK, SI, EE, LV, LT, MT, CY, GR, LU, and HR since Jan 2023) offering EUR is Onshore → "Correspondent Banking" + TARGET2. Do not mark it Offshore because its parent is in a different Eurozone country.
 
 ---
 STEP 5 — FMI MEMBERSHIPS
-For the primary HQ entity, check and record the following (call check_fmi_membership before each create_fmi):
-${step5FmiLines}
+For EVERY entity identified in this workflow (not just the HQ), call check_fmi_membership before each create_fmi to avoid duplicates. Record:
+A) SWIFT (fmi_type "Messaging Networks") — Record for each entity without searching; all licensed banking subsidiaries are SWIFT members.
+B) Local RTGS (fmi_type "Payment Systems") — Use the entity's country to determine the system from this reference table (do NOT search for these):
+   Eurozone countries (AT, DE, FR, IT, ES, NL, BE, PT, IE, FI, SK, SI, EE, LV, LT, MT, CY, GR, LU, HR since Jan 2023): TARGET2
+   Czech Republic: CERTIS | Hungary: VIBER | Poland: SORBNET2 | Romania: ReGIS | Sweden: RIX | Denmark: Kronos2 | Norway: NICS | Switzerland: SIC
+   United Kingdom: CHAPS | United States: Fedwire | Canada: Lynx | Australia: RITS | Japan: BOJ-NET | Singapore: MEPS+ | Hong Kong: CHATS
+   China: CNAPS | India: RTGS (RBI) | South Africa: SAMOS | Brazil: STR | South Korea: BOK-Wire+ | Israel: ZAHAV | Turkey: EFT | UAE: UAEFTS
+   If the entity's country is not in this list: run ONE search "[entity name] RTGS direct participant" to identify the system before recording.
+C) CLS (HQ entity only, fmi_type "FX Settlement Systems") — ${clsLine || "skip (home currency is not CLS-eligible)"}
 
 ---
 Work all 5 steps fully. End with a summary: entities added/updated | BICs added | services created | FMI memberships recorded | web searches performed | any issues.`;

@@ -57,6 +57,7 @@ STEP 2 — IDENTIFY CORRESPONDENT BANKING LEGAL ENTITIES
 Search: "${group.group_name} correspondent banking SWIFT BIC legal entity".
 Include: (a) the primary HQ licensed banking entity, (b) dedicated CB-hub or transaction-banking subsidiaries, and (c) regional or national banking subsidiaries that hold a local banking licence and are direct participants in a local RTGS or payment clearing system — even if they are primarily retail/commercial banks. Local RTGS/clearing participation is sufficient qualification.
 Exclude: holding companies, insurance or asset-management arms, dormant entities, and any subsidiary that does not hold a direct banking licence or payment system membership.
+Ownership check: verify each candidate is currently owned/operated by ${group.group_name} — do not add subsidiaries that have been divested or are under a different parent.
 For each candidate: call find_legal_entity_by_name to check if it already exists.
 • Exists → note its ID; update missing fields using update_legal_entity.
 • Does not exist → create with create_legal_entity linked to group_id ${group.id}.
@@ -65,7 +66,7 @@ For each candidate: call find_legal_entity_by_name to check if it already exists
 STEP 3 — BIC CODES
 For every entity: call list_bics to check if a BIC is already linked.
 • BIC exists → use its ID; update missing fields using update_bic.
-• Missing → add with create_bic. Set is_headquarters=true for the primary HQ entity's BIC.
+• Missing → add with create_bic. Set is_headquarters=true and swift_member=true for the primary HQ entity's BIC.
 
 ---
 STEP 4 — CORRESPONDENT SERVICES
@@ -73,14 +74,23 @@ For each BIC, identify all currencies that entity offers CB services in.
 Before creating: call list_correspondent_services to confirm no duplicate exists.
 • Exists → update missing details; do NOT create a duplicate.
 • Missing → create with create_correspondent_service (bic_id from list_bics).
-Onshore ONLY if entity's country is the home country of that currency's settlement infrastructure.
+Onshore vs Offshore — base this on the ENTITY'S country, not the group's home country:
+• Onshore → entity's country is the home settlement country for that currency → service_type = "Correspondent Banking"
+• Offshore → any other combination → service_type = "Global Currency Clearing"
+TRAP 1 — PARENT CURRENCY: Do NOT mark Onshore just because the currency matches the banking group's primary_currency. A foreign subsidiary offering its parent's home currency is still Offshore (e.g. a US bank's German entity offering USD → Offshore).
+TRAP 2 — EUROZONE SUBSIDIARIES: A subsidiary in any Eurozone country (AT, DE, FR, IT, ES, NL, BE, PT, IE, FI, SK, SI, EE, LV, LT, MT, CY, GR, LU, and HR since Jan 2023) offering EUR is Onshore → "Correspondent Banking" + TARGET2. Do not mark it Offshore because its parent is in a different Eurozone country.
 
 ---
 STEP 5 — FMI MEMBERSHIPS
-For the primary HQ entity (call check_fmi_membership before each create_fmi):
-• SWIFT (fmi_type "Messaging Networks")
-• ${rtgsLabel} (fmi_type "Payment Systems")
-• ${clsLine}
+For EVERY entity (not just the HQ), call check_fmi_membership before each create_fmi to avoid duplicates. Record:
+A) SWIFT (fmi_type "Messaging Networks") — Record for each entity without searching; all licensed banking subsidiaries are SWIFT members.
+B) Local RTGS (fmi_type "Payment Systems") — Use the entity's country to determine the system from this reference table (do NOT search for these):
+   Eurozone countries (AT, DE, FR, IT, ES, NL, BE, PT, IE, FI, SK, SI, EE, LV, LT, MT, CY, GR, LU, HR since Jan 2023): TARGET2
+   Czech Republic: CERTIS | Hungary: VIBER | Poland: SORBNET2 | Romania: ReGIS | Sweden: RIX | Denmark: Kronos2 | Norway: NICS | Switzerland: SIC
+   United Kingdom: CHAPS | United States: Fedwire | Canada: Lynx | Australia: RITS | Japan: BOJ-NET | Singapore: MEPS+ | Hong Kong: CHATS
+   China: CNAPS | India: RTGS (RBI) | South Africa: SAMOS | Brazil: STR | South Korea: BOK-Wire+ | Israel: ZAHAV | Turkey: EFT | UAE: UAEFTS
+   If the entity's country is not in this list: run ONE search "[entity name] RTGS direct participant" to identify the system before recording.
+C) CLS (HQ entity only, fmi_type "FX Settlement Systems") — ${clsLine}
 
 ---
 Work all 5 steps fully. End with a summary.`;
