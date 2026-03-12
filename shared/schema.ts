@@ -220,8 +220,8 @@ export type IntelObservation = typeof intelObservations.$inferSelect;
 
 export const agentJobs = pgTable("agent_jobs", {
   id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
-  banking_group_id: varchar("banking_group_id").notNull(),
-  banking_group_name: text("banking_group_name").notNull(),
+  banking_group_id: varchar("banking_group_id"),
+  banking_group_name: text("banking_group_name"),
   status: text("status").notNull().default("pending"),
   conversation_id: varchar("conversation_id"),
   queued_at: timestamp("queued_at").defaultNow(),
@@ -231,6 +231,9 @@ export const agentJobs = pgTable("agent_jobs", {
   steps_completed: integer("steps_completed").default(0),
   currency_scope: text("currency_scope").notNull().default("home_only"),
   job_mode: text("job_mode").notNull().default("normal"),
+  job_type: text("job_type").notNull().default("cb_setup"),
+  market_country: text("market_country"),
+  market_currency: text("market_currency"),
 });
 
 export const insertAgentJobSchema = createInsertSchema(agentJobs).omit({ id: true, queued_at: true });

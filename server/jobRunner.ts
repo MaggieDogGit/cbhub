@@ -9,6 +9,37 @@ const JOB_COOLDOWN_MS = 90_000; // 90 seconds
 
 type CurrencyScope = "home_only" | "major" | "all";
 
+export const COUNTRY_RTGS: Record<string, string> = {
+  "Austria": "TARGET2", "Belgium": "TARGET2", "Croatia": "TARGET2", "Cyprus": "TARGET2",
+  "Estonia": "TARGET2", "Finland": "TARGET2", "France": "TARGET2", "Germany": "TARGET2",
+  "Greece": "TARGET2", "Ireland": "TARGET2", "Italy": "TARGET2", "Latvia": "TARGET2",
+  "Lithuania": "TARGET2", "Luxembourg": "TARGET2", "Malta": "TARGET2", "Netherlands": "TARGET2",
+  "Portugal": "TARGET2", "Slovakia": "TARGET2", "Slovenia": "TARGET2", "Spain": "TARGET2",
+  "Czech Republic": "CERTIS", "Hungary": "VIBER", "Poland": "SORBNET2", "Romania": "ReGIS",
+  "Sweden": "RIX", "Denmark": "Kronos2", "Norway": "NICS", "Switzerland": "SIC",
+  "United Kingdom": "CHAPS",
+  "United States": "Fedwire", "Canada": "Lynx", "Brazil": "STR", "Mexico": "SPEI",
+  "Australia": "RITS", "Japan": "BOJ-NET", "Singapore": "MEPS+", "Hong Kong": "CHATS",
+  "China": "CNAPS", "India": "RTGS (RBI)", "South Korea": "BOK-Wire+",
+  "South Africa": "SAMOS", "Israel": "ZAHAV", "Turkey": "EFT", "UAE": "UAEFTS",
+  "New Zealand": "ESAS",
+};
+
+export const CURRENCY_COUNTRY: Record<string, string> = {
+  "EUR": "Eurozone", "USD": "United States", "GBP": "United Kingdom", "JPY": "Japan",
+  "CHF": "Switzerland", "CAD": "Canada", "AUD": "Australia", "SGD": "Singapore",
+  "HKD": "Hong Kong", "CNH": "China", "SEK": "Sweden", "NOK": "Norway",
+  "DKK": "Denmark", "NZD": "New Zealand", "PLN": "Poland", "CZK": "Czech Republic",
+  "HUF": "Hungary", "RON": "Romania", "TRY": "Turkey", "ZAR": "South Africa",
+  "BRL": "Brazil", "MXN": "Mexico", "INR": "India", "KRW": "South Korea", "ILS": "Israel",
+};
+
+const EUROZONE_COUNTRIES = new Set([
+  "Austria", "Belgium", "Croatia", "Cyprus", "Estonia", "Finland", "France", "Germany",
+  "Greece", "Ireland", "Italy", "Latvia", "Lithuania", "Luxembourg", "Malta", "Netherlands",
+  "Portugal", "Slovakia", "Slovenia", "Spain",
+]);
+
 const CLS_CURRENCIES = new Set(["AUD","CAD","CHF","DKK","EUR","GBP","HKD","JPY","MXN","NOK","NZD","SEK","SGD","USD","ILS","ZAR","KRW","HUF"]);
 
 function buildCurrencyInstruction(scope: CurrencyScope, primaryCurrency: string | null | undefined): string {
@@ -177,6 +208,70 @@ IMPORTANT: No web searches. All calls in parallel. End with exactly 3 lines:
 "Service: [created | already existed]"`;
 }
 
+function buildMarketScanPrompt(
+  country: string,
+  currency: string,
+  rtgsSystem: string | null,
+): string {
+  const isEurozone = currency === "EUR" || EUROZONE_COUNTRIES.has(country);
+  const eurozoneTrap = isEurozone
+    ? `\nTRAP 2 — EUROZONE SUBSIDIARIES: A subsidiary in any Eurozone country offering EUR is Onshore → "Correspondent Banking" + TARGET2. Include Eurozone subsidiaries of non-Eurozone parents as Onshore providers.`
+    : "";
+
+  return `Market Coverage Scan — ${country} / ${currency}
+
+GOAL: Discover 8–15 correspondent banking providers active in the ${currency} market (${country}).
+Record each provider as a banking group → legal entity → BIC → one ${currency} correspondent service.
+This is a BREADTH-FIRST market scan. Do NOT record FMI memberships — those are handled by the CB Setup workflow.
+Only create services for ${currency} — do NOT research other currencies.
+
+---
+STEP 1 — DISCOVER ACTIVE CB PROVIDERS
+Run TWO web searches:
+  Search 1: "${country} correspondent banking ${currency} providers SWIFT ${rtgsSystem ? rtgsSystem + " direct participant" : "clearing"}"
+  Search 2: "banks offering ${currency} nostro vostro correspondent banking clearing"
+Target 8–15 banks. Categorize each as:
+  • Onshore (domestic) — entity domiciled in ${country}, likely direct ${rtgsSystem || "local RTGS"} participant → service_type "Correspondent Banking"
+  • Offshore (foreign) — non-domestic entity offering ${currency} clearing → service_type "Global Currency Clearing"
+
+---
+STEP 2 — BANKING GROUPS
+For each provider: call find_banking_group_by_name.
+  • Found → note ID. Update any null fields (headquarters_country, primary_currency, cb_probability, cb_evidence) using update_banking_group.
+  • Not found → evaluate using the standard 4-criterion CB Provider assessment (SWIFT membership, RTGS participation, Nostro/Vostro evidence, Market reputation), then create with create_banking_group. Set cb_probability based on evidence found.
+
+---
+STEP 3 — LEGAL ENTITIES
+For each banking group:
+  • Onshore provider → the relevant entity is domiciled in ${country}. Call find_legal_entity_by_name.
+  • Offshore provider → the relevant entity is the group's primary HQ banking entity. Call find_legal_entity_by_name.
+If not found → create with create_legal_entity linked to the group. Set country accurately.
+
+---
+STEP 4 — BIC CODES
+For each entity: call list_bics.
+  • BIC exists → note it.
+  • Missing → add with create_bic ONLY if the BIC code was confirmed from research. Do NOT guess BIC codes.
+
+---
+STEP 5 — ${currency} CORRESPONDENT SERVICE
+For each BIC: call list_correspondent_services to check for an existing ${currency} service.
+  • Exists → skip or update clearing_model if incorrect.
+  • Missing → create with create_correspondent_service:
+    - currency = "${currency}"
+    - Onshore (entity country = ${country}) → service_type = "Correspondent Banking", clearing_model = "Onshore", rtgs_membership = true
+    - Offshore (entity country ≠ ${country}) → service_type = "Global Currency Clearing", clearing_model = "Offshore"
+    - Do NOT create services for any other currency.
+TRAP 1 — PARENT CURRENCY: Do NOT mark Onshore just because ${currency} matches the banking group's primary_currency. A foreign subsidiary offering its parent's home currency is still Offshore (e.g. a US bank's German entity offering USD → Offshore).${eurozoneTrap}
+
+---
+End with a structured summary:
+  Providers found: X (Y Onshore + Z Offshore)
+  New banking groups created: X | Existing groups updated: X
+  Entities created: X | BICs created: X | Services created: X
+For full details (FMI memberships, other currencies), run the CB Setup workflow on individual providers.`;
+}
+
 async function processNextJob() {
   if (isProcessing) return;
 
@@ -185,75 +280,85 @@ async function processNextJob() {
   if (!pending) return;
 
   isProcessing = true;
+  const jobType = (pending as any).job_type || "cb_setup";
+  const isMarketScan = jobType === "market_scan";
   const scope: CurrencyScope = (pending.currency_scope as CurrencyScope) || "home_only";
   const isLight = (pending as any).job_mode === "light";
-  console.log(`[JobRunner] Starting job ${pending.id} for ${pending.banking_group_name} (scope: ${scope}, mode: ${isLight ? "light" : "normal"})`);
+  const jobLabel = isMarketScan
+    ? `Market Scan: ${(pending as any).market_country}/${(pending as any).market_currency}`
+    : pending.banking_group_name || "unknown";
+  console.log(`[JobRunner] Starting job ${pending.id} — ${jobLabel} (type: ${jobType}, scope: ${scope}, mode: ${isLight ? "light" : "normal"})`);
 
   try {
-    const conv = await storage.createConversation({ name: `CB Setup${isLight ? " [Light]" : ""}: ${pending.banking_group_name}` });
+    const convName = isMarketScan
+      ? `Market Scan: ${(pending as any).market_country} / ${(pending as any).market_currency}`
+      : `CB Setup${isLight ? " [Light]" : ""}: ${pending.banking_group_name}`;
+    const conv = await storage.createConversation({ name: convName });
     await storage.updateJob(pending.id, {
       status: "running",
       conversation_id: conv.id,
       started_at: new Date(),
     } as any);
 
-    const group = await storage.getBankingGroup(pending.banking_group_id);
-    if (!group) throw new Error(`Banking group ${pending.banking_group_id} not found`);
+    const sources = await storage.listDataSources();
+    let message: string;
 
-    const [entities, bics, services, sources] = await Promise.all([
-      storage.listLegalEntities(),
-      storage.listBics(),
-      storage.listCorrespondentServices(),
-      storage.listDataSources(),
-    ]);
+    if (isMarketScan) {
+      const mCountry = (pending as any).market_country as string;
+      const mCurrency = (pending as any).market_currency as string;
+      const rtgs = COUNTRY_RTGS[mCountry] || null;
+      message = buildMarketScanPrompt(mCountry, mCurrency, rtgs);
+    } else {
+      const group = await storage.getBankingGroup(pending.banking_group_id!);
+      if (!group) throw new Error(`Banking group ${pending.banking_group_id} not found`);
 
-    const groupEntities = entities.filter(e => e.group_id === group.id);
-    const groupBics = groupEntities.flatMap(e => bics.filter(b => b.legal_entity_id === e.id));
-    const groupServices = groupBics.flatMap(b => services.filter(s => s.bic_id === b.id));
+      const [entities, bics, services] = await Promise.all([
+        storage.listLegalEntities(),
+        storage.listBics(),
+        storage.listCorrespondentServices(),
+      ]);
 
-    const snapshot = buildGroupSnapshot(groupEntities, groupBics, groupServices);
+      const groupEntities = entities.filter(e => e.group_id === group.id);
+      const groupBics = groupEntities.flatMap(e => bics.filter(b => b.legal_entity_id === e.id));
+      const groupServices = groupBics.flatMap(b => services.filter(s => s.bic_id === b.id));
+      const snapshot = buildGroupSnapshot(groupEntities, groupBics, groupServices);
 
-    const message = isLight
-      ? buildLightJobPrompt(
-          group.group_name,
-          group.id,
-          group.headquarters_country,
-          group.primary_currency,
-          group.rtgs_system,
-          group.rtgs_member,
-          snapshot,
-        )
-      : buildJobPrompt(
-          group.group_name,
-          group.id,
-          group.primary_currency,
-          group.cb_probability,
-          group.rtgs_system,
-          group.rtgs_member,
-          snapshot,
-          scope,
-        );
+      message = isLight
+        ? buildLightJobPrompt(
+            group.group_name, group.id, group.headquarters_country,
+            group.primary_currency, group.rtgs_system, group.rtgs_member, snapshot,
+          )
+        : buildJobPrompt(
+            group.group_name, group.id, group.primary_currency,
+            group.cb_probability, group.rtgs_system, group.rtgs_member, snapshot, scope,
+          );
+    }
 
     await storage.createMessage({ conversation_id: conv.id, role: "user", content: message });
 
-    const systemPrompt = buildSystemPrompt(sources, undefined, isLight ? "light" : "job");
+    const mode = isMarketScan ? "job" : (isLight ? "light" : "job");
+    const systemPrompt = buildSystemPrompt(sources, undefined, mode);
     const openaiMessages: any[] = [
       { role: "system", content: systemPrompt },
       { role: "user", content: message },
     ];
+
+    const maxIter = isMarketScan ? 20 : (isLight ? 3 : 15);
+    const model = isLight ? "gpt-4o-mini" : "gpt-4o";
+    const tools = isLight ? getLightTools() : undefined;
 
     let stepCount = 0;
     const assistantContent = await runAgentLoop(
       openaiMessages,
       async (_toolName, _args, statusText) => {
         stepCount++;
-        console.log(`[JobRunner] ${pending.banking_group_name} — step ${stepCount}: ${statusText}`);
+        console.log(`[JobRunner] ${jobLabel} — step ${stepCount}: ${statusText}`);
         await storage.updateJob(pending.id, { steps_completed: stepCount } as any);
       },
-      isLight ? 3 : 15,
+      maxIter,
       "auto",
-      isLight ? "gpt-4o-mini" : "gpt-4o",
-      isLight ? getLightTools() : undefined,
+      model,
+      tools,
     );
 
     await storage.createMessage({ conversation_id: conv.id, role: "assistant", content: assistantContent });
@@ -263,7 +368,7 @@ async function processNextJob() {
       steps_completed: stepCount,
     } as any);
 
-    console.log(`[JobRunner] Completed job ${pending.id} for ${pending.banking_group_name} (${stepCount} steps). Cooling down ${JOB_COOLDOWN_MS / 1000}s before next job.`);
+    console.log(`[JobRunner] Completed job ${pending.id} — ${jobLabel} (${stepCount} steps). Cooling down ${JOB_COOLDOWN_MS / 1000}s before next job.`);
   } catch (err: any) {
     console.error(`[JobRunner] Job ${pending.id} failed:`, err.message);
     await storage.updateJob(pending.id, {
@@ -273,7 +378,6 @@ async function processNextJob() {
     } as any).catch(() => {});
     console.log(`[JobRunner] Cooling down ${JOB_COOLDOWN_MS / 1000}s after failure before next job.`);
   } finally {
-    // Cooldown before releasing the lock so the next poll can pick up the next job
     setTimeout(() => {
       isProcessing = false;
     }, JOB_COOLDOWN_MS);
