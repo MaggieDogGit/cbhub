@@ -489,8 +489,10 @@ Only include providers with a legal entity domiciled IN ${country}. Exclude any 
 ### Qualified Providers
 
 For each qualified provider, include:
-| # | Banking Group | HQ Country | Entity Name (${country}) | Entity Type | BIC Code | RTGS Direct? | Score | Classification | Tier |
+| # | Banking Group | HQ Country | Entity Name (${country}) | Entity Type | BIC Code | RTGS Direct? | Score | Classification (Step 2) | Agreed Tier |
 |---|---|---|---|---|---|---|---|---|---|
+
+Score = numeric score from Step 3. Classification = confidence from Step 2 JSON. Agreed Tier = High/Medium if both agree, or "Unresolved" if they conflict.
 
 ### Summary
 
