@@ -146,6 +146,7 @@ export default function Coverage() {
   const [filterIntel, setFilterIntel] = useState<"all" | "competitor" | "cb_provider">("all");
   const [currencyScope, setCurrencyScope] = useState<CurrencyScope>("home_only");
   const [jobMode, setJobMode] = useState<JobMode>("normal");
+  const [expandedValidation, setExpandedValidation] = useState<Record<string, boolean>>({});
   const { toast } = useToast();
 
   const { data: groups = [], isLoading: lg } = useQuery<BankingGroup[]>({ queryKey: ["/api/banking-groups"] });
@@ -530,15 +531,53 @@ export default function Coverage() {
                     </Badge>
                   </td>
                   <td className="px-3 py-3">
-                    <div className="flex items-center gap-1.5 flex-wrap">
-                      {job ? <JobStatusBadge job={job} /> : <span className="text-slate-400 text-xs">—</span>}
-                      {job?.status === "completed" && job.scan_summary && (() => {
+                    <div className="space-y-1.5">
+                      <div className="flex items-center gap-1.5 flex-wrap">
+                        {job ? <JobStatusBadge job={job} /> : <span className="text-slate-400 text-xs">—</span>}
+                        {job?.status === "completed" && job.scan_summary && (() => {
+                          try {
+                            const vs = JSON.parse(job.scan_summary);
+                            if (typeof vs.validationValid !== "undefined") {
+                              if (vs.validationValid && vs.issueCount === 0) {
+                                return <Badge className="bg-emerald-100 text-emerald-700 border-emerald-200 text-xs gap-1" data-testid={`validation-valid-${job.id}`}><CheckCircle2 className="w-3 h-3" /> Valid</Badge>;
+                              }
+                              return (
+                                <Badge
+                                  className="bg-amber-100 text-amber-700 border-amber-200 text-xs gap-1 cursor-pointer"
+                                  data-testid={`validation-issues-${job.id}`}
+                                  onClick={() => setExpandedValidation(prev => ({ ...prev, [job.id]: !prev[job.id] }))}
+                                >
+                                  <AlertCircle className="w-3 h-3" /> {vs.issueCount} issue{vs.issueCount !== 1 ? "s" : ""}
+                                </Badge>
+                              );
+                            }
+                          } catch {}
+                          return null;
+                        })()}
+                      </div>
+                      {job?.status === "completed" && job.scan_summary && expandedValidation[job.id] && (() => {
                         try {
                           const vs = JSON.parse(job.scan_summary);
-                          if (typeof vs.validationValid !== "undefined") {
-                            return vs.validationValid && vs.issueCount === 0
-                              ? <Badge className="bg-emerald-100 text-emerald-700 border-emerald-200 text-xs gap-1" data-testid={`validation-valid-${job.id}`}><CheckCircle2 className="w-3 h-3" /> Valid</Badge>
-                              : <Badge className="bg-amber-100 text-amber-700 border-amber-200 text-xs gap-1 cursor-help" data-testid={`validation-issues-${job.id}`} title={vs.issues?.join("\n")}><AlertCircle className="w-3 h-3" /> {vs.issueCount} issue{vs.issueCount !== 1 ? "s" : ""}</Badge>;
+                          if (vs.issueCount > 0) {
+                            return (
+                              <div className="text-xs space-y-1 pl-1 border-l-2 border-amber-200 ml-1">
+                                {vs.issues?.length > 0 && vs.issues.map((issue: string, i: number) => (
+                                  <div key={i} className="text-amber-800 flex items-start gap-1">
+                                    <span className="text-amber-400 shrink-0">•</span> {issue}
+                                  </div>
+                                ))}
+                                {vs.missingEntities?.length > 0 && (
+                                  <div className="text-slate-600 mt-1">
+                                    <span className="font-medium">Missing:</span>
+                                    {vs.missingEntities.map((me: string, i: number) => (
+                                      <div key={i} className="text-slate-500 flex items-start gap-1 ml-2">
+                                        <span className="text-slate-300 shrink-0">–</span> {me}
+                                      </div>
+                                    ))}
+                                  </div>
+                                )}
+                              </div>
+                            );
                           }
                         } catch {}
                         return null;

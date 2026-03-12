@@ -571,9 +571,9 @@ async function processNextJob() {
         createdCount: newGroups.length,
         updatedCount: touchedExistingGroups.length,
       });
-    } else if (!isMarketScan) {
+    } else if (!isMarketScan && !isLight) {
       const validationMatch = assistantContent.match(/VALIDATION_JSON:\s*(\{[\s\S]*?\})\s*(?:\n|$)/);
-      let validationValid = true;
+      let validationValid: boolean | null = null;
       let issues: string[] = [];
       let missingEntities: string[] = [];
       let notes = "";
@@ -588,14 +588,18 @@ async function processNextJob() {
       }
       const summaryLines = assistantContent.match(/Entities added[\s\S]*/i);
       const summaryText = summaryLines ? summaryLines[0].trim() : assistantContent.slice(-500).trim();
-      scanSummaryJson = JSON.stringify({
-        summaryText,
-        validationValid,
-        issueCount: issues.length,
-        issues,
-        missingEntities,
-        notes,
-      });
+      if (validationValid !== null) {
+        scanSummaryJson = JSON.stringify({
+          summaryText,
+          validationValid,
+          issueCount: issues.length,
+          issues,
+          missingEntities,
+          notes,
+        });
+      } else {
+        scanSummaryJson = JSON.stringify({ summaryText });
+      }
     }
 
     await storage.updateJob(pending.id, {
