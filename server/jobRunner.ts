@@ -229,245 +229,125 @@ function buildMarketScanPrompt(
   const eurozoneNote = isEurozone
     ? `\nEurozone rule: For EUR, any entity in a Eurozone country (AT, DE, FR, IT, ES, NL, BE, PT, IE, FI, SK, SI, EE, LV, LT, MT, CY, GR, LU, HR) qualifies as Onshore → "Correspondent Banking" + TARGET2.`
     : "";
+  const rtgs = rtgsSystem || "the local RTGS system";
 
   return `Market Coverage Scan — ${country} / ${currency}
 
-Objective: Identify onshore correspondent banking providers for the ${currency} market in ${country}.
-Create for each qualified provider: banking group → local legal entity (country = ${country}) → BIC → one ${currency} correspondent service.
-Do NOT record: FMI memberships, non-target currencies, offshore-only providers.
-Do NOT create foreign HQ entities unless they are also the local licensed entity in ${country}.
-Detailed setup for each bank will be handled later by the CB Entity Setup workflow.
+Objective: Identify onshore correspondent banking providers for the ${currency} market in ${country}. For each qualified provider, create: banking group → local legal entity (domiciled in ${country}) → BIC → one ${currency} correspondent service.
+
+Do NOT record: FMI memberships, non-target currencies, or offshore-only providers.
+Do NOT create foreign HQ entities unless they are simultaneously the local licensed entity in ${country}.
+Detailed entity setup (other currencies, FMI memberships) will be handled later by the CB Setup workflow.
 
 Market definition:
   Currency: ${currency}
   Settlement country: ${country}
-  RTGS system: ${rtgsSystem || "identify from research"}${eurozoneNote}
-
-Output structure per provider:
-  banking group → local legal entity → BIC → one ${currency} correspondent service
+  RTGS system: ${rtgs}${eurozoneNote}
 
 ---
-OPERATING MODEL — 3-LAYER EVALUATION
+PHASE 1 — DISCOVER AND QUALIFY CANDIDATES
 
-This workflow uses a 3-layer process for every candidate:
+Run the following searches now. After each search, immediately note any new candidate banks found. Continue searching until you have a stable candidate list (no new candidates in the last search) or have run 5 searches.
 
-  Layer 1 — RULES + SOURCES: Use deterministic qualification rules and authoritative source hierarchy.
-  Layer 2 — CLASSIFICATION: Evaluate each candidate through a structured evidence-and-classification framework before any database write.
-  Layer 3 — DATABASE WRITE: Only create or update records after the candidate passes both Layer 1 and Layer 2.
+Suggested search queries:
+  • "${country} ${rtgs} direct participants ${currency} clearing banks"
+  • "${country} banking regulator licensed banks correspondent banking"
+  • "${country} ${currency} nostro vostro correspondent banks financial institutions"
+  • "[specific bank name] ${country} correspondent banking ${currency}" (for each promising candidate)
 
-Source priority (use in this order):
-  1. Central bank / ${rtgsSystem || "RTGS"} participant lists
-  2. Banking regulator licence registers for ${country}
-  3. Bank official websites (FI / transaction banking pages)
-  4. Confirmed BIC / SWIFT evidence
-  5. Targeted web search (confirmation only — do NOT rely on generic web results if an authoritative source exists)
-
----
-STEP 0 — BUILD CANDIDATE UNIVERSE
-
-Build an initial list of candidate providers in ${country} using authoritative sources:
-  - ${rtgsSystem || "RTGS"} / central bank participant lists
-  - Banking regulator licence registers
-  - Known domestic major banks
-  - Foreign bank branches or subsidiaries on official registers
-
-Search strategy:
-  Search 1: "${country} ${rtgsSystem || "RTGS"} direct participants list ${currency} clearing banks"
-  Search 2: "${country} banking regulator licensed banks foreign bank branches subsidiaries"
-  Search 3 (if needed): "${country} correspondent banking ${currency} nostro vostro settlement banks"
-
-Candidate types allowed:
+Candidate types to include:
   • Domestic banks headquartered in ${country}
-  • Foreign bank subsidiaries licensed in ${country}
-  • Foreign bank branches licensed in ${country}
+  • Foreign bank subsidiaries incorporated in ${country}
+  • Foreign bank branches with a full banking licence in ${country}
 
-Exclude immediately:
+Exclude immediately (before any evaluation):
   • Entities with no licensed local presence in ${country}
   • Holding companies, insurance or asset management entities
   • Inactive or divested entities
-
-Do NOT evaluate or score candidates in this step — only build the universe.
-
----
-STEP 1 — GATHER EVIDENCE PER CANDIDATE
-
-For each candidate in the universe, collect the following evidence fields:
-
-  candidate_name: [name as discovered]
-  local_entity_name: [licensed entity name in ${country}]
-  local_entity_country: ${country}
-  parent_group_candidate: [parent banking group name, if foreign]
-  licensed_in_country: true | false | unclear
-  rtgs_participation: confirmed | unclear | none
-  rtgs_source: [URL or source description]
-  bic_code: [SWIFT BIC or null]
-  bic_confirmed: true | false
-  fi_services_evidence: [text description or null]
-  correspondent_banking_evidence: [text description or null]
-  transaction_banking_evidence: [text description or null]
-  nostro_vostro_evidence: [text description or null]
-  market_reputation_evidence: [text description or null]
-  source_list: [URLs and sources used]
-
-If evidence is missing for a candidate, use targeted searches only as needed.
-Do NOT proceed to Step 2 for a candidate until its evidence fields are populated.
+  • Pure offshore providers (no local ${country} entity)
 
 ---
-STEP 2 — CLASSIFICATION GATE
+PHASE 2 — EVALUATE EACH CANDIDATE (inline, one by one)
 
-After gathering evidence for each candidate, evaluate it using the following structured classification framework.
-Reason through this assessment explicitly and output the JSON block before proceeding to database operations:
+For each candidate discovered in Phase 1, work through the following evaluation immediately — do not batch or defer this. Complete the full evaluation for candidate N before moving to candidate N+1.
 
-{
-  "include_candidate": true | false,
-  "confidence": "High | Medium | Low",
-  "confidence_score": 0,
-  "service_model": "Onshore | Reject",
-  "reasoning": "brief explanation of the classification decision",
-  "parent_group_name": "normalized parent group name",
-  "local_entity_name_final": "confirmed local entity name",
-  "entity_type": "Domestic Bank | Subsidiary | Branch | Unknown",
-  "rejection_reason": "if rejected, explain why"
-}
+2a. Gather evidence. Note these facts from your search results (no additional search needed unless a field is genuinely missing):
+  - local_entity_name: the licensed entity name in ${country}
+  - entity_type: Domestic Bank | Subsidiary | Branch
+  - licensed_in_country: true | false | unclear
+  - rtgs_participation: confirmed | unclear | none  (source: ${rtgs} participant list or central bank data)
+  - bic_code: confirmed BIC or null
+  - bic_confirmed: true | false
+  - correspondent_banking_evidence: brief note on FI services, nostro/vostro, transaction banking, or clearing evidence
 
-Classification rules:
-  - licensed_in_country = false → include_candidate = false, rejection_reason = "no licensed local entity"
-  - Offshore-only model → include_candidate = false, rejection_reason = "offshore-only"
-  - No FI / correspondent / clearing evidence → include_candidate = false, rejection_reason = "no correspondent banking evidence"
-  - Retail-only bank with no FI capabilities → include_candidate = false, rejection_reason = "retail-only bank"
-  - confidence = "Low" → include_candidate = false
-  - service_model must equal "Onshore" for inclusion
+2b. Score the candidate:
+  - ${rtgs} direct participant confirmed: +30
+  - SWIFT BIC confirmed: +15
+  - Explicit FI / correspondent / clearing / nostro-vostro evidence: +35
+  - Market reputation as a settlement or clearing bank: +20
+  Score >= 80 → High | Score 60–79 → Medium | Score < 60 → Reject
 
-Do NOT proceed to database writes for any candidate where include_candidate = false.
-If confidence = "Medium", include only if the evidence still meets the qualification rules.
+2c. Qualify or reject. A candidate is qualified if ALL of the following are true:
+  ✓ licensed_in_country = true
+  ✓ score >= 60
+  ✓ Not offshore-only
+  ✓ Has FI / correspondent banking evidence (not retail-only)
 
----
-STEP 3 — NUMERIC SCORING + CONFLICT RESOLUTION
+  If the candidate fails any check, mark it as rejected with a reason and move to the next candidate.
 
-For each candidate that passed Step 2 (include_candidate = true), compute a numeric confidence score:
-
-  Direct ${rtgsSystem || "RTGS"} participant = +30
-  Confirmed SWIFT BIC = +15
-  Explicit FI / correspondent / clearing / nostro-vostro evidence = +35
-  Market reputation as settlement / clearing bank = +20
-
-Local licensed entity in ${country} is mandatory (not scored — it is a gate).
-
-Thresholds:
-  Score >= 80 → High confidence
-  Score 60–79 → Medium confidence
-  Score < 60 → Reject
-
-CONFLICT RESOLUTION: If the numeric score and the Step 2 classification confidence conflict, do NOT auto-create the record. Mark as unresolved.
-Conflicts include:
-  • Score >= 80 but classification confidence = "Medium" or "Low"
-  • Score < 60 but classification confidence = "High"
-  • Score 60–79 but classification confidence = "Low"
-Track unresolved candidates separately with both signals noted.
+Stop evaluating when: 10 qualified providers found, OR 20 candidates reviewed, OR 3 consecutive searches return no new candidates.
 
 ---
-STEP 4 — STOP CONDITIONS
+PHASE 3 — WRITE QUALIFIED CANDIDATES TO DATABASE
 
-Stop scanning when any of these occur:
-  • 10 high-confidence providers identified (both score and classification agree)
-  • No new credible candidates found after 3 consecutive searches
-  • 20 candidates reviewed
+For each candidate that passed Phase 2 qualification, immediately perform these database steps:
 
-Do not force a provider count if the market is smaller.
+3a. Banking group resolution — call find_banking_group_by_name.
+  • Found → use existing group_id.
+  • Not found and entity is a foreign branch/subsidiary → strip the country suffix and search for the parent group (e.g. search "HSBC" for "HSBC Bank ${country}"). If parent found, use it.
+  • Still not found → create a new banking group with create_banking_group. Set cb_probability = "High" if score >= 80, else "Medium".
 
----
-STEP 5 — BANKING GROUP RESOLUTION
+3b. Local legal entity — call find_legal_entity_by_name.
+  • Found → use existing entity_id.
+  • Not found → create with create_legal_entity:
+      group_id = from 3a
+      country = "${country}"
+      entity_type = Bank | Subsidiary | Branch (from Phase 2 evaluation)
 
-For each accepted candidate (passed Steps 2 + 3 without conflict):
+3c. BIC code — call list_bics for the entity.
+  • Found → use existing bic_id.
+  • Not found and bic_confirmed = true → create with create_bic.
+  • Not found and bic unconfirmed → skip BIC creation; note as unresolved.
 
-Call find_banking_group_by_name.
-  • Found → use existing group_id. Update missing fields (headquarters_country, primary_currency, cb_probability, cb_evidence) only if needed.
-  • Not found → first check whether the local entity belongs to an existing parent group:
-    - If the name contains a country/regional suffix (e.g. "HSBC Bank ${country}", "Citibank ${country} Branch"), search for the parent group without the suffix (e.g. "HSBC", "Citigroup"). If the parent exists, use that group.
-    - If the parent relationship is unclear, reason through this parent-resolution assessment:
-
-      {
-        "parent_group_name": "best match parent group name",
-        "confidence": "High | Medium | Low",
-        "entity_type": "Subsidiary | Branch | Domestic Bank | Unknown"
-      }
-
-      If confidence = "High" or "Medium" and a matching group is found in the database, use it.
-    - Only create a new banking group if no parent match exists after both checks.
-      Set cb_probability based on the agreed confidence tier: High → "High", Medium → "Medium".
-
----
-STEP 6 — LOCAL LEGAL ENTITY
-
-For each accepted candidate, record only the entity domiciled IN ${country}.
-Call find_legal_entity_by_name to check if it already exists.
-If not found → create with create_legal_entity linked to the group:
-  - country = "${country}"
-  - entity_type = use the value from the Step 2 classification (Domestic Bank → "Bank", Subsidiary → "Subsidiary", Branch → "Branch")
-Do NOT create or link a foreign parent/HQ entity.
-
----
-STEP 7 — BIC CODES
-
-For each accepted entity: call list_bics.
-  • BIC exists → use it.
-  • Missing and bic_confirmed = true from Step 1 evidence → create with create_bic.
-  • Cannot confirm BIC → leave unresolved. Do NOT guess BIC codes. Do NOT invent data.
-
----
-STEP 8 — ${currency} CORRESPONDENT SERVICE
-
-For each entity with a confirmed BIC: call list_correspondent_services to check for an existing ${currency} service.
-  • Exists → skip or update if clearing_model is not "Onshore".
+3d. Correspondent service — call list_correspondent_services for this BIC and currency "${currency}".
+  • Already exists → skip (or update clearing_model to "Onshore" if wrong).
   • Missing → create with create_correspondent_service:
-    - currency = "${currency}"
-    - service_type = "Correspondent Banking"
-    - clearing_model = "Onshore"
-    - rtgs_membership = true ONLY if rtgs_participation = "confirmed" in Step 1 evidence; otherwise false
-    - Do NOT create services for any other currency.
+      currency = "${currency}"
+      service_type = "Correspondent Banking"
+      clearing_model = "Onshore"
+      rtgs_membership = true ONLY if rtgs_participation was confirmed in Phase 2; otherwise false
+
+Repeat 3a–3d for every qualified candidate before producing the final output.
 
 ---
-STEP 9 — REJECTED CANDIDATES LOG
+FINAL OUTPUT
 
-Maintain a list of all rejected candidates with:
-  - candidate_name
-  - rejection_reason
-  - supporting_note (brief evidence summary)
+After completing all database writes, output a summary in this exact format:
 
-Valid rejection reasons:
-  no licensed local entity | offshore-only model | no correspondent banking evidence | retail-only bank | entity inactive or divested | BIC unconfirmed and evidence too weak | classification conflict (score vs classification disagreement)
+Providers found: X (Y High confidence + Z Medium confidence)
 
----
-STEP 10 — FINAL OUTPUT
-
-At completion, output:
-
-Providers discovered: X
-  High confidence: X
-  Medium confidence: X
-
-New banking groups created: X
-Existing groups used: X
-
-Legal entities created: X
-BICs created: X
-Services created: X
-
-Candidates reviewed: X
-Candidates rejected: X
-Unresolved items: X
-
-Web searches performed: X
-Classifications performed: X
+New banking groups created: X | Existing groups used: X
+Legal entities created: X | BICs created: X | Services created: X
+Candidates reviewed: X | Candidates rejected: X | Unresolved items: X
 
 Accepted providers:
-  [bank name] — [confidence tier] — [entity type]
+  [bank name] — [High|Medium] — [entity type]
 
 Rejected candidates:
-  [bank name] — [rejection reason]
+  [bank name] — [reason: no licensed local entity | offshore-only | no CB evidence | retail-only | low score | BIC unconfirmed]
 
-Unresolved candidates:
-  [bank name] — [conflict detail: score X vs classification Y]
+Unresolved items:
+  [bank name] — [detail]
 
 For full details (FMI memberships, other currencies), run the CB Setup workflow on individual providers.`;
 }
@@ -478,9 +358,8 @@ function buildDryRunSuffix(country: string, currency: string): string {
 ---
 ⚠️ DRY RUN MODE — READ-ONLY ⚠️
 You have NO create/update/delete tools available. Do NOT attempt to call them.
-Instead, complete Steps 0–4 fully using only read and search tools, then produce a structured Markdown report.
-For each candidate, still gather evidence (Step 1), run the classification (Step 2), compute the numeric score (Step 3), and apply stop conditions (Step 4).
-Skip Steps 5–8 (no database writes). Still produce the Step 9 rejected/unresolved lists and Step 10 output.
+Complete Phases 1 and 2 in full using only read and search tools. Skip Phase 3 (no database writes).
+After completing Phase 2 evaluation for all candidates, produce the structured report below instead of writing to the database.
 
 ## Dry-Run Discovery Report — ${country} / ${currency}
 
@@ -488,35 +367,31 @@ Only include providers with a legal entity domiciled IN ${country}. Exclude any 
 
 ### Qualified Providers
 
-For each qualified provider, include:
-| # | Banking Group | HQ Country | Entity Name (${country}) | Entity Type | BIC Code | RTGS Direct? | Score | Classification (Step 2) | Agreed Tier |
-|---|---|---|---|---|---|---|---|---|---|
+| # | Banking Group | HQ Country | Entity Name (${country}) | Entity Type | BIC Code | RTGS Direct? | Score | Confidence Tier |
+|---|---|---|---|---|---|---|---|---|
 
-Score = numeric score from Step 3. Classification = confidence from Step 2 JSON. Agreed Tier = High/Medium if both agree, or "Unresolved" if they conflict.
+Score = from Phase 2b scoring. Confidence Tier = High (>=80) / Medium (60–79).
 
 ### Summary
 
 - **Providers found**: X (Y High confidence + Z Medium confidence)
 - **New groups that would be created**: list names
-- **Existing groups that would be updated**: list names
+- **Existing groups that would be used**: list names
 - **Entities / BICs / Services that would be created**: counts
 - **Candidates reviewed**: X
 - **Candidates rejected**: X
-- **Unresolved items**: X (score/classification conflicts or BICs not confirmed)
+- **Unresolved items**: X (BICs not confirmed or conflicting evidence)
 - **Web searches performed**: X
-- **Classifications performed**: X
 
 ### Rejected Candidates
 
 | # | Bank Name | Reason for Rejection | Supporting Note |
 |---|---|---|---|
 
-### Unresolved Candidates
+### Unresolved Items
 
-| # | Bank Name | Score | Classification | Conflict Detail |
-|---|---|---|---|---|
-
-Be thorough — follow the 3-layer evaluation model: build the candidate universe (Step 0), gather named evidence fields (Step 1), run the classification gate (Step 2), and compute numeric scores with conflict resolution (Step 3).`;
+| # | Bank Name | Issue |
+|---|---|---|`;
 }
 
 async function processNextJob() {
@@ -610,7 +485,7 @@ async function processNextJob() {
       { role: "user", content: message },
     ];
 
-    const maxIter = isMarketScan ? 20 : (isLight ? 3 : 15);
+    const maxIter = isMarketScan ? 50 : (isLight ? 3 : 15);
     const model = isLight ? "gpt-4o-mini" : "gpt-4o";
     const tools = isDryRun ? getDryRunTools() : (isLight ? getLightTools() : undefined);
 
@@ -676,8 +551,8 @@ async function processNextJob() {
       // All touched groups = new + updated existing, deduped
       const allTouchedGroups = [...newGroups, ...touchedExistingGroups];
       // Extract the structured summary block from the assistant's final message
-      const summaryMatch = assistantContent.match(/Providers found[\s\S]*?(?:(?:\r?\n\r?\n)|$)/i);
-      const summaryText = summaryMatch ? summaryMatch[0].trim() : "";
+      const summaryMatch = assistantContent.match(/Providers found[\s\S]*/i);
+      const summaryText = summaryMatch ? summaryMatch[0].trim() : assistantContent.trim();
       scanSummaryJson = JSON.stringify({
         summaryText,
         newGroupIds: allTouchedGroups.map(g => g.id),
