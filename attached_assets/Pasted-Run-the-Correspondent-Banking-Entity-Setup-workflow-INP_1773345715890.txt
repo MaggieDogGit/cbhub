@@ -1,0 +1,286 @@
+Run the Correspondent Banking Entity Setup workflow.
+
+INPUT
+Bank name: [BANK NAME]
+Group ID: [UUID]
+Home currency: [CCY]
+Home RTGS: [SYSTEM]
+Scope: [home_only | global]
+
+DATABASE SNAPSHOT
+Existing legal entities, BICs, and correspondent services for this group are already provided.
+Use this snapshot to avoid duplicates.
+
+Do NOT call:
+list_legal_entities
+list_bics
+list_correspondent_services
+
+unless needed to resolve IDs.
+
+OBJECTIVE
+Build the correspondent banking structure for this banking group:
+
+banking group
+→ legal entities
+→ BICs
+→ correspondent services
+→ FMI memberships
+
+Use local database data first. Use ChatGPT API only for reasoning tasks.
+
+------------------------------------------------
+
+STEP 1 — VERIFY BANKING GROUP
+
+Check group fields:
+- headquarters_country
+- primary_currency
+- cb_probability
+- cb_evidence
+
+Only update missing fields using:
+update_banking_group
+
+------------------------------------------------
+
+STEP 2 — IDENTIFY CORRESPONDENT BANKING ENTITIES
+
+Start from entities already in the snapshot.
+
+If no entities exist:
+Search:
+"[BANK NAME] correspondent banking legal entity SWIFT BIC"
+
+Identify:
+- HQ banking entity
+- transaction banking subsidiaries
+- correspondent banking hubs
+
+Exclude:
+- holding companies
+- asset managers
+- insurers
+- inactive entities
+- divested subsidiaries
+
+If scope = home_only:
+Do not search for additional entities.
+Use existing entities only.
+
+If scope = global:
+Search once:
+"[BANK NAME] banking subsidiaries RTGS clearing correspondent banking"
+
+Include entities that:
+- hold a banking licence
+- participate in local RTGS
+- operate transaction banking / FI services
+
+Check major clearing centres:
+Singapore, Hong Kong, Japan, Australia, US, UK, Eurozone.
+
+For each candidate:
+1. verify ownership
+2. call find_legal_entity_by_name
+3. if missing create_legal_entity
+
+Fields:
+group_id
+legal_name
+country
+entity_type = HQ | Subsidiary | Branch
+
+------------------------------------------------
+
+STEP 3 — BIC CODES
+
+Each entity should have at least one BIC.
+
+If BIC exists in snapshot:
+call list_bics to retrieve UUID.
+
+If missing:
+confirm BIC and create_bic.
+
+Fields:
+entity_id
+bic_code
+swift_member = true
+
+HQ BIC:
+is_headquarters = true
+
+Never guess BIC codes.
+
+------------------------------------------------
+
+STEP 4 — CORRESPONDENT SERVICES
+
+Create services only for currencies within scope.
+
+Classification:
+
+Onshore
+entity country = settlement country for currency
+service_type = Correspondent Banking
+
+Offshore
+entity country ≠ settlement country
+service_type = Global Currency Clearing
+
+TRAP — Parent currency
+Foreign subsidiaries offering the parent currency are Offshore.
+
+Example:
+US bank German entity offering USD → Offshore
+
+TRAP — Eurozone
+Any Eurozone entity offering EUR → Onshore + TARGET2.
+
+Eurozone countries:
+AT BE CY DE EE ES FI FR GR HR IE IT LV LT LU MT NL PT SK SI
+
+For each BIC:
+call list_correspondent_services.
+
+If service missing:
+create_correspondent_service.
+
+Fields:
+bic_id
+currency
+service_type
+clearing_model = Onshore | Offshore
+
+------------------------------------------------
+
+STEP 5 — FMI MEMBERSHIPS
+
+Always check local database first.
+
+Call:
+check_fmi_membership
+
+before creating new records.
+
+------------------------------------------------
+
+A — SWIFT
+
+All licensed banking entities are SWIFT members.
+
+If missing create:
+
+create_fmi
+fmi_type = Messaging Networks
+name = SWIFT
+
+------------------------------------------------
+
+B — RTGS SYSTEM
+
+Determine RTGS using entity country.
+
+Reference:
+
+Eurozone → TARGET2
+UK → CHAPS
+US → Fedwire
+Canada → Lynx
+Australia → RITS
+Japan → BOJ-NET
+Singapore → MEPS+
+Hong Kong → CHATS
+Switzerland → SIC
+Sweden → RIX
+Denmark → Kronos2
+Norway → NICS
+Czech Republic → CERTIS
+Hungary → VIBER
+Poland → SORBNET2
+Romania → ReGIS
+Brazil → STR
+South Africa → SAMOS
+South Korea → BOK-Wire+
+Israel → ZAHAV
+Turkey → EFT
+UAE → UAEFTS
+China → CNAPS
+India → RBI RTGS
+
+If country not listed:
+Search:
+"[entity name] RTGS participant"
+
+Important:
+Assign RTGS only when entity country matches RTGS jurisdiction.
+
+------------------------------------------------
+
+C — CLS MEMBERSHIP
+
+Applies only to HQ entity.
+
+First check database.
+
+If missing search:
+"[BANK NAME] CLS settlement member"
+
+Record only if confirmed.
+
+CLS currencies:
+AUD CAD CHF DKK EUR GBP HKD JPY MXN NOK NZD SEK SGD USD ILS ZAR KRW HUF
+
+------------------------------------------------
+
+STEP 6 — AI VALIDATION
+
+Before finalizing records, call ChatGPT API to validate the structure.
+
+Prompt:
+
+---
+You are validating a correspondent banking structure.
+
+Bank group: {bank_name}
+
+Entities:
+{entity_list}
+
+Services:
+{service_list}
+
+Check:
+1. Are entities plausible clearing entities?
+2. Are Onshore/Offshore classifications correct?
+3. Are RTGS systems correctly assigned?
+4. Are any obvious entities missing?
+
+Return JSON:
+
+{
+ "structure_valid": true,
+ "issues": [],
+ "missing_entities": [],
+ "notes": ""
+}
+---
+
+If structure_valid = false:
+flag issues but do not automatically delete records.
+
+------------------------------------------------
+
+STEP 7 — OUTPUT SUMMARY
+
+Return:
+
+Entities created or updated: X
+BICs created: X
+Correspondent services created: X
+FMI memberships created: X
+
+Web searches performed: X
+ChatGPT validations performed: X
+Issues detected: X
