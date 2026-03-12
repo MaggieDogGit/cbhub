@@ -101,7 +101,7 @@ Work all 5 steps fully. End with a summary.`;
 function JobStatusBadge({ job }: { job: AgentJob }) {
   const scope = (job.currency_scope || "home_only") as CurrencyScope;
   const scopeLabel = SCOPE_LABELS[scope];
-  const isLight = (job as any).job_mode === "light";
+  const isLight = job.job_mode === "light";
   const modeLabel = isLight ? "Light (gpt-4o-mini)" : "Normal (gpt-4o)";
   const tooltip = `${modeLabel} · ${scopeLabel}`;
 
@@ -292,7 +292,7 @@ export default function Providers() {
   });
 
   const marketScanMutation = useMutation({
-    mutationFn: (vars: { market_country: string; market_currency: string }) =>
+    mutationFn: (vars: { market_country?: string; market_currency?: string }) =>
       apiRequest("POST", "/api/jobs/market-scan", vars).then(r => r.json()),
     onSuccess: (_data, vars) => {
       queryClient.invalidateQueries({ queryKey: ["/api/jobs"] });
@@ -594,9 +594,9 @@ export default function Providers() {
           <div className="flex items-center gap-2">
             <Globe className="w-4 h-4 text-blue-500" />
             <span>Market Coverage Scan</span>
-            {jobs.filter(j => (j as any).job_type === "market_scan").length > 0 && (
+            {jobs.filter(j => j.job_type === "market_scan").length > 0 && (
               <Badge className="bg-blue-100 text-blue-700 text-xs px-2 py-0.5 border-0">
-                {jobs.filter(j => (j as any).job_type === "market_scan").length} scan{jobs.filter(j => (j as any).job_type === "market_scan").length !== 1 ? "s" : ""}
+                {jobs.filter(j => j.job_type === "market_scan").length} scan{jobs.filter(j => j.job_type === "market_scan").length !== 1 ? "s" : ""}
               </Badge>
             )}
           </div>
@@ -641,8 +641,13 @@ export default function Providers() {
               <Button
                 size="sm"
                 data-testid="queue-market-scan"
-                disabled={!scanCountry || !scanCurrency || marketScanMutation.isPending}
-                onClick={() => marketScanMutation.mutate({ market_country: scanCountry, market_currency: scanCurrency })}
+                disabled={(!scanCountry && !scanCurrency) || marketScanMutation.isPending}
+                onClick={() => {
+                  const body: { market_country?: string; market_currency?: string } = {};
+                  if (scanCountry) body.market_country = scanCountry;
+                  if (scanCurrency) body.market_currency = scanCurrency;
+                  marketScanMutation.mutate(body);
+                }}
                 className="h-9 bg-blue-600 hover:bg-blue-700 text-white gap-1.5"
               >
                 {marketScanMutation.isPending
@@ -652,11 +657,11 @@ export default function Providers() {
             </div>
 
             {/* Active + recent market scans */}
-            {jobs.filter(j => (j as any).job_type === "market_scan").length > 0 && (
+            {jobs.filter(j => j.job_type === "market_scan").length > 0 && (
               <div className="space-y-2">
                 <div className="text-xs font-medium text-slate-500 uppercase tracking-wide">Scan History</div>
                 {jobs
-                  .filter(j => (j as any).job_type === "market_scan")
+                  .filter(j => j.job_type === "market_scan")
                   .slice()
                   .sort((a, b) => new Date(b.queued_at!).getTime() - new Date(a.queued_at!).getTime())
                   .map(job => (
@@ -664,7 +669,7 @@ export default function Providers() {
                       <div className="flex items-center gap-2.5">
                         <Globe className="w-3.5 h-3.5 text-blue-400 shrink-0" />
                         <span className="font-medium text-slate-800 text-sm">
-                          {(job as any).market_country} / {(job as any).market_currency}
+                          {job.market_country} / {job.market_currency}
                         </span>
                         <JobStatusBadge job={job} />
                         <div className="ml-auto flex items-center gap-2">
@@ -688,9 +693,11 @@ export default function Providers() {
                         </div>
                       </div>
                       {job.status === "completed" && (() => {
-                        let parsed: { summaryText?: string; newGroupIds?: string[]; newGroupNames?: string[] } = {};
-                        try { if ((job as any).scan_summary) parsed = JSON.parse((job as any).scan_summary); } catch {}
-                        const newGroups = (parsed.newGroupIds || []).map((id, i) => ({ id, name: (parsed.newGroupNames || [])[i] || id }));
+                        let parsed: { summaryText?: string; newGroupIds?: string[]; newGroupNames?: string[]; createdCount?: number; updatedCount?: number } = {};
+                        try { if (job.scan_summary) parsed = JSON.parse(job.scan_summary); } catch {}
+                        const touchedGroups = (parsed.newGroupIds || []).map((id, i) => ({ id, name: (parsed.newGroupNames || [])[i] || id }));
+                        const createdCount = parsed.createdCount ?? touchedGroups.length;
+                        const updatedCount = parsed.updatedCount ?? 0;
                         return (
                           <div className="space-y-2">
                             {parsed.summaryText && (
@@ -700,18 +707,20 @@ export default function Providers() {
                             )}
                             <div className="flex items-center gap-3 text-xs text-slate-500 flex-wrap">
                               <span>{job.steps_completed} steps</span>
+                              {createdCount > 0 && <span>{createdCount} new groups</span>}
+                              {updatedCount > 0 && <span>{updatedCount} existing groups updated</span>}
                               <button
                                 className="text-blue-600 hover:text-blue-800 underline"
-                                onClick={() => { setSearch((job as any).market_country); setShowScanPanel(false); window.scrollTo({ top: 0, behavior: "smooth" }); }}
+                                onClick={() => { setSearch(job.market_country ?? ""); setShowScanPanel(false); window.scrollTo({ top: 0, behavior: "smooth" }); }}
                               >
-                                Browse {(job as any).market_country} groups →
+                                Browse {job.market_country} groups →
                               </button>
                             </div>
-                            {newGroups.length > 0 && (
+                            {touchedGroups.length > 0 && (
                               <div className="space-y-1">
-                                <p className="text-xs font-medium text-slate-600">New groups created — queue CB Setup:</p>
+                                <p className="text-xs font-medium text-slate-600">Touched providers — queue CB Setup:</p>
                                 <div className="flex flex-wrap gap-1.5">
-                                  {newGroups.map(g => (
+                                  {touchedGroups.map(g => (
                                     <button
                                       key={g.id}
                                       className="inline-flex items-center gap-1 text-xs px-2 py-0.5 rounded bg-blue-50 border border-blue-200 text-blue-700 hover:bg-blue-100"

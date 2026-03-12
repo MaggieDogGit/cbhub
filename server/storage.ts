@@ -111,7 +111,7 @@ export interface IStorage {
   listJobs(): Promise<AgentJob[]>;
   getJob(id: string): Promise<AgentJob | undefined>;
   createJob(data: InsertAgentJob): Promise<AgentJob>;
-  updateJob(id: string, data: Partial<InsertAgentJob>): Promise<AgentJob>;
+  updateJob(id: string, data: Partial<AgentJob>): Promise<AgentJob>;
   deleteJob(id: string): Promise<void>;
 }
 
@@ -264,7 +264,7 @@ export class DatabaseStorage implements IStorage {
   async listJobs() { return db.select().from(agentJobs).orderBy(agentJobs.queued_at); }
   async getJob(id: string) { const [r] = await db.select().from(agentJobs).where(eq(agentJobs.id, id)); return r; }
   async createJob(data: InsertAgentJob) { const [r] = await db.insert(agentJobs).values(data).returning(); return r; }
-  async updateJob(id: string, data: Partial<InsertAgentJob>) { const [r] = await db.update(agentJobs).set(data).where(eq(agentJobs.id, id)).returning(); return r; }
+  async updateJob(id: string, data: Partial<AgentJob>) { const [r] = await db.update(agentJobs).set(data as any).where(eq(agentJobs.id, id)).returning(); return r; }
   async deleteJob(id: string) { await db.delete(agentJobs).where(eq(agentJobs.id, id)); }
 }
 

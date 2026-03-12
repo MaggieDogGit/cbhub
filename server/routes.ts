@@ -5,7 +5,7 @@ import { pool } from "./db";
 import { insertBankingGroupSchema, insertLegalEntitySchema, insertBicSchema, insertCorrespondentServiceSchema, insertClsProfileSchema, insertFmiSchema, insertFmiRegistrySchema, insertFmiResearchJobSchema, insertDataSourceSchema, insertConversationSchema, insertMessageSchema, insertAgentJobSchema, insertIntelObservationSchema } from "@shared/schema";
 import OpenAI from "openai";
 import { buildSystemPrompt, runAgentLoop } from "./agentCore";
-import { startJobRunner } from "./jobRunner";
+import { startJobRunner, CURRENCY_COUNTRY, COUNTRY_CURRENCY } from "./jobRunner";
 import { startFmiJobRunner } from "./fmiResearchJobRunner";
 
 const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
@@ -395,13 +395,23 @@ Only include currencies and services you found evidence for in the research.`,
   });
 
   app.post("/api/jobs/market-scan", async (req, res) => {
-    const { market_country, market_currency } = req.body;
-    if (!market_country || !market_currency) return res.status(400).json({ message: "market_country and market_currency required" });
+    let { market_country, market_currency } = req.body as { market_country?: string; market_currency?: string };
+    if (!market_country && !market_currency) {
+      return res.status(400).json({ message: "Provide market_country, market_currency, or both." });
+    }
+    // Derive missing value using lookup maps
+    if (market_country && !market_currency) {
+      market_currency = COUNTRY_CURRENCY[market_country];
+      if (!market_currency) return res.status(400).json({ message: `No home currency known for "${market_country}". Please specify market_currency explicitly.` });
+    } else if (market_currency && !market_country) {
+      market_country = CURRENCY_COUNTRY[market_currency];
+      if (!market_country) return res.status(400).json({ message: `No home country known for "${market_currency}". Please specify market_country explicitly.` });
+    }
     const existing = await storage.listJobs();
     const dupe = existing.find(j =>
-      (j as any).job_type === "market_scan" &&
-      (j as any).market_country === market_country &&
-      (j as any).market_currency === market_currency &&
+      j.job_type === "market_scan" &&
+      j.market_country === market_country &&
+      j.market_currency === market_currency &&
       (j.status === "pending" || j.status === "running")
     );
     if (dupe) return res.status(409).json({ message: "A market scan for this country/currency is already queued or running.", job: dupe });
@@ -412,7 +422,7 @@ Only include currencies and services you found evidence for in the research.`,
       job_type: "market_scan",
       market_country,
       market_currency,
-    } as any);
+    });
     res.json(job);
   });
 

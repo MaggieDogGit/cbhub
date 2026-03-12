@@ -34,6 +34,11 @@ export const CURRENCY_COUNTRY: Record<string, string> = {
   "BRL": "Brazil", "MXN": "Mexico", "INR": "India", "KRW": "South Korea", "ILS": "Israel",
 };
 
+// Reverse of CURRENCY_COUNTRY: country name → home currency (excludes Eurozone which is not a country)
+export const COUNTRY_CURRENCY: Record<string, string> = Object.fromEntries(
+  Object.entries(CURRENCY_COUNTRY).filter(([, v]) => v !== "Eurozone").map(([k, v]) => [v, k])
+);
+
 const EUROZONE_COUNTRIES = new Set([
   "Austria", "Belgium", "Croatia", "Cyprus", "Estonia", "Finland", "France", "Germany",
   "Greece", "Ireland", "Italy", "Latvia", "Lithuania", "Luxembourg", "Malta", "Netherlands",
@@ -282,39 +287,44 @@ async function processNextJob() {
   if (!pending) return;
 
   isProcessing = true;
-  const jobType = (pending as any).job_type || "cb_setup";
+  const jobType = pending.job_type || "cb_setup";
   const isMarketScan = jobType === "market_scan";
   const scope: CurrencyScope = (pending.currency_scope as CurrencyScope) || "home_only";
-  const isLight = (pending as any).job_mode === "light";
+  const isLight = pending.job_mode === "light";
   const jobLabel = isMarketScan
-    ? `Market Scan: ${(pending as any).market_country}/${(pending as any).market_currency}`
+    ? `Market Scan: ${pending.market_country}/${pending.market_currency}`
     : pending.banking_group_name || "unknown";
   console.log(`[JobRunner] Starting job ${pending.id} — ${jobLabel} (type: ${jobType}, scope: ${scope}, mode: ${isLight ? "light" : "normal"})`);
 
   try {
     const convName = isMarketScan
-      ? `Market Scan: ${(pending as any).market_country} / ${(pending as any).market_currency}`
+      ? `Market Scan: ${pending.market_country} / ${pending.market_currency}`
       : `CB Setup${isLight ? " [Light]" : ""}: ${pending.banking_group_name}`;
     const conv = await storage.createConversation({ name: convName });
     await storage.updateJob(pending.id, {
       status: "running",
       conversation_id: conv.id,
       started_at: new Date(),
-    } as any);
+    });
 
     const sources = await storage.listDataSources();
     let message: string;
 
-    // Snapshot group IDs before a market scan so we can identify newly created groups
+    // Snapshot before a market scan so we can identify newly created vs touched groups
     let preExistingGroupIds: Set<string> = new Set();
+    let preExistingEntityIds: Set<string> = new Set();
     if (isMarketScan) {
-      const allGroups = await storage.listBankingGroups();
+      const [allGroups, allEntities] = await Promise.all([
+        storage.listBankingGroups(),
+        storage.listLegalEntities(),
+      ]);
       preExistingGroupIds = new Set(allGroups.map(g => g.id));
+      preExistingEntityIds = new Set(allEntities.map(e => e.id));
     }
 
     if (isMarketScan) {
-      const mCountry = (pending as any).market_country as string;
-      const mCurrency = (pending as any).market_currency as string;
+      const mCountry = pending.market_country as string;
+      const mCurrency = pending.market_currency as string;
       const rtgs = COUNTRY_RTGS[mCountry] || null;
       message = buildMarketScanPrompt(mCountry, mCurrency, rtgs);
     } else {
@@ -362,7 +372,7 @@ async function processNextJob() {
       async (_toolName, _args, statusText) => {
         stepCount++;
         console.log(`[JobRunner] ${jobLabel} — step ${stepCount}: ${statusText}`);
-        await storage.updateJob(pending.id, { steps_completed: stepCount } as any);
+        await storage.updateJob(pending.id, { steps_completed: stepCount });
       },
       maxIter,
       "auto",
@@ -372,18 +382,36 @@ async function processNextJob() {
 
     await storage.createMessage({ conversation_id: conv.id, role: "assistant", content: assistantContent });
 
-    // For market scans: identify newly created banking groups + extract summary
+    // For market scans: identify all touched groups (created + existing with new entities)
     let scanSummaryJson: string | undefined;
     if (isMarketScan) {
-      const allGroupsAfter = await storage.listBankingGroups();
+      const [allGroupsAfter, allEntitiesAfter] = await Promise.all([
+        storage.listBankingGroups(),
+        storage.listLegalEntities(),
+      ]);
+      // New groups (created during scan)
       const newGroups = allGroupsAfter.filter(g => !preExistingGroupIds.has(g.id));
+      // Existing groups that received new entities during scan
+      const newEntityGroupIds = new Set(
+        allEntitiesAfter
+          .filter(e => !preExistingEntityIds.has(e.id) && preExistingGroupIds.has(e.group_id))
+          .map(e => e.group_id)
+      );
+      const touchedExistingGroups = allGroupsAfter.filter(g => newEntityGroupIds.has(g.id));
+      // All touched groups = new + updated existing, deduped
+      const allTouchedGroups = [
+        ...newGroups,
+        ...touchedExistingGroups.filter(g => !newGroups.find(ng => ng.id === g.id)),
+      ];
       // Extract the structured summary block from the assistant's final message
       const summaryMatch = assistantContent.match(/Providers found[\s\S]*?(?:(?:\r?\n\r?\n)|$)/i);
       const summaryText = summaryMatch ? summaryMatch[0].trim() : "";
       scanSummaryJson = JSON.stringify({
         summaryText,
-        newGroupIds: newGroups.map(g => g.id),
-        newGroupNames: newGroups.map(g => g.group_name),
+        newGroupIds: allTouchedGroups.map(g => g.id),
+        newGroupNames: allTouchedGroups.map(g => g.group_name),
+        createdCount: newGroups.length,
+        updatedCount: touchedExistingGroups.length,
       });
     }
 
@@ -392,7 +420,7 @@ async function processNextJob() {
       completed_at: new Date(),
       steps_completed: stepCount,
       ...(scanSummaryJson ? { scan_summary: scanSummaryJson } : {}),
-    } as any);
+    });
 
     console.log(`[JobRunner] Completed job ${pending.id} — ${jobLabel} (${stepCount} steps). Cooling down ${JOB_COOLDOWN_MS / 1000}s before next job.`);
   } catch (err: any) {
@@ -401,7 +429,7 @@ async function processNextJob() {
       status: "failed",
       error_message: err.message,
       completed_at: new Date(),
-    } as any).catch(() => {});
+    }).catch(() => {});
     console.log(`[JobRunner] Cooling down ${JOB_COOLDOWN_MS / 1000}s after failure before next job.`);
   } finally {
     setTimeout(() => {
@@ -425,7 +453,7 @@ export async function startJobRunner() {
           status: "pending",
           started_at: null,
           conversation_id: null,
-        } as any);
+        });
       }
     }
   } catch (err: any) {
