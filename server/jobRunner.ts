@@ -313,10 +313,17 @@ PHASE 3 — WRITE QUALIFIED CANDIDATES TO DATABASE
 
 For each candidate that passed Phase 2 qualification, immediately perform these database steps:
 
-3a. Banking group resolution — call find_banking_group_by_name.
+3a. Banking group resolution — call find_banking_group_by_name with the full entity name first.
   • Found → use existing group_id.
-  • Not found and entity is a foreign branch/subsidiary → strip the country suffix and search for the parent group (e.g. search "HSBC" for "HSBC Bank ${country}"). If parent found, use it.
-  • Still not found → create a new banking group with create_banking_group. Set cb_probability = "High" if score >= 80, else "Medium".
+  • Not found → derive the parent group name using this stripping sequence and search again after each step:
+      Step 1: Remove country/branch suffixes — strip "(${country})", "${country} Branch", "${country} Limited", "Bank ${country}", and trailing ", ${country}"
+      Step 2: Remove legal suffixes — strip " Bank", " Banking", " Limited", " Ltd", " PLC", " Corp", " Holdings", " Group", " International", " AG", " SA", " NV" (trim after each removal)
+      Step 3: Try well-known parent aliases — e.g. "Citibank" → also try "Citigroup"; "Standard Chartered" stays as-is; "BNP" → try "BNP Paribas"; any name that ends in a country → try again without it
+      Call find_banking_group_by_name for each derived name until a match is found.
+  • Match found at any step → use that group_id. Do NOT create a new group.
+  • No match after all steps:
+      - If entity_type = Subsidiary or Branch → this is a foreign-parent entity. Create a new banking group using the parent organisation's name (not the local entity name). Set headquarters_country to the parent's home country and primary_currency to the parent's home currency. Set cb_probability = "High" if score >= 80, else "Medium".
+      - If entity_type = Bank (domestic) → create a new banking group using the local entity name. Set headquarters_country = "${country}", primary_currency = "${currency}".
 
 3b. Local legal entity — call find_legal_entity_by_name.
   • Found → use existing entity_id.
