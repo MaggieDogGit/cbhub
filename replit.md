@@ -62,7 +62,7 @@ shared/
 | FMI | legal_entity_id, fmi_type (CLS_Settlement_Member), member_since |
 | Conversation | name, created_at |
 | ChatMessage | conversation_id, role (user/assistant), content |
-| AgentJob | banking_group_id (nullable for market scans), banking_group_name (nullable), status, job_type (cb_setup/market_scan), market_country, market_currency, conversation_id, steps_completed |
+| AgentJob | banking_group_id (nullable for market scans), banking_group_name (nullable), status, job_type (cb_setup/market_scan), market_country, market_currency, conversation_id, steps_completed, dry_run (boolean) |
 
 ## API Endpoints
 
@@ -108,6 +108,7 @@ Two job types (dispatched by `job_type` field):
 - Queued via `POST /api/jobs/market-scan`; UI panel in Providers page
 - COUNTRY_RTGS and CURRENCY_COUNTRY lookup maps exported from `server/jobRunner.ts`
 - Parent-company matching: prompt instructs the agent to search for parent groups before creating regional subsidiaries
+- **Dry-Run mode** (`dry_run: true`): Uses read-only tool set (`getDryRunTools()` — no create/update/delete). Agent produces a structured discovery report. No DB writes. Scan summary stores the full report. UI shows amber "Dry Run" badge + "Run for real →" button to re-queue as a live scan.
 
 ### Common
 - Job runner starts automatically on server start; polls every 30s; 90s cooldown between jobs

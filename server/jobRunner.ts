@@ -1,5 +1,5 @@
 import { storage } from "./storage";
-import { buildSystemPrompt, getLightTools, runAgentLoop } from "./agentCore";
+import { buildSystemPrompt, getLightTools, getDryRunTools, runAgentLoop } from "./agentCore";
 
 let isProcessing = false;
 
@@ -279,6 +279,29 @@ End with a structured summary:
 For full details (FMI memberships, other currencies), run the CB Setup workflow on individual providers.`;
 }
 
+function buildDryRunSuffix(country: string, currency: string): string {
+  return `
+
+---
+⚠️ DRY RUN MODE — READ-ONLY ⚠️
+You have NO create/update/delete tools available. Do NOT attempt to call them.
+Instead, complete ALL 5 discovery steps using only read and search tools, then produce a structured Markdown report listing every provider you found and what you WOULD have created:
+
+## Dry-Run Discovery Report — ${country} / ${currency}
+
+For each provider discovered, include:
+| # | Banking Group | HQ Country | Entity Name | Entity Country | BIC Code | Service Type | Clearing Model |
+|---|---|---|---|---|---|---|---|
+
+Then include:
+- **Total providers found**: X (Y Onshore + Z Offshore)
+- **New groups that would be created**: list names
+- **Existing groups that would be updated**: list names
+- **Entities / BICs / Services that would be created**: counts
+
+Be thorough — research all 8–15 providers as if this were a real scan.`;
+}
+
 async function processNextJob() {
   if (isProcessing) return;
 
@@ -289,10 +312,11 @@ async function processNextJob() {
   isProcessing = true;
   const jobType = pending.job_type || "cb_setup";
   const isMarketScan = jobType === "market_scan";
+  const isDryRun = pending.dry_run === true;
   const scope: CurrencyScope = (pending.currency_scope as CurrencyScope) || "home_only";
   const isLight = pending.job_mode === "light";
   const jobLabel = isMarketScan
-    ? `Market Scan: ${pending.market_country}/${pending.market_currency}`
+    ? `Market Scan${isDryRun ? " (DRY RUN)" : ""}: ${pending.market_country}/${pending.market_currency}`
     : pending.banking_group_name || "unknown";
   console.log(`[JobRunner] Starting job ${pending.id} — ${jobLabel} (type: ${jobType}, scope: ${scope}, mode: ${isLight ? "light" : "normal"})`);
 
@@ -316,7 +340,7 @@ async function processNextJob() {
     let preExistingBicIds: Set<string> = new Set();
     // entityGroupMap: entity id → group_id (for reverse-lookup of BIC additions)
     let entityGroupMap: Map<string, string> = new Map();
-    if (isMarketScan) {
+    if (isMarketScan && !isDryRun) {
       const [allGroups, allEntities, allBics] = await Promise.all([
         storage.listBankingGroups(),
         storage.listLegalEntities(),
@@ -331,9 +355,9 @@ async function processNextJob() {
     if (isMarketScan) {
       const mCountry = pending.market_country as string;
       const mCurrency = pending.market_currency as string;
-      // EUR always uses TARGET2; otherwise look up RTGS by country
       const rtgs = mCurrency === "EUR" ? "TARGET2" : (COUNTRY_RTGS[mCountry] || null);
       message = buildMarketScanPrompt(mCountry, mCurrency, rtgs);
+      if (isDryRun) message += buildDryRunSuffix(mCountry, mCurrency);
     } else {
       const group = await storage.getBankingGroup(pending.banking_group_id!);
       if (!group) throw new Error(`Banking group ${pending.banking_group_id} not found`);
@@ -371,7 +395,7 @@ async function processNextJob() {
 
     const maxIter = isMarketScan ? 20 : (isLight ? 3 : 15);
     const model = isLight ? "gpt-4o-mini" : "gpt-4o";
-    const tools = isLight ? getLightTools() : undefined;
+    const tools = isDryRun ? getDryRunTools() : (isLight ? getLightTools() : undefined);
 
     let stepCount = 0;
     const assistantContent = await runAgentLoop(
@@ -389,9 +413,17 @@ async function processNextJob() {
 
     await storage.createMessage({ conversation_id: conv.id, role: "assistant", content: assistantContent });
 
-    // For market scans: identify all touched groups (created + existing with new entities/BICs)
     let scanSummaryJson: string | undefined;
-    if (isMarketScan) {
+    if (isMarketScan && isDryRun) {
+      scanSummaryJson = JSON.stringify({
+        summaryText: assistantContent,
+        dryRun: true,
+        newGroupIds: [],
+        newGroupNames: [],
+        createdCount: 0,
+        updatedCount: 0,
+      });
+    } else if (isMarketScan) {
       const [allGroupsAfter, allEntitiesAfter, allBicsAfter] = await Promise.all([
         storage.listBankingGroups(),
         storage.listLegalEntities(),

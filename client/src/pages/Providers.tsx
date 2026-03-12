@@ -171,6 +171,7 @@ export default function Providers() {
   const [scanCountry, setScanCountry] = useState("");
   const [scanCurrency, setScanCurrency] = useState("");
   const [showScanPanel, setShowScanPanel] = useState(false);
+  const [scanDryRun, setScanDryRun] = useState(false);
 
   const SCAN_COUNTRY_CCY: Record<string, string> = {
     "Australia":"AUD","Austria":"EUR","Belgium":"EUR","Brazil":"BRL","Canada":"CAD",
@@ -292,11 +293,11 @@ export default function Providers() {
   });
 
   const marketScanMutation = useMutation({
-    mutationFn: (vars: { market_country?: string; market_currency?: string }) =>
+    mutationFn: (vars: { market_country?: string; market_currency?: string; dry_run?: boolean }) =>
       apiRequest("POST", "/api/jobs/market-scan", vars).then(r => r.json()),
     onSuccess: (_data, vars) => {
       queryClient.invalidateQueries({ queryKey: ["/api/jobs"] });
-      toast({ title: "Market scan queued", description: `${vars.market_country} / ${vars.market_currency}` });
+      toast({ title: vars.dry_run ? "Dry-run scan queued" : "Market scan queued", description: `${vars.market_country} / ${vars.market_currency}` });
     },
     onError: (err: any) => toast({ title: "Could not queue scan", description: err.message, variant: "destructive" }),
   });
@@ -643,17 +644,27 @@ export default function Providers() {
                 data-testid="queue-market-scan"
                 disabled={(!scanCountry && !scanCurrency) || marketScanMutation.isPending}
                 onClick={() => {
-                  const body: { market_country?: string; market_currency?: string } = {};
+                  const body: { market_country?: string; market_currency?: string; dry_run?: boolean } = {};
                   if (scanCountry) body.market_country = scanCountry;
                   if (scanCurrency) body.market_currency = scanCurrency;
+                  if (scanDryRun) body.dry_run = true;
                   marketScanMutation.mutate(body);
                 }}
                 className="h-9 bg-blue-600 hover:bg-blue-700 text-white gap-1.5"
               >
                 {marketScanMutation.isPending
                   ? <><Loader2 className="w-3.5 h-3.5 animate-spin" /> Queuing…</>
-                  : <><Globe className="w-3.5 h-3.5" /> Queue Scan</>}
+                  : <><Globe className="w-3.5 h-3.5" /> {scanDryRun ? "Queue Dry Run" : "Queue Scan"}</>}
               </Button>
+              <label className="inline-flex items-center gap-1.5 text-xs text-slate-600 cursor-pointer select-none" data-testid="dry-run-toggle">
+                <input
+                  type="checkbox"
+                  checked={scanDryRun}
+                  onChange={e => setScanDryRun(e.target.checked)}
+                  className="rounded border-slate-300 text-blue-600 focus:ring-blue-500 h-3.5 w-3.5"
+                />
+                Dry Run
+              </label>
             </div>
 
             {/* Active + recent market scans */}
@@ -672,6 +683,11 @@ export default function Providers() {
                           {job.market_country} / {job.market_currency}
                         </span>
                         <JobStatusBadge job={job} />
+                        {job.dry_run && (
+                          <Badge className="bg-amber-100 text-amber-700 border-amber-200 text-xs gap-1 shrink-0" data-testid={`dry-run-badge-${job.id}`}>
+                            <Zap className="w-3 h-3" /> Dry Run
+                          </Badge>
+                        )}
                         <div className="ml-auto flex items-center gap-2">
                           {job.status === "pending" && (
                             <button
@@ -693,30 +709,53 @@ export default function Providers() {
                         </div>
                       </div>
                       {job.status === "completed" && (() => {
-                        let parsed: { summaryText?: string; newGroupIds?: string[]; newGroupNames?: string[]; createdCount?: number; updatedCount?: number } = {};
+                        let parsed: { summaryText?: string; dryRun?: boolean; newGroupIds?: string[]; newGroupNames?: string[]; createdCount?: number; updatedCount?: number } = {};
                         try { if (job.scan_summary) parsed = JSON.parse(job.scan_summary); } catch {}
+                        const isDry = job.dry_run || parsed.dryRun;
                         const touchedGroups = (parsed.newGroupIds || []).map((id, i) => ({ id, name: (parsed.newGroupNames || [])[i] || id }));
                         const createdCount = parsed.createdCount ?? touchedGroups.length;
                         const updatedCount = parsed.updatedCount ?? 0;
                         return (
                           <div className="space-y-2">
                             {parsed.summaryText && (
-                              <pre className="text-xs text-slate-600 whitespace-pre-wrap font-sans bg-white rounded border border-slate-100 px-2.5 py-1.5">
+                              <pre className={`text-xs whitespace-pre-wrap font-sans rounded border px-2.5 py-1.5 max-h-80 overflow-y-auto ${isDry ? "text-amber-800 bg-amber-50 border-amber-200" : "text-slate-600 bg-white border-slate-100"}`}>
                                 {parsed.summaryText}
                               </pre>
                             )}
                             <div className="flex items-center gap-3 text-xs text-slate-500 flex-wrap">
                               <span>{job.steps_completed} steps</span>
-                              {createdCount > 0 && <span>{createdCount} new groups</span>}
-                              {updatedCount > 0 && <span>{updatedCount} existing groups updated</span>}
-                              <button
-                                className="text-blue-600 hover:text-blue-800 underline"
-                                onClick={() => { setSearch(job.market_country ?? ""); setShowScanPanel(false); window.scrollTo({ top: 0, behavior: "smooth" }); }}
-                              >
-                                Browse {job.market_country} groups →
-                              </button>
+                              {!isDry && createdCount > 0 && <span>{createdCount} new groups</span>}
+                              {!isDry && updatedCount > 0 && <span>{updatedCount} existing groups updated</span>}
+                              {!isDry && (
+                                <button
+                                  className="text-blue-600 hover:text-blue-800 underline"
+                                  onClick={() => { setSearch(job.market_country ?? ""); setShowScanPanel(false); window.scrollTo({ top: 0, behavior: "smooth" }); }}
+                                >
+                                  Browse {job.market_country} groups →
+                                </button>
+                              )}
+                              {isDry && (
+                                <Button
+                                  size="sm"
+                                  variant="outline"
+                                  data-testid={`run-for-real-${job.id}`}
+                                  className="h-7 text-xs border-blue-300 text-blue-700 hover:bg-blue-50 gap-1"
+                                  disabled={marketScanMutation.isPending}
+                                  onClick={() => {
+                                    setScanCountry(job.market_country ?? "");
+                                    setScanCurrency(job.market_currency ?? "");
+                                    setScanDryRun(false);
+                                    marketScanMutation.mutate({
+                                      market_country: job.market_country ?? undefined,
+                                      market_currency: job.market_currency ?? undefined,
+                                    });
+                                  }}
+                                >
+                                  <Globe className="w-3 h-3" /> Run for real →
+                                </Button>
+                              )}
                             </div>
-                            {touchedGroups.length > 0 && (
+                            {!isDry && touchedGroups.length > 0 && (
                               <div className="space-y-1">
                                 <p className="text-xs font-medium text-slate-600">Touched providers — queue CB Setup:</p>
                                 <div className="flex flex-wrap gap-1.5">

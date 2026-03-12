@@ -417,6 +417,7 @@ Only include currencies and services you found evidence for in the research.`,
       (j.status === "pending" || j.status === "running")
     );
     if (dupe) return res.status(409).json({ message: "A market scan for this country/currency is already queued or running.", job: dupe });
+    const dry_run = req.body.dry_run === true;
     const job = await storage.createJob({
       status: "pending",
       currency_scope: "home_only",
@@ -424,6 +425,7 @@ Only include currencies and services you found evidence for in the research.`,
       job_type: "market_scan",
       market_country,
       market_currency,
+      dry_run,
     });
     res.json(job);
   });

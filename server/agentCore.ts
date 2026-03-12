@@ -520,6 +520,25 @@ export function getTools(): any[] {
   ];
 }
 
+// ── Dry-run tool set (read-only: list/search/web_search — no create/update/delete/merge) ──
+
+export function getDryRunTools(): any[] {
+  const all = getTools();
+  const allowed = new Set([
+    "find_banking_group_by_name",
+    "find_legal_entity_by_name",
+    "check_fmi_membership",
+    "list_banking_groups",
+    "list_legal_entities",
+    "list_bics",
+    "list_correspondent_services",
+    "list_fmis",
+    "list_data_sources",
+    "web_search",
+  ]);
+  return all.filter((t: any) => allowed.has(t.function.name));
+}
+
 // ── Light tool set (12 essential tools — no web_search, no merge/delete) ─────
 
 export function getLightTools(): any[] {
