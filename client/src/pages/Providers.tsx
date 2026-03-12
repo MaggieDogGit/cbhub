@@ -172,6 +172,24 @@ export default function Providers() {
   const [scanCurrency, setScanCurrency] = useState("");
   const [showScanPanel, setShowScanPanel] = useState(false);
 
+  const SCAN_COUNTRY_CCY: Record<string, string> = {
+    "Australia":"AUD","Austria":"EUR","Belgium":"EUR","Brazil":"BRL","Canada":"CAD",
+    "China":"CNH","Croatia":"EUR","Czech Republic":"CZK","Denmark":"DKK","Estonia":"EUR",
+    "Finland":"EUR","France":"EUR","Germany":"EUR","Greece":"EUR","Hong Kong":"HKD",
+    "Hungary":"HUF","India":"INR","Ireland":"EUR","Israel":"ILS","Italy":"EUR",
+    "Japan":"JPY","Latvia":"EUR","Lithuania":"EUR","Luxembourg":"EUR","Malta":"EUR",
+    "Mexico":"MXN","Netherlands":"EUR","New Zealand":"NZD","Norway":"NOK","Poland":"PLN",
+    "Portugal":"EUR","Romania":"RON","Singapore":"SGD","Slovakia":"EUR","Slovenia":"EUR",
+    "South Africa":"ZAR","South Korea":"KRW","Spain":"EUR","Sweden":"SEK",
+    "Switzerland":"CHF","Turkey":"TRY","UAE":"USD","United Kingdom":"GBP","United States":"USD",
+  };
+
+  const handleScanCountryChange = (country: string) => {
+    setScanCountry(country);
+    const suggested = SCAN_COUNTRY_CCY[country];
+    if (suggested && !scanCurrency) setScanCurrency(suggested);
+  };
+
   // Intel dialog
   const [intelDialog, setIntelDialog] = useState<IntelDialog>(null);
   const [intelIsCompetitor, setIntelIsCompetitor] = useState(true);
@@ -594,7 +612,7 @@ export default function Providers() {
             <div className="flex items-end gap-3 flex-wrap">
               <div className="space-y-1">
                 <label className="text-xs font-medium text-slate-700">Country</label>
-                <Select value={scanCountry} onValueChange={setScanCountry}>
+                <Select value={scanCountry} onValueChange={handleScanCountryChange}>
                   <SelectTrigger className="w-44 h-9 text-sm" data-testid="scan-country-select">
                     <SelectValue placeholder="Select country…" />
                   </SelectTrigger>
@@ -643,32 +661,47 @@ export default function Providers() {
                   .slice()
                   .sort((a, b) => new Date(b.queued_at!).getTime() - new Date(a.queued_at!).getTime())
                   .map(job => (
-                    <div key={job.id} className="flex items-center gap-3 p-2.5 rounded-lg border border-slate-100 bg-slate-50 text-sm" data-testid={`scan-job-${job.id}`}>
-                      <JobStatusBadge status={job.status} />
-                      <span className="font-medium text-slate-800">
-                        {(job as any).market_country} / {(job as any).market_currency}
-                      </span>
-                      {job.steps_completed! > 0 && (
-                        <span className="text-xs text-slate-500">{job.steps_completed} steps</span>
-                      )}
-                      {job.conversation_id && (
-                        <button
-                          className="ml-auto text-xs text-blue-600 hover:text-blue-800 underline"
-                          onClick={() => setLocation(`/agent?conv=${job.conversation_id}`)}
-                        >
-                          View
-                        </button>
-                      )}
-                      {job.status === "pending" && (
-                        <button
-                          className="text-xs text-slate-400 hover:text-red-500 ml-auto"
-                          onClick={() => apiRequest("DELETE", `/api/jobs/${job.id}`).then(() => queryClient.invalidateQueries({ queryKey: ["/api/jobs"] }))}
-                        >
-                          <X className="w-3.5 h-3.5" />
-                        </button>
+                    <div key={job.id} className="rounded-lg border border-slate-100 bg-slate-50 p-3 space-y-2" data-testid={`scan-job-${job.id}`}>
+                      <div className="flex items-center gap-2.5">
+                        <Globe className="w-3.5 h-3.5 text-blue-400 shrink-0" />
+                        <span className="font-medium text-slate-800 text-sm">
+                          {(job as any).market_country} / {(job as any).market_currency}
+                        </span>
+                        <JobStatusBadge job={job} />
+                        <div className="ml-auto flex items-center gap-2">
+                          {job.status === "pending" && (
+                            <button
+                              title="Cancel"
+                              className="text-slate-400 hover:text-red-500"
+                              onClick={() => apiRequest("DELETE", `/api/jobs/${job.id}`).then(() => queryClient.invalidateQueries({ queryKey: ["/api/jobs"] }))}
+                            >
+                              <X className="w-3.5 h-3.5" />
+                            </button>
+                          )}
+                          {job.conversation_id && (
+                            <button
+                              className="text-xs text-blue-600 hover:text-blue-800 underline"
+                              onClick={() => setLocation(`/agent?conv=${job.conversation_id}`)}
+                            >
+                              View transcript
+                            </button>
+                          )}
+                        </div>
+                      </div>
+                      {job.status === "completed" && (
+                        <div className="flex items-center gap-3 text-xs text-slate-500">
+                          <span>{job.steps_completed} steps completed</span>
+                          <button
+                            className="text-blue-600 hover:text-blue-800 underline"
+                            onClick={() => { setSearch((job as any).market_country); setShowScanPanel(false); window.scrollTo({ top: 0, behavior: "smooth" }); }}
+                            title={`Filter banking groups by ${(job as any).market_country}`}
+                          >
+                            Browse {(job as any).market_country} groups →
+                          </button>
+                        </div>
                       )}
                       {job.status === "failed" && job.error_message && (
-                        <span className="ml-auto text-xs text-red-500 truncate max-w-48" title={job.error_message}>{job.error_message}</span>
+                        <div className="text-xs text-red-500 truncate" title={job.error_message}>{job.error_message}</div>
                       )}
                     </div>
                   ))}
