@@ -219,64 +219,151 @@ function buildMarketScanPrompt(
   rtgsSystem: string | null,
 ): string {
   const isEurozone = currency === "EUR" || EUROZONE_COUNTRIES.has(country);
-  const eurozoneTrap = isEurozone
-    ? `\nTRAP 2 — EUROZONE SUBSIDIARIES: A subsidiary in any Eurozone country offering EUR is Onshore → "Correspondent Banking" + TARGET2. Include Eurozone subsidiaries of non-Eurozone parents as Onshore providers.`
+  const eurozoneNote = isEurozone
+    ? `\nEurozone rule: For EUR, any entity in a Eurozone country (AT, DE, FR, IT, ES, NL, BE, PT, IE, FI, SK, SI, EE, LV, LT, MT, CY, GR, LU, HR) qualifies as Onshore → "Correspondent Banking" + TARGET2.`
     : "";
 
   return `Market Coverage Scan — ${country} / ${currency}
 
-GOAL: Discover 8–15 ONSHORE correspondent banking providers active in the ${currency} market in ${country}.
-An eligible provider must have a legal entity domiciled IN ${country} — either a domestic bank headquartered there, or a foreign bank group with a licensed local subsidiary or branch in ${country}.
-EXCLUDE any provider that only offers ${currency} clearing from an entity outside ${country} (pure offshore / correspondent-only models without a local presence).
-Record each eligible provider as: banking group → local legal entity (country = ${country}) → BIC → one ${currency} correspondent service (service_type = "Correspondent Banking", clearing_model = "Onshore").
-This is a BREADTH-FIRST market scan. Do NOT record FMI memberships — those are handled by the CB Setup workflow.
-Only create services for ${currency} — do NOT research other currencies.
+Objective: Identify onshore correspondent banking providers for the ${currency} market in ${country}.
+Create for each qualified provider: banking group → local legal entity (country = ${country}) → BIC → one ${currency} correspondent service.
+Do NOT record: FMI memberships, non-target currencies, offshore-only providers.
+Detailed setup for each bank will be handled later by the CB Entity Setup workflow.
+
+Market definition:
+  Currency: ${currency}
+  Settlement country: ${country}
+  RTGS system: ${rtgsSystem || "identify from research"}${eurozoneNote}
 
 ---
-STEP 1 — DISCOVER ACTIVE ONSHORE CB PROVIDERS
-Run TWO web searches:
-  Search 1: "${country} correspondent banking ${currency} providers SWIFT ${rtgsSystem ? rtgsSystem + " direct participant" : "clearing"}"
-  Search 2: "${country} licensed banks ${currency} nostro vostro clearing ${rtgsSystem || "RTGS"} member"
-Target 8–15 providers. For each candidate, confirm they have a legal entity (subsidiary or branch) licensed and domiciled IN ${country}.
-Discard any candidate that only offers ${currency} clearing from a foreign entity with no local presence in ${country}.${isEurozone ? `\nNote: For EUR, any entity in a Eurozone country (AT, DE, FR, IT, ES, NL, BE, PT, IE, FI, SK, SI, EE, LV, LT, MT, CY, GR, LU, HR) is Onshore → "Correspondent Banking" + TARGET2.` : ""}
+PROVIDER QUALIFICATION RULES
+
+A bank qualifies as a correspondent banking provider only if ALL of the following are true:
+  1. A licensed banking entity exists in ${country}
+  2. The entity participates in or has access to ${rtgsSystem || "the local RTGS system"}
+  3. The entity has a confirmed SWIFT BIC
+  4. Evidence exists that the bank supports financial institution or correspondent banking services
+
+Acceptable evidence for criterion 4:
+  FI services, transaction banking, institutional banking, nostro/vostro services, clearing or settlement banking, known market role as a settlement bank.
+
+Immediate reject if:
+  No licensed entity in ${country}, offshore-only clearing model, holding company, insurer or asset manager, inactive or divested entity, retail-only bank with no FI capabilities.
 
 ---
-STEP 2 — BANKING GROUPS
-For each provider: call find_banking_group_by_name.
-  • Found → note ID. Update any null fields (headquarters_country, primary_currency, cb_probability, cb_evidence) using update_banking_group.
+CONFIDENCE SCORING
+
+Score each qualified candidate:
+  Direct ${rtgsSystem || "RTGS"} participant = +30
+  Confirmed SWIFT BIC = +15
+  Explicit FI / correspondent banking evidence = +35
+  Market reputation as clearing bank = +20
+
+Local licensed entity in ${country} is mandatory (not scored — it is a gate).
+
+Decision rules:
+  Score >= 80 → High confidence → create provider
+  Score 60–79 → Medium confidence → create provider
+  Score < 60 → Reject candidate (track reason)
+
+---
+STEP 1 — CANDIDATE DISCOVERY
+
+Use a layered discovery approach. Source priority:
+  1. Central bank / ${rtgsSystem || "RTGS"} participant lists
+  2. Banking regulator licence registers for ${country}
+  3. Bank official websites (FI / transaction banking pages)
+  4. SWIFT / BIC evidence
+  5. Web search (confirmation only — do NOT use web search as the primary discovery method)
+
+Search strategy:
+  Search 1: "${country} ${rtgsSystem || "RTGS"} direct participants list ${currency} clearing banks"
+  Search 2: "${country} banking regulator licensed banks foreign bank branches subsidiaries"
+  Search 3 (if needed): "${country} correspondent banking ${currency} nostro vostro settlement banks"
+
+Candidate types to identify:
+  • Domestic banks headquartered in ${country}
+  • Foreign bank subsidiaries licensed in ${country}
+  • Foreign bank branches licensed in ${country}
+
+Stop conditions — stop scanning when any of these occur:
+  • 10 high-confidence providers identified
+  • No new credible candidates found after 3 consecutive searches
+  • 20 candidates reviewed
+
+---
+STEP 2 — CANDIDATE EVALUATION + BANKING GROUPS
+
+For each candidate, apply the 4-criterion qualification checklist and compute the confidence score.
+Reject any candidate scoring below 60. Track rejected candidates with the reason.
+
+For each qualified provider: call find_banking_group_by_name.
+  • Found → use existing group_id. Update missing fields (headquarters_country, primary_currency, cb_probability, cb_evidence) only if needed.
   • Not found →
-    - If the name contains a country/regional suffix (e.g. "HSBC Bank ${country}", "Citibank ${country} Branch"), FIRST search for the parent group without the suffix (e.g. "HSBC", "Citigroup"). If the parent exists, use that group — do NOT create a duplicate. The local entity (Step 3) will be linked to the parent group.
-    - Only create a new banking group if no parent match is found. Evaluate using the standard 4-criterion CB Provider assessment (SWIFT membership, RTGS participation, Nostro/Vostro evidence, Market reputation), then create with create_banking_group.
+    - If the name contains a country/regional suffix (e.g. "HSBC Bank ${country}", "Citibank ${country} Branch"), FIRST search for the parent group without the suffix (e.g. "HSBC", "Citigroup"). If the parent exists, use that group — do NOT create a duplicate.
+    - Only create a new banking group if no parent match exists. Set cb_probability based on confidence score: High → "High", Medium → "Medium".
 
 ---
 STEP 3 — LOCAL LEGAL ENTITIES
-For each provider, the relevant entity is the one domiciled IN ${country} (not the foreign HQ).
+
+For each qualified provider, record only the entity domiciled IN ${country} (not the foreign HQ).
 Call find_legal_entity_by_name to check if it already exists.
-If not found → create with create_legal_entity linked to the group. Set country = "${country}".
-IMPORTANT: Do NOT create or link a foreign HQ entity. Only the ${country}-domiciled entity should be recorded.
+If not found → create with create_legal_entity linked to the group:
+  - country = "${country}"
+  - entity_type = "Bank" (domestic HQ), "Subsidiary" (foreign-owned local subsidiary), or "Branch" (foreign bank branch)
+Do NOT create or link a foreign parent/HQ entity.
 
 ---
 STEP 4 — BIC CODES
+
 For each entity: call list_bics.
   • BIC exists → note it.
-  • Missing → add with create_bic ONLY if the BIC code was confirmed from research. Do NOT guess BIC codes.
+  • Missing and confirmed from research → create with create_bic.
+  • Cannot confirm BIC → leave unresolved. Do NOT guess BIC codes.
 
 ---
 STEP 5 — ${currency} CORRESPONDENT SERVICE
-For each BIC: call list_correspondent_services to check for an existing ${currency} service.
+
+For each entity with a confirmed BIC: call list_correspondent_services to check for an existing ${currency} service.
   • Exists → skip or update if clearing_model is not "Onshore".
   • Missing → create with create_correspondent_service:
     - currency = "${currency}"
     - service_type = "Correspondent Banking"
     - clearing_model = "Onshore"
-    - rtgs_membership = true (all included providers have direct ${rtgsSystem || "local RTGS"} access)
-    - Do NOT create services for any other currency.${eurozoneTrap}
+    - rtgs_membership = true ONLY if direct ${rtgsSystem || "RTGS"} participation was confirmed during evaluation; otherwise false
+    - Do NOT create services for any other currency.
 
 ---
-End with a structured summary:
-  Providers found: X (all Onshore)
-  New banking groups created: X | Existing groups updated: X
-  Entities created: X | BICs created: X | Services created: X
+REJECTED CANDIDATES
+
+Maintain a list of all rejected candidates with reason. Valid rejection reasons:
+  No licensed entity in ${country} | offshore-only clearing model | no correspondent banking evidence | retail-only bank | entity inactive or divested | confidence score below 60
+
+---
+OUTPUT SUMMARY
+
+At completion, output:
+
+Providers discovered: X
+  High confidence: X
+  Medium confidence: X
+
+New banking groups created: X
+Existing groups used: X
+
+Legal entities created: X
+BICs created: X
+Services created: X
+
+Candidates reviewed: X
+Candidates rejected: X
+
+Web searches performed: X
+Unresolved items: X (e.g. BICs not confirmed)
+
+Rejected candidates:
+  [bank name] — [reason]
+
 For full details (FMI memberships, other currencies), run the CB Setup workflow on individual providers.`;
 }
 
@@ -286,23 +373,34 @@ function buildDryRunSuffix(country: string, currency: string): string {
 ---
 ⚠️ DRY RUN MODE — READ-ONLY ⚠️
 You have NO create/update/delete tools available. Do NOT attempt to call them.
-Instead, complete ALL 5 discovery steps using only read and search tools, then produce a structured Markdown report listing every ONSHORE provider you found and what you WOULD have created:
+Instead, complete ALL steps using only read and search tools, then produce a structured Markdown report.
 
 ## Dry-Run Discovery Report — ${country} / ${currency}
 
 Only include providers with a legal entity domiciled IN ${country}. Exclude any pure-offshore providers.
 
-For each provider discovered, include:
-| # | Banking Group | HQ Country | Entity Name (${country}-domiciled) | BIC Code | RTGS Direct Participant? |
-|---|---|---|---|---|---|
+### Qualified Providers
 
-Then include:
-- **Total onshore providers found**: X
+For each qualified provider, include:
+| # | Banking Group | HQ Country | Entity Name (${country}) | Entity Type | BIC Code | RTGS Direct? | Confidence Score | Tier |
+|---|---|---|---|---|---|---|---|---|
+
+### Summary
+
+- **Providers found**: X (Y High confidence + Z Medium confidence)
 - **New groups that would be created**: list names
 - **Existing groups that would be updated**: list names
 - **Entities / BICs / Services that would be created**: counts
+- **Candidates reviewed**: X
+- **Web searches performed**: X
+- **Unresolved items**: X (e.g. BICs not confirmed)
 
-Be thorough — research all 8–15 onshore providers as if this were a real scan.`;
+### Rejected Candidates
+
+| # | Bank Name | Reason for Rejection |
+|---|---|---|
+
+Be thorough — follow the layered discovery strategy and evaluate each candidate against the 4-criterion qualification checklist and confidence scoring model.`;
 }
 
 async function processNextJob() {
