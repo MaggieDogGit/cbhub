@@ -478,9 +478,9 @@ function buildDryRunSuffix(country: string, currency: string): string {
 ---
 ⚠️ DRY RUN MODE — READ-ONLY ⚠️
 You have NO create/update/delete tools available. Do NOT attempt to call them.
-Instead, complete Steps 0–3 fully using only read and search tools, then produce a structured Markdown report.
-For each candidate, still gather evidence (Step 1), run the classification (Step 2), and compute the numeric score (Step 3).
-Skip Steps 5–8 (no database writes). Still produce the Step 9 rejected list and Step 10 output.
+Instead, complete Steps 0–4 fully using only read and search tools, then produce a structured Markdown report.
+For each candidate, still gather evidence (Step 1), run the classification (Step 2), compute the numeric score (Step 3), and apply stop conditions (Step 4).
+Skip Steps 5–8 (no database writes). Still produce the Step 9 rejected/unresolved lists and Step 10 output.
 
 ## Dry-Run Discovery Report — ${country} / ${currency}
 
