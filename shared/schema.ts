@@ -248,6 +248,82 @@ export const insertAgentJobSchema = createInsertSchema(agentJobs).omit({ id: tru
 export type InsertAgentJob = z.infer<typeof insertAgentJobSchema>;
 export type AgentJob = typeof agentJobs.$inferSelect;
 
+// CB Taxonomy
+export const cbTaxonomyItems = pgTable("cb_taxonomy_items", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  code: text("code").notNull().unique(),
+  name: text("name").notNull(),
+  category: text("category").notNull(),
+  value_type: text("value_type").notNull(),
+  display_order: integer("display_order").notNull().default(0),
+  active: boolean("active").default(true),
+});
+
+export const cbCapabilityValues = pgTable("cb_capability_values", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  banking_group_id: varchar("banking_group_id").notNull(),
+  legal_entity_id: varchar("legal_entity_id"),
+  correspondent_service_id: varchar("correspondent_service_id"),
+  taxonomy_item_id: varchar("taxonomy_item_id").notNull(),
+  value_enum: text("value_enum"),
+  value_numeric: integer("value_numeric"),
+  value_text: text("value_text"),
+  supported_fmis: text("supported_fmis").array(),
+  notes: text("notes"),
+  source: text("source"),
+  confidence: text("confidence"),
+  ai_generated: boolean("ai_generated").default(true),
+  reviewer: text("reviewer"),
+  created_at: timestamp("created_at").defaultNow(),
+  updated_at: timestamp("updated_at").defaultNow(),
+});
+
+export const cbSchemeMaster = pgTable("cb_scheme_master", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  code: text("code").notNull().unique(),
+  name: text("name").notNull(),
+  market: text("market"),
+  region: text("region"),
+  scheme_currency: text("scheme_currency"),
+  scheme_type: text("scheme_type"),
+  operator_name: text("operator_name"),
+  active: boolean("active").default(true),
+  display_order: integer("display_order").notNull().default(0),
+});
+
+export const cbIndirectParticipation = pgTable("cb_indirect_participation", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  legal_entity_id: varchar("legal_entity_id").notNull(),
+  legal_entity_name: text("legal_entity_name"),
+  banking_group_id: varchar("banking_group_id").notNull(),
+  banking_group_name: text("banking_group_name"),
+  scheme_id: varchar("scheme_id").notNull(),
+  scheme_code: text("scheme_code"),
+  scheme_name: text("scheme_name"),
+  indirect_participation_offered: text("indirect_participation_offered").default("unknown"),
+  sponsor_is_direct_participant: boolean("sponsor_is_direct_participant").default(false),
+  notes: text("notes"),
+  source: text("source"),
+  confidence: text("confidence"),
+  ai_generated: boolean("ai_generated").default(true),
+  created_at: timestamp("created_at").defaultNow(),
+  updated_at: timestamp("updated_at").defaultNow(),
+});
+
+export const insertCbTaxonomyItemSchema = createInsertSchema(cbTaxonomyItems).omit({ id: true });
+export const insertCbCapabilityValueSchema = createInsertSchema(cbCapabilityValues).omit({ id: true, created_at: true, updated_at: true });
+export const insertCbSchemeMasterSchema = createInsertSchema(cbSchemeMaster).omit({ id: true });
+export const insertCbIndirectParticipationSchema = createInsertSchema(cbIndirectParticipation).omit({ id: true, created_at: true, updated_at: true });
+
+export type CbTaxonomyItem = typeof cbTaxonomyItems.$inferSelect;
+export type InsertCbTaxonomyItem = z.infer<typeof insertCbTaxonomyItemSchema>;
+export type CbCapabilityValue = typeof cbCapabilityValues.$inferSelect;
+export type InsertCbCapabilityValue = z.infer<typeof insertCbCapabilityValueSchema>;
+export type CbSchemeMaster = typeof cbSchemeMaster.$inferSelect;
+export type InsertCbSchemeMaster = z.infer<typeof insertCbSchemeMasterSchema>;
+export type CbIndirectParticipation = typeof cbIndirectParticipation.$inferSelect;
+export type InsertCbIndirectParticipation = z.infer<typeof insertCbIndirectParticipationSchema>;
+
 export const insertUserSchema = z.object({ username: z.string(), password: z.string() });
 export type InsertUser = z.infer<typeof insertUserSchema>;
 export type User = { id: string; username: string; password: string };

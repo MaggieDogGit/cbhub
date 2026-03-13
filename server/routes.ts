@@ -2,7 +2,7 @@ import type { Express, Request, Response, NextFunction } from "express";
 import { createServer, type Server } from "http";
 import { storage } from "./storage";
 import { pool } from "./db";
-import { insertBankingGroupSchema, insertLegalEntitySchema, insertBicSchema, insertCorrespondentServiceSchema, insertClsProfileSchema, insertFmiSchema, insertFmiRegistrySchema, insertFmiResearchJobSchema, insertDataSourceSchema, insertConversationSchema, insertMessageSchema, insertAgentJobSchema, insertIntelObservationSchema } from "@shared/schema";
+import { insertBankingGroupSchema, insertLegalEntitySchema, insertBicSchema, insertCorrespondentServiceSchema, insertClsProfileSchema, insertFmiSchema, insertFmiRegistrySchema, insertFmiResearchJobSchema, insertDataSourceSchema, insertConversationSchema, insertMessageSchema, insertAgentJobSchema, insertIntelObservationSchema, insertCbCapabilityValueSchema, insertCbIndirectParticipationSchema } from "@shared/schema";
 import OpenAI from "openai";
 import { buildSystemPrompt, runAgentLoop } from "./agentCore";
 import { startJobRunner, CURRENCY_COUNTRY, COUNTRY_CURRENCY } from "./jobRunner";
@@ -509,6 +509,83 @@ Only include currencies and services you found evidence for in the research.`,
   app.delete("/api/intel/:id", async (req, res) => {
     try {
       await storage.deleteIntelObservation(req.params.id);
+      res.json({ ok: true });
+    } catch (err: any) {
+      res.status(500).json({ message: err.message });
+    }
+  });
+
+  // CB Taxonomy
+  app.get("/api/cb-taxonomy", async (_req, res) => {
+    try {
+      const items = await storage.getCbTaxonomy();
+      const grouped: Record<string, typeof items> = {};
+      for (const item of items) {
+        if (!grouped[item.category]) grouped[item.category] = [];
+        grouped[item.category].push(item);
+      }
+      res.json(grouped);
+    } catch (err: any) {
+      res.status(500).json({ message: err.message });
+    }
+  });
+
+  app.get("/api/cb-capabilities/:groupId", async (req, res) => {
+    try {
+      res.json(await storage.getCbCapabilities(req.params.groupId));
+    } catch (err: any) {
+      res.status(500).json({ message: err.message });
+    }
+  });
+
+  app.put("/api/cb-capabilities", async (req, res) => {
+    try {
+      const parsed = insertCbCapabilityValueSchema.safeParse(req.body);
+      if (!parsed.success) return res.status(400).json({ message: parsed.error.message });
+      res.json(await storage.upsertCbCapability(parsed.data));
+    } catch (err: any) {
+      res.status(500).json({ message: err.message });
+    }
+  });
+
+  app.delete("/api/cb-capabilities/:id", async (req, res) => {
+    try {
+      await storage.deleteCbCapability(req.params.id);
+      res.json({ ok: true });
+    } catch (err: any) {
+      res.status(500).json({ message: err.message });
+    }
+  });
+
+  app.get("/api/cb-schemes", async (_req, res) => {
+    try {
+      res.json(await storage.getCbSchemes());
+    } catch (err: any) {
+      res.status(500).json({ message: err.message });
+    }
+  });
+
+  app.get("/api/cb-indirect/:groupId", async (req, res) => {
+    try {
+      res.json(await storage.getCbIndirectParticipation(req.params.groupId));
+    } catch (err: any) {
+      res.status(500).json({ message: err.message });
+    }
+  });
+
+  app.put("/api/cb-indirect", async (req, res) => {
+    try {
+      const parsed = insertCbIndirectParticipationSchema.safeParse(req.body);
+      if (!parsed.success) return res.status(400).json({ message: parsed.error.message });
+      res.json(await storage.upsertCbIndirectParticipation(parsed.data));
+    } catch (err: any) {
+      res.status(500).json({ message: err.message });
+    }
+  });
+
+  app.delete("/api/cb-indirect/:id", async (req, res) => {
+    try {
+      await storage.deleteCbIndirectParticipation(req.params.id);
       res.json({ ok: true });
     } catch (err: any) {
       res.status(500).json({ message: err.message });

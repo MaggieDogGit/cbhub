@@ -63,6 +63,10 @@ shared/
 | Conversation | name, created_at |
 | ChatMessage | conversation_id, role (user/assistant), content |
 | AgentJob | banking_group_id (nullable for market scans), banking_group_name (nullable), status, job_type (cb_setup/market_scan), market_country, market_currency, conversation_id, steps_completed, dry_run (boolean) |
+| CbTaxonomyItem | code (unique), name, category (feature_commercial/feature_treasury/value_added/connectivity/fi_score/thought_leadership/target_market/ancillary), value_type (boolean_unknown/enum_high_med_low/score_1_10/count/text), display_order, active |
+| CbCapabilityValue | banking_group_id, legal_entity_id (opt), correspondent_service_id (opt), taxonomy_item_id, value_enum, value_numeric, value_text, supported_fmis[], notes, source, confidence, ai_generated, reviewer |
+| CbSchemeMaster | code (unique), name, market, region, scheme_currency, scheme_type, operator_name, display_order, active |
+| CbIndirectParticipation | legal_entity_id, banking_group_id, scheme_id, indirect_participation_offered (yes/no/unknown), sponsor_is_direct_participant, notes, source, confidence, ai_generated |
 
 ## API Endpoints
 
@@ -77,6 +81,10 @@ All prefixed with `/api`:
 - `GET|POST /conversations`, `DELETE /conversations/:id`
 - `GET|POST /conversations/:id/messages`
 - `GET|POST /jobs`, `DELETE /jobs/:id`, `POST /jobs/queue-all`, `POST /jobs/stop-queue`, `POST /jobs/market-scan`
+- `GET /cb-taxonomy` – All taxonomy items grouped by category
+- `GET|PUT|DELETE /cb-capabilities/:groupId` – Capability values per banking group (PUT upserts)
+- `GET /cb-schemes` – Payment scheme master data
+- `GET|PUT|DELETE /cb-indirect/:groupId` – Indirect participation records per group (PUT upserts)
 - `POST /research` – AI bank research (OpenAI structured JSON output)
 - `POST /chat` – Streaming SSE AI agent (calls agentCore.runAgentLoop)
 

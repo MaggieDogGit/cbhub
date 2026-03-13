@@ -4,6 +4,7 @@ import {
   bankingGroups, legalEntities, bics, correspondentServices,
   clsProfiles, fmis, fmiRegistry, fmiResearchJobs, dataSources, conversations, chatMessages, agentJobs,
   intelObservations,
+  cbTaxonomyItems, cbCapabilityValues, cbSchemeMaster, cbIndirectParticipation,
   type BankingGroup, type InsertBankingGroup,
   type LegalEntity, type InsertLegalEntity,
   type Bic, type InsertBic,
@@ -17,6 +18,10 @@ import {
   type ChatMessage, type InsertMessage,
   type AgentJob, type InsertAgentJob,
   type IntelObservation, type InsertIntelObservation,
+  type CbTaxonomyItem, type InsertCbTaxonomyItem,
+  type CbCapabilityValue, type InsertCbCapabilityValue,
+  type CbSchemeMaster, type InsertCbSchemeMaster,
+  type CbIndirectParticipation, type InsertCbIndirectParticipation,
   type User, type InsertUser,
 } from "@shared/schema";
 import { randomUUID } from "crypto";
@@ -113,6 +118,16 @@ export interface IStorage {
   createJob(data: InsertAgentJob): Promise<AgentJob>;
   updateJob(id: string, data: Partial<AgentJob>): Promise<AgentJob>;
   deleteJob(id: string): Promise<void>;
+
+  // CB Taxonomy
+  getCbTaxonomy(): Promise<CbTaxonomyItem[]>;
+  getCbCapabilities(groupId: string): Promise<CbCapabilityValue[]>;
+  upsertCbCapability(data: InsertCbCapabilityValue): Promise<CbCapabilityValue>;
+  deleteCbCapability(id: string): Promise<void>;
+  getCbSchemes(): Promise<CbSchemeMaster[]>;
+  getCbIndirectParticipation(groupId: string): Promise<CbIndirectParticipation[]>;
+  upsertCbIndirectParticipation(data: InsertCbIndirectParticipation): Promise<CbIndirectParticipation>;
+  deleteCbIndirectParticipation(id: string): Promise<void>;
 }
 
 export class DatabaseStorage implements IStorage {
@@ -266,6 +281,56 @@ export class DatabaseStorage implements IStorage {
   async createJob(data: InsertAgentJob) { const [r] = await db.insert(agentJobs).values(data).returning(); return r; }
   async updateJob(id: string, data: Partial<AgentJob>) { const [r] = await db.update(agentJobs).set(data as any).where(eq(agentJobs.id, id)).returning(); return r; }
   async deleteJob(id: string) { await db.delete(agentJobs).where(eq(agentJobs.id, id)); }
+
+  // CB Taxonomy
+  async getCbTaxonomy() {
+    return db.select().from(cbTaxonomyItems).where(eq(cbTaxonomyItems.active, true)).orderBy(cbTaxonomyItems.category, cbTaxonomyItems.display_order);
+  }
+  async getCbCapabilities(groupId: string) {
+    return db.select().from(cbCapabilityValues).where(eq(cbCapabilityValues.banking_group_id, groupId));
+  }
+  async upsertCbCapability(data: InsertCbCapabilityValue) {
+    const conditions = [
+      eq(cbCapabilityValues.banking_group_id, data.banking_group_id),
+      eq(cbCapabilityValues.taxonomy_item_id, data.taxonomy_item_id),
+    ];
+    if (data.legal_entity_id) {
+      conditions.push(eq(cbCapabilityValues.legal_entity_id, data.legal_entity_id));
+    }
+    if (data.correspondent_service_id) {
+      conditions.push(eq(cbCapabilityValues.correspondent_service_id, data.correspondent_service_id));
+    }
+    const [existing] = await db.select().from(cbCapabilityValues).where(and(...conditions));
+    if (existing) {
+      const [r] = await db.update(cbCapabilityValues).set({ ...data, updated_at: new Date() } as any).where(eq(cbCapabilityValues.id, existing.id)).returning();
+      return r;
+    }
+    const [r] = await db.insert(cbCapabilityValues).values(data).returning();
+    return r;
+  }
+  async deleteCbCapability(id: string) {
+    await db.delete(cbCapabilityValues).where(eq(cbCapabilityValues.id, id));
+  }
+  async getCbSchemes() {
+    return db.select().from(cbSchemeMaster).where(eq(cbSchemeMaster.active, true)).orderBy(cbSchemeMaster.display_order);
+  }
+  async getCbIndirectParticipation(groupId: string) {
+    return db.select().from(cbIndirectParticipation).where(eq(cbIndirectParticipation.banking_group_id, groupId));
+  }
+  async upsertCbIndirectParticipation(data: InsertCbIndirectParticipation) {
+    const [existing] = await db.select().from(cbIndirectParticipation).where(
+      and(eq(cbIndirectParticipation.legal_entity_id, data.legal_entity_id), eq(cbIndirectParticipation.scheme_id, data.scheme_id))
+    );
+    if (existing) {
+      const [r] = await db.update(cbIndirectParticipation).set({ ...data, updated_at: new Date() } as any).where(eq(cbIndirectParticipation.id, existing.id)).returning();
+      return r;
+    }
+    const [r] = await db.insert(cbIndirectParticipation).values(data).returning();
+    return r;
+  }
+  async deleteCbIndirectParticipation(id: string) {
+    await db.delete(cbIndirectParticipation).where(eq(cbIndirectParticipation.id, id));
+  }
 }
 
 export const storage = new DatabaseStorage();
