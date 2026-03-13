@@ -7,7 +7,6 @@ import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
-import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import {
   ChevronDown, ChevronRight, Pencil, Trash2, Plus, Loader2,
   Check, X, Minus, Wifi, Target, Sparkles, BarChart3, Lightbulb, Package,
@@ -121,7 +120,7 @@ function EditCapDialog({ item, cap, groupId, entityId, serviceId, onClose }: Edi
       return apiRequest("PUT", "/api/cb-capabilities", body);
     },
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["/api/cb-capabilities", groupId] });
+      queryClient.invalidateQueries({ queryKey: [`/api/cb-capabilities/${groupId}`] });
       toast({ title: "Saved", description: `${item.name} updated` });
       onClose();
     },
@@ -131,7 +130,7 @@ function EditCapDialog({ item, cap, groupId, entityId, serviceId, onClose }: Edi
   const deleteMutation = useMutation({
     mutationFn: () => apiRequest("DELETE", `/api/cb-capabilities/${cap!.id}`),
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["/api/cb-capabilities", groupId] });
+      queryClient.invalidateQueries({ queryKey: [`/api/cb-capabilities/${groupId}`] });
       toast({ title: "Deleted", description: `${item.name} reset to unknown` });
       onClose();
     },
@@ -477,7 +476,7 @@ export function IndirectParticipationSection({ groupId, groupName, entityId, ent
 
   const { data: schemes = [] } = useQuery<CbSchemeMaster[]>({ queryKey: ["/api/cb-schemes"] });
   const { data: records = [] } = useQuery<CbIndirectParticipation[]>({
-    queryKey: ["/api/cb-indirect", groupId],
+    queryKey: [`/api/cb-indirect/${groupId}`],
   });
 
   const entityRecords = records.filter(r => r.legal_entity_id === entityId);
@@ -487,6 +486,7 @@ export function IndirectParticipationSection({ groupId, groupName, entityId, ent
   const [directParticipant, setDirectParticipant] = useState(false);
   const [indNotes, setIndNotes] = useState("");
   const [indSource, setIndSource] = useState("");
+  const [indConfidence, setIndConfidence] = useState("medium");
 
   const saveMutation = useMutation({
     mutationFn: () => {
@@ -503,12 +503,12 @@ export function IndirectParticipationSection({ groupId, groupName, entityId, ent
         sponsor_is_direct_participant: directParticipant,
         notes: indNotes || null,
         source: indSource || null,
-        confidence: "medium",
+        confidence: indConfidence,
         ai_generated: false,
       });
     },
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["/api/cb-indirect", groupId] });
+      queryClient.invalidateQueries({ queryKey: [`/api/cb-indirect/${groupId}`] });
       toast({ title: "Saved", description: "Indirect participation updated" });
       setAdding(false);
       setSelectedScheme("");
@@ -516,6 +516,7 @@ export function IndirectParticipationSection({ groupId, groupName, entityId, ent
       setDirectParticipant(false);
       setIndNotes("");
       setIndSource("");
+      setIndConfidence("medium");
     },
     onError: (err: Error) => toast({ title: "Error", description: err.message, variant: "destructive" }),
   });
@@ -523,7 +524,7 @@ export function IndirectParticipationSection({ groupId, groupName, entityId, ent
   const deleteMutation = useMutation({
     mutationFn: (id: string) => apiRequest("DELETE", `/api/cb-indirect/${id}`),
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["/api/cb-indirect", groupId] });
+      queryClient.invalidateQueries({ queryKey: [`/api/cb-indirect/${groupId}`] });
       toast({ title: "Deleted" });
     },
   });
@@ -659,6 +660,20 @@ export function IndirectParticipationSection({ groupId, groupName, entityId, ent
               </label>
 
               <div className="space-y-1">
+                <label className="text-xs font-medium text-slate-700">Confidence</label>
+                <Select value={indConfidence} onValueChange={setIndConfidence}>
+                  <SelectTrigger data-testid="indirect-confidence" className="text-sm">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="high">High</SelectItem>
+                    <SelectItem value="medium">Medium</SelectItem>
+                    <SelectItem value="low">Low</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+
+              <div className="space-y-1">
                 <label className="text-xs font-medium text-slate-700">Source</label>
                 <Input
                   value={indSource}
@@ -709,7 +724,7 @@ interface CbProfileProps {
 export default function CbProfile({ groupId, groupName, entities, services }: CbProfileProps) {
   const { data: taxonomy = {} as TaxonomyGrouped } = useQuery<TaxonomyGrouped>({ queryKey: ["/api/cb-taxonomy"] });
   const { data: capabilities = [], isLoading } = useQuery<CbCapabilityValue[]>({
-    queryKey: ["/api/cb-capabilities", groupId],
+    queryKey: [`/api/cb-capabilities/${groupId}`],
   });
 
   if (isLoading) {

@@ -159,7 +159,7 @@ function ServiceRow({
   taxonomy: TaxonomyGrouped;
 }) {
   const { data: capabilities = [] } = useQuery<CbCapabilityValue[]>({
-    queryKey: ["/api/cb-capabilities", groupId],
+    queryKey: [`/api/cb-capabilities/${groupId}`],
     enabled: isExpanded && isOnshore,
   });
 
