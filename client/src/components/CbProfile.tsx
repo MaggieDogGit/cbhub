@@ -20,13 +20,13 @@ import type {
 
 type TaxonomyGrouped = Record<string, CbTaxonomyItem[]>;
 
-const CATEGORY_META: Record<string, { label: string; icon: typeof Wifi; color: string }> = {
-  connectivity:       { label: "Connectivity & Technology", icon: Wifi,       color: "blue" },
-  target_market:      { label: "Target Markets",           icon: Target,     color: "emerald" },
-  value_added:        { label: "Value Added Services",     icon: Sparkles,   color: "violet" },
-  fi_score:           { label: "FI Service Model",         icon: BarChart3,  color: "amber" },
-  thought_leadership: { label: "Thought Leadership",       icon: Lightbulb,  color: "orange" },
-  ancillary:          { label: "Ancillary Services",       icon: Package,    color: "slate" },
+const CATEGORY_META: Record<string, { label: string; icon: typeof Wifi; iconClass: string }> = {
+  connectivity:       { label: "Connectivity & Technology", icon: Wifi,       iconClass: "text-blue-500" },
+  target_market:      { label: "Target Markets",           icon: Target,     iconClass: "text-emerald-500" },
+  value_added:        { label: "Value Added Services",     icon: Sparkles,   iconClass: "text-violet-500" },
+  fi_score:           { label: "FI Service Model",         icon: BarChart3,  iconClass: "text-amber-500" },
+  thought_leadership: { label: "Thought Leadership",       icon: Lightbulb,  iconClass: "text-orange-500" },
+  ancillary:          { label: "Ancillary Services",       icon: Package,    iconClass: "text-slate-500" },
 };
 
 const GROUP_CATEGORIES = ["connectivity", "target_market", "value_added", "fi_score", "thought_leadership", "ancillary"];
@@ -379,7 +379,7 @@ function CategoryPanel({
         onClick={() => setOpen(p => !p)}
         data-testid={`cat-toggle-${category}`}
       >
-        <Icon className={`w-4 h-4 text-${meta.color}-500 shrink-0`} />
+        <Icon className={`w-4 h-4 ${meta.iconClass} shrink-0`} />
         <span className="text-sm font-medium text-slate-800 flex-1">{meta.label}</span>
         <span className="text-xs text-slate-400">{filledCount}/{items.length}</span>
         {open ? <ChevronDown className="w-3.5 h-3.5 text-slate-400" /> : <ChevronRight className="w-3.5 h-3.5 text-slate-400" />}
