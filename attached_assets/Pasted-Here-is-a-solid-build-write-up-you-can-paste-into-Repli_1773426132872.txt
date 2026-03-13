@@ -1,0 +1,487 @@
+Here is a solid build write-up you can paste into Replit as the product/design instruction for the CB Hub taxonomy module.
+
+⸻
+
+Build Instruction: CB Services Taxonomy Module for CB Hub
+
+Build a structured Correspondent Banking Services Taxonomy module that allows the application to store, analyse, compare, and display correspondent banking capabilities by banking group, legal entity, currency, and market.
+
+The purpose of this module is to support competitor intelligence and capability benchmarking for correspondent banking providers. The model must be extensible, globally reusable, and suitable for AI-assisted population and scoring.
+
+The taxonomy must distinguish between:
+	•	core correspondent banking products
+	•	core product features
+	•	value added services
+	•	connectivity capabilities
+	•	service model quality
+	•	thought leadership
+	•	target market
+	•	indirect participation capabilities
+	•	ancillary services
+
+The solution must support both:
+	•	hard capability data such as yes/no, counts, lists, memberships
+	•	judgement-based ratings such as FI service quality and thought leadership scores
+
+The data model should be designed so the app can compare providers like Deutsche Bank, Citi, JPMorgan, Standard Chartered, HSBC, BNP Paribas, etc. across consistent dimensions.
+
+⸻
+
+1. Core Design Principles
+	1.	The model must support storage at legal entity level, because correspondent banking capabilities are often delivered by a specific licensed entity, not merely by the banking group.
+	2.	The model must support currency and market specificity.
+Example: a bank may offer GBP correspondent banking in the UK via one entity and EUR correspondent banking in the eurozone via another.
+	3.	The model must distinguish between:
+	•	onshore clearing services
+	•	offshore / value added services
+	•	adjacent / ancillary services
+	4.	The model must be extensible. New schemes, new API capabilities, new service attributes, and new ancillary services must be addable without redesigning the database.
+	5.	The model must allow the AI layer to store:
+	•	supported values
+	•	source evidence
+	•	confidence
+	•	unknown values where public evidence is insufficient
+	6.	The app should treat unknown as a valid state where appropriate. Do not force false precision.
+
+⸻
+
+2. Taxonomy Structure
+
+2.1 Core Correspondent Banking Product
+
+The core product is onshore clearing.
+
+Definition:
+A legal entity offers correspondent banking in its home currency and is a direct member / participant of the relevant domestic RTGS or equivalent settlement system.
+
+Examples:
+	•	EUR correspondent banking offered by an EU / eurozone entity with direct TARGET membership
+	•	GBP correspondent banking offered by a UK entity with direct CHAPS membership
+	•	USD correspondent banking offered by a US entity with direct Fedwire and/or CHIPS participation
+
+Suggested fields:
+	•	banking_group_id
+	•	legal_entity_id
+	•	currency
+	•	market
+	•	rtgs_or_primary_system_name
+	•	direct_member_flag
+	•	service_offered_flag
+	•	notes
+	•	source
+	•	confidence
+
+Important rule:
+A core onshore CB service should only be marked as offered where the legal entity is itself a direct participant in the relevant domestic infrastructure required to provide that service.
+
+⸻
+
+2.2 Core Product Features
+
+Core product features apply only to onshore correspondent banking services.
+
+2.2.1 Commercial Payment Features
+
+Store as individual capabilities attached to the relevant onshore CB service.
+
+Commercial payment feature list:
+	•	SWIFT Go support
+	•	Flexible charging logic
+	•	Early opening hours
+	•	Support for clearing through a 24x7 real-time CSM
+
+Suggested data approach:
+	•	feature_code
+	•	feature_name
+	•	availability = yes / no / unknown
+	•	notes
+	•	source
+	•	confidence
+
+2.2.2 Treasury Payment Features
+
+Treasury payment features also apply only to the relevant onshore CB service.
+
+Treasury payment feature list:
+	•	Access to liquidity
+	•	Time-critical payments
+	•	CLS Nostro pay-in support
+	•	FMI pay-in support
+
+Field treatment:
+	•	Access to liquidity should use: high / medium / low / unknown
+	•	Time-critical payments: yes / no / unknown
+	•	CLS Nostro pay-in support: yes / no / unknown
+	•	FMI pay-in support: yes / no / unknown
+
+For FMI pay-in support, also allow an optional list of supported FMIs.
+
+Examples of FMIs:
+	•	CLS
+	•	CREST
+	•	LCH
+	•	Eurex
+	•	ICE
+	•	CME
+
+Suggested fields:
+	•	feature_code
+	•	feature_name
+	•	value_text or value_enum
+	•	supported_fmis_json or child table
+	•	notes
+	•	source
+	•	confidence
+
+Recommendation:
+Use a generic FMI pay-in support structure rather than hardcoding only CREST or CLS. That keeps the model scalable for broker dealer and market infrastructure use cases.
+
+⸻
+
+3. Value Added Correspondent Banking Services
+
+These are services beyond the core domestic clearing product.
+
+3.1 Global Currency Clearing
+
+Definition:
+Offshore clearing capability in currencies beyond the home currency service.
+
+Fields:
+	•	availability = yes / no
+	•	number_of_currencies = integer or null
+	•	notes
+	•	source
+	•	confidence
+
+3.2 Transactional FX Solutions
+
+Fields:
+	•	availability = yes / no / unknown
+	•	number_of_currencies = integer or null
+	•	notes
+	•	source
+	•	confidence
+
+3.3 Auto-Convert Solutions
+
+Fields:
+	•	availability = yes / no / unknown
+	•	number_of_destinations = integer or null
+	•	notes
+	•	source
+	•	confidence
+
+⸻
+
+4. Connectivity & Technology
+
+This must be stored as a single consolidated list of capabilities.
+
+Connectivity capability list:
+	•	SWIFT FIN
+	•	SWIFT MX
+	•	SWIFT MX BTR
+	•	API CB Payment
+	•	API CB Creditor Agent Push
+	•	API E&I
+	•	API BTR
+	•	Online BTR
+	•	Online CB Payment
+
+Recommended model:
+A generic capability table where each connectivity item is a row, rather than separate hardcoded columns.
+
+Suggested fields:
+	•	capability_code
+	•	capability_name
+	•	availability = yes / no / unknown
+	•	rollout_scope
+	•	notes
+	•	source
+	•	confidence
+
+This should make it easy to add future items such as:
+	•	API status reporting
+	•	API liquidity
+	•	portal-based investigations
+	•	ISO 20022 enhancements
+
+⸻
+
+5. FI Service Model
+
+This is a scored model by dimension, not one overall score.
+
+Use a 1 to 10 score for each dimension:
+	•	FI Client Service
+	•	FI Implementation Management
+	•	FI Product Specialist
+	•	FI Sales
+
+Important:
+Store these as separate ratings, each with its own evidence and optional explanation.
+
+Suggested fields:
+	•	dimension_code
+	•	dimension_name
+	•	score_1_to_10
+	•	rationale
+	•	source_type
+	•	source
+	•	confidence
+	•	reviewer
+
+This allows future human override and AI proposals.
+
+⸻
+
+6. Thought Leadership
+
+This is also a scored model by dimension, not a single overall score.
+
+Use a 1 to 10 score for each dimension:
+	•	Local Market Knowledge
+	•	Global Industry Leadership
+	•	Industry Engagement
+
+Suggested fields:
+	•	dimension_code
+	•	dimension_name
+	•	score_1_to_10
+	•	rationale
+	•	source
+	•	confidence
+
+This is useful for strategic benchmarking, especially where the bank’s market reputation and industry presence matter alongside product capability.
+
+⸻
+
+7. Target Market
+
+Target market must be multi-select.
+
+Allowed values:
+	•	Banks
+	•	Broker Dealers
+	•	NBPSP
+
+Definition:
+This reflects the client segments the correspondent bank actively targets and serves with its correspondent banking proposition.
+
+Recommended structure:
+	•	target_market_code
+	•	target_market_name
+	•	availability = yes / no / unknown
+	•	notes
+	•	source
+	•	confidence
+
+This will help the app identify whether a provider is positioned for:
+	•	traditional respondent banks
+	•	broker dealer and market infrastructure clients
+	•	fintechs and non-bank payment service providers
+
+⸻
+
+8. Indirect Participation
+
+Rename this section to Indirect Participation and build it as an extensible scheme sponsorship model.
+
+Definition:
+A legal entity sponsors a financial institution into a payment scheme where the sponsoring entity is itself a direct participant of that scheme.
+
+Critical rule:
+A legal entity can only be marked as offering indirect participation for a given scheme if that same legal entity is itself a direct participant/member of the relevant scheme.
+
+Examples:
+	•	SCT
+	•	SDD
+	•	SCT Inst
+	•	FPS
+	•	BACS
+
+The model must be extensible so future schemes can be added without redesign.
+
+Suggested fields:
+	•	scheme_code
+	•	scheme_name
+	•	market
+	•	region
+	•	scheme_type
+	•	indirect_participation_offered = yes / no / unknown
+	•	sponsoring_legal_entity_id
+	•	sponsor_direct_participant_flag
+	•	notes
+	•	source
+	•	confidence
+
+Optional additional fields:
+	•	operator_name
+	•	scheme_currency
+	•	eligibility_notes
+	•	client_segment_scope
+
+Examples:
+	•	SEPA zone: SCT, SDD, SCT Inst
+	•	UK: FPS, BACS
+	•	Later expansion: ACH, instant domestic schemes, regional ACHs, etc.
+
+Do not hardcode section 8 only for SEPA. It must be global and extensible.
+
+⸻
+
+9. Ancillary Services
+
+Ancillary services are services frequently offered alongside correspondent banking but not part of the core onshore clearing proposition.
+
+Initial list:
+	•	Trade Finance
+	•	Custody
+	•	CLS Third-Party Services
+
+Recommended structure:
+	•	ancillary_service_code
+	•	ancillary_service_name
+	•	availability = yes / no / unknown
+	•	notes
+	•	source
+	•	confidence
+
+This section must also be extensible.
+
+⸻
+
+10. Recommended Data Modelling Approach
+
+Use a hybrid structure:
+
+Stable master tables
+
+These define the taxonomy itself.
+
+Examples:
+	•	taxonomy_categories
+	•	taxonomy_items
+	•	scheme_master
+	•	target_market_master
+	•	service_dimension_master
+
+Bank capability tables
+
+These store actual bank/entity capability records.
+
+Examples:
+	•	cb_core_services
+	•	cb_feature_values
+	•	cb_value_added_services
+	•	cb_connectivity_capabilities
+	•	cb_fi_service_scores
+	•	cb_thought_leadership_scores
+	•	cb_target_markets
+	•	cb_indirect_participation
+	•	cb_ancillary_services
+
+Evidence and auditability
+
+Every capability record should support:
+	•	source_url or source_text
+	•	evidence_excerpt
+	•	evidence_date
+	•	confidence_score
+	•	ai_generated_flag
+	•	human_review_status
+	•	last_updated_at
+
+This is important because the CB Hub should not just state conclusions; it should also support challenge, review, and refinement.
+
+⸻
+
+11. Recommended UI Behaviour
+
+The UI should allow the user to view capabilities by:
+	•	banking group
+	•	legal entity
+	•	currency
+	•	market
+	•	scheme
+	•	target market
+	•	capability category
+
+Recommended presentation:
+	•	summary profile page per banking group
+	•	drill-down to legal entity
+	•	drill-down to currency-specific core CB service
+	•	comparison view across multiple banks
+	•	filters such as:
+	•	supports NBPSP
+	•	supports SWIFT Go
+	•	supports API BTR
+	•	offers indirect participation in SCT Inst
+	•	has custody
+	•	has strong FI implementation score
+
+Use visual treatment such as:
+	•	yes / no / unknown badges
+	•	counts
+	•	dimension scores out of 10
+	•	evidence tooltip or expandable source panel
+
+⸻
+
+12. AI Population Rules
+
+The AI agent should populate this model carefully and conservatively.
+
+Rules:
+	1.	Prefer legal entity level evidence over group-level marketing language.
+	2.	Do not infer indirect participation unless the sponsoring entity is confirmed as a direct participant of the scheme.
+	3.	For core onshore CB services, confirm the relevant direct infrastructure participation where possible.
+	4.	Use unknown when evidence is insufficient.
+	5.	Store source evidence for all material conclusions.
+	6.	Allow human override.
+	7.	Keep ratings separate from factual capabilities.
+
+This is especially important because some banks market broad global capabilities while the actual offering is narrower at legal entity or market level.
+
+⸻
+
+13. Final Taxonomy Summary
+
+The CB Hub taxonomy should contain the following major sections:
+	1.	Core Correspondent Banking Products
+	2.	Core Product Features
+	•	Commercial Payment Features
+	•	Treasury Payment Features
+	3.	Value Added Correspondent Banking Services
+	4.	Connectivity & Technology
+	5.	FI Service Model
+	6.	Thought Leadership
+	7.	Target Market
+	8.	Indirect Participation
+	9.	Ancillary Services
+
+This taxonomy should become the canonical structure used by the app for:
+	•	competitor intelligence
+	•	capability mapping
+	•	bank comparison
+	•	AI analysis
+	•	structured storage
+	•	future scoring and ranking
+
+⸻
+
+Optional implementation note for Replit
+
+Build the model so that new taxonomy items can be added from configuration rather than code changes.
+For example:
+	•	new scheme under Indirect Participation
+	•	new connectivity capability
+	•	new ancillary service
+	•	new treasury feature
+
+That will make the platform much easier to maintain as the CB Hub expands globally.
+
+⸻
+
+If you want, I can next turn this into a technical spec with table design and JSON examples for Replit.
