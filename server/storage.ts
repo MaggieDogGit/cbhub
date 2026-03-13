@@ -290,23 +290,28 @@ export class DatabaseStorage implements IStorage {
     return db.select().from(cbCapabilityValues).where(eq(cbCapabilityValues.banking_group_id, groupId));
   }
   async upsertCbCapability(data: InsertCbCapabilityValue) {
-    const conditions: any[] = [
-      eq(cbCapabilityValues.banking_group_id, data.banking_group_id),
-      eq(cbCapabilityValues.taxonomy_item_id, data.taxonomy_item_id),
-    ];
-    if (data.legal_entity_id) {
-      conditions.push(eq(cbCapabilityValues.legal_entity_id, data.legal_entity_id));
-    } else {
-      conditions.push(sql`${cbCapabilityValues.legal_entity_id} IS NULL`);
-    }
-    if (data.correspondent_service_id) {
-      conditions.push(eq(cbCapabilityValues.correspondent_service_id, data.correspondent_service_id));
-    } else {
-      conditions.push(sql`${cbCapabilityValues.correspondent_service_id} IS NULL`);
-    }
-    const [existing] = await db.select().from(cbCapabilityValues).where(and(...conditions));
+    const leIsNull = sql`${cbCapabilityValues.legal_entity_id} IS NULL`;
+    const csIsNull = sql`${cbCapabilityValues.correspondent_service_id} IS NULL`;
+    const leCond = data.legal_entity_id
+      ? eq(cbCapabilityValues.legal_entity_id, data.legal_entity_id)
+      : leIsNull;
+    const csCond = data.correspondent_service_id
+      ? eq(cbCapabilityValues.correspondent_service_id, data.correspondent_service_id)
+      : csIsNull;
+    const [existing] = await db.select().from(cbCapabilityValues).where(
+      and(
+        eq(cbCapabilityValues.banking_group_id, data.banking_group_id),
+        eq(cbCapabilityValues.taxonomy_item_id, data.taxonomy_item_id),
+        leCond,
+        csCond,
+      )
+    );
     if (existing) {
-      const [r] = await db.update(cbCapabilityValues).set({ ...data, updated_at: new Date() } as any).where(eq(cbCapabilityValues.id, existing.id)).returning();
+      const updatePayload: Partial<CbCapabilityValue> = {
+        ...data,
+        updated_at: new Date(),
+      };
+      const [r] = await db.update(cbCapabilityValues).set(updatePayload).where(eq(cbCapabilityValues.id, existing.id)).returning();
       return r;
     }
     const [r] = await db.insert(cbCapabilityValues).values(data).returning();
@@ -326,7 +331,11 @@ export class DatabaseStorage implements IStorage {
       and(eq(cbIndirectParticipation.legal_entity_id, data.legal_entity_id), eq(cbIndirectParticipation.scheme_id, data.scheme_id))
     );
     if (existing) {
-      const [r] = await db.update(cbIndirectParticipation).set({ ...data, updated_at: new Date() } as any).where(eq(cbIndirectParticipation.id, existing.id)).returning();
+      const updatePayload: Partial<CbIndirectParticipation> = {
+        ...data,
+        updated_at: new Date(),
+      };
+      const [r] = await db.update(cbIndirectParticipation).set(updatePayload).where(eq(cbIndirectParticipation.id, existing.id)).returning();
       return r;
     }
     const [r] = await db.insert(cbIndirectParticipation).values(data).returning();

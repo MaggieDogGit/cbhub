@@ -1,5 +1,5 @@
 import { sql } from "drizzle-orm";
-import { pgTable, text, varchar, boolean, date, pgEnum, timestamp, integer } from "drizzle-orm/pg-core";
+import { pgTable, text, varchar, boolean, date, pgEnum, timestamp, integer, uniqueIndex } from "drizzle-orm/pg-core";
 import { createInsertSchema } from "drizzle-zod";
 import { z } from "zod";
 
@@ -249,6 +249,17 @@ export type InsertAgentJob = z.infer<typeof insertAgentJobSchema>;
 export type AgentJob = typeof agentJobs.$inferSelect;
 
 // CB Taxonomy
+export const CB_TAXONOMY_CATEGORIES = [
+  "feature_commercial", "feature_treasury", "value_added", "connectivity",
+  "fi_score", "thought_leadership", "target_market", "ancillary",
+] as const;
+export type CbTaxonomyCategory = typeof CB_TAXONOMY_CATEGORIES[number];
+
+export const CB_VALUE_TYPES = [
+  "boolean_unknown", "enum_high_med_low", "score_1_10", "count", "text",
+] as const;
+export type CbValueType = typeof CB_VALUE_TYPES[number];
+
 export const cbTaxonomyItems = pgTable("cb_taxonomy_items", {
   id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
   code: text("code").notNull().unique(),
@@ -276,7 +287,14 @@ export const cbCapabilityValues = pgTable("cb_capability_values", {
   reviewer: text("reviewer"),
   created_at: timestamp("created_at").defaultNow(),
   updated_at: timestamp("updated_at").defaultNow(),
-});
+}, (table) => ({
+  uniqueCapability: uniqueIndex("cb_cap_unique_idx").on(
+    table.banking_group_id,
+    sql`COALESCE(${table.legal_entity_id}, '')`,
+    sql`COALESCE(${table.correspondent_service_id}, '')`,
+    table.taxonomy_item_id,
+  ),
+}));
 
 export const cbSchemeMaster = pgTable("cb_scheme_master", {
   id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
