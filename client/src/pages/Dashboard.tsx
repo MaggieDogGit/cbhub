@@ -47,21 +47,14 @@ export default function Dashboard() {
   const [gsibFilter, setGsibFilter] = useState("all");
   const [providerFilter, setProviderFilter] = useState("all");
   const [intelType, setIntelType] = useState<"competitor" | "cb_provider">("competitor");
+  const [expandedIntelIds, setExpandedIntelIds] = useState<Set<string>>(new Set());
 
   const loading = loadingGroups || loadingEntities || loadingCurrency || loadingFmis || loadingMap || loadingServices || loadingIntel;
 
   const groupsWithServices = useMemo(() => {
-    const groupIdsWithServices = new Set<string>();
-    services.forEach(s => {
-      if (s.bic_id) {
-        const matchedGroup = groups.find(g => {
-          return entities.some(e => e.group_id === g.id);
-        });
-      }
-    });
     const svcGroupNames = new Set(services.map(s => s.group_name).filter(Boolean));
     return new Set(groups.filter(g => svcGroupNames.has(g.group_name)).map(g => g.id));
-  }, [groups, services, entities]);
+  }, [groups, services]);
 
   const filteredGroups = useMemo(() => {
     return groups.filter(g => {
@@ -107,10 +100,20 @@ export default function Dashboard() {
     no_services: groups.length - groupsWithServices.size,
   }), [groups, groupsWithServices]);
 
+  const filteredGroupIds = useMemo(() => new Set(filteredGroups.map(g => g.id)), [filteredGroups]);
+
+  const filteredEntities = useMemo(() => {
+    return entities.filter(e => filteredGroupIds.has(e.group_id));
+  }, [entities, filteredGroupIds]);
+
   const gsibCount = filteredGroups.filter(g => g.gsib_status === "G-SIB").length;
   const dsibCount = filteredGroups.filter(g => g.gsib_status === "D-SIB").length;
   const naCount = filteredGroups.filter(g => !g.gsib_status || g.gsib_status === "N/A").length;
-  const clsMembers = fmis.filter(f => f.fmi_name === "CLS").length;
+
+  const filteredClsMembers = useMemo(() => {
+    const filteredEntityIds = new Set(filteredEntities.map(e => e.id));
+    return fmis.filter(f => f.fmi_name === "CLS" && filteredEntityIds.has(f.legal_entity_id)).length;
+  }, [fmis, filteredEntities]);
 
   const covHigh = filteredGroups.filter(g => g.cb_probability === "High").length;
   const covMedium = filteredGroups.filter(g => g.cb_probability === "Medium").length;
@@ -144,7 +147,7 @@ export default function Dashboard() {
       .slice(0, 5);
   }, [intelObs, intelType]);
 
-  const renderCustomPieLabel = ({ cx, cy, midAngle, innerRadius, outerRadius, name, value }: any) => {
+  const renderCustomPieLabel = ({ cx, cy, midAngle, outerRadius, name, value }: { cx: number; cy: number; midAngle: number; outerRadius: number; name: string; value: number }) => {
     const RADIAN = Math.PI / 180;
     const radius = outerRadius + 25;
     const x = cx + radius * Math.cos(-midAngle * RADIAN);
@@ -211,8 +214,8 @@ export default function Dashboard() {
       <div className="grid grid-cols-2 lg:grid-cols-5 gap-4">
         {[
           { label: "Banking Groups", value: filteredGroups.length, icon: Building2, color: "text-blue-600 bg-blue-50", link: "/providers" },
-          { label: "Legal Entities", value: entities.length, icon: CreditCard, color: "text-emerald-600 bg-emerald-50", link: "/legal-entities" },
-          { label: "CLS Members", value: clsMembers, icon: Globe, color: "text-teal-600 bg-teal-50", link: "/cls" },
+          { label: "Legal Entities", value: filteredEntities.length, icon: CreditCard, color: "text-emerald-600 bg-emerald-50", link: "/legal-entities" },
+          { label: "CLS Members", value: filteredClsMembers, icon: Globe, color: "text-teal-600 bg-teal-50", link: "/cls" },
           { label: "G-SIB Providers", value: gsibCount, icon: ShieldCheck, color: "text-purple-600 bg-purple-50" },
           { label: "Onshore Currencies", value: currencyData.length, icon: Coins, color: "text-amber-600 bg-amber-50", link: "/currencies" },
         ].map(stat => (
@@ -413,9 +416,28 @@ export default function Dashboard() {
                         </span>
                       )}
                     </div>
-                    {obs.notes && (
-                      <p className="text-xs text-slate-600 truncate">{obs.notes.length > 120 ? obs.notes.slice(0, 120) + "..." : obs.notes}</p>
-                    )}
+                    {obs.notes && (() => {
+                      const isLong = obs.notes!.length > 120;
+                      const isExpanded = expandedIntelIds.has(obs.id);
+                      return (
+                        <div className="text-xs text-slate-600">
+                          <p className={isExpanded ? "" : "line-clamp-2"}>{isLong && !isExpanded ? obs.notes!.slice(0, 120) + "..." : obs.notes}</p>
+                          {isLong && (
+                            <button
+                              onClick={() => {
+                                const next = new Set(expandedIntelIds);
+                                if (isExpanded) next.delete(obs.id); else next.add(obs.id);
+                                setExpandedIntelIds(next);
+                              }}
+                              className="text-blue-600 hover:text-blue-800 text-[10px] font-medium mt-0.5"
+                              data-testid={`intel-expand-${obs.id}`}
+                            >
+                              {isExpanded ? "Show less" : "Read more"}
+                            </button>
+                          )}
+                        </div>
+                      );
+                    })()}
                   </div>
                   <div className="text-[10px] text-slate-400 whitespace-nowrap mt-1">
                     {obs.created_at ? new Date(obs.created_at).toLocaleDateString() : ""}
