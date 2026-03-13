@@ -217,7 +217,7 @@ export default function Dashboard() {
           { label: "Legal Entities", value: filteredEntities.length, icon: CreditCard, color: "text-emerald-600 bg-emerald-50", link: "/legal-entities" },
           { label: "CLS Members", value: filteredClsMembers, icon: Globe, color: "text-teal-600 bg-teal-50", link: "/cls" },
           { label: "G-SIB Providers", value: gsibCount, icon: ShieldCheck, color: "text-purple-600 bg-purple-50" },
-          { label: "Onshore Currencies", value: currencyData.length, icon: Coins, color: "text-amber-600 bg-amber-50", link: "/currencies" },
+          { label: "Onshore Currencies Covered", value: currencyData.length, icon: Coins, color: "text-amber-600 bg-amber-50", link: "/currencies" },
         ].map(stat => (
           <Card key={stat.label} className={`border-0 shadow-sm ${stat.link ? "hover:shadow-md transition-shadow cursor-pointer" : ""}`} data-testid={`card-stat-${stat.label.toLowerCase().replace(/\s+/g, "-")}`}>
             <CardContent className="p-5">
