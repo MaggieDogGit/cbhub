@@ -66,8 +66,17 @@ function buildCurrencyInstruction(scope: CurrencyScope, primaryCurrency: string 
       return `For each BIC, ensure a Correspondent Banking service exists in the home currency${primaryCurrency ? ` (${primaryCurrency})` : ""} only. Do not create services for other currencies — strictly limit to the home currency.`;
     case "major":
       return `For each BIC, focus only on EUR, GBP, and USD correspondent banking services. Only create services for these three currencies; skip the home currency if it is not one of these three.`;
-    case "all":
-      return `For each BIC, identify and add all currencies that entity is known to offer Correspondent Banking services in. Include the home currency${primaryCurrency ? ` (${primaryCurrency})` : ""} plus any additional currencies confirmed through research.`;
+    case "all": {
+      const countryRefLines = Object.entries(COUNTRY_CURRENCY)
+        .map(([country, ccy]) => `${country}→${ccy}`)
+        .join(" | ");
+      return `For each BIC, work through currencies in this order:
+1. LOCAL CURRENCY FIRST — determine the entity's country, then look up its local settlement currency from the reference table below. Create an Onshore Correspondent Banking service for that currency. This step is mandatory for every entity regardless of the group's home currency.
+   Country→Currency reference: ${countryRefLines}
+   For Eurozone countries (AT, BE, HR, CY, EE, FI, FR, DE, GR, IE, IT, LV, LT, LU, MT, NL, PT, SK, SI, ES) the local currency is EUR.
+2. ADDITIONAL CURRENCIES — after the local currency service is in place, research and add any other currencies that entity is confirmed to offer CB services in, based on its RTGS/clearing memberships and published FI services.
+Do NOT use the group's primary currency (${primaryCurrency || "the group home currency"}) as the starting point for foreign subsidiaries — it is only the local Onshore currency for entities in the group's own home country/region.`;
+    }
   }
 }
 
@@ -165,6 +174,7 @@ Onshore vs Offshore — base this on the ENTITY'S country, not the group's home 
 • Offshore → any other combination → service_type = "Global Currency Clearing"
 TRAP 1 — PARENT CURRENCY: Do NOT mark Onshore just because the currency matches the banking group's primary_currency. A foreign subsidiary offering its parent's home currency is still Offshore (e.g. a US bank's German entity offering USD → Offshore).
 TRAP 2 — EUROZONE SUBSIDIARIES: A subsidiary in any Eurozone country (AT, DE, FR, IT, ES, NL, BE, PT, IE, FI, SK, SI, EE, LV, LT, MT, CY, GR, LU, and HR since Jan 2023) offering EUR is Onshore → "Correspondent Banking" + TARGET2. Do not mark it Offshore because its parent is in a different Eurozone country.
+TRAP 3 — LOCAL CURRENCY FIRST: For every entity, the first service you create must be for the entity's own local settlement currency (determined by the entity's country), not the group's primary_currency. Example: BBVA México → MXN Onshore first; Garanti BBVA (Turkey) → TRY Onshore first; BBVA Colombia → COP Onshore first. Only after the local-currency Onshore service is created should you add any additional currencies.
 
 ---
 STEP 5 — FMI MEMBERSHIPS
