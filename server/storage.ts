@@ -1,4 +1,4 @@
-import { eq, and, desc } from "drizzle-orm";
+import { eq, and, desc, sql } from "drizzle-orm";
 import { db } from "./db";
 import {
   bankingGroups, legalEntities, bics, correspondentServices,
@@ -290,15 +290,19 @@ export class DatabaseStorage implements IStorage {
     return db.select().from(cbCapabilityValues).where(eq(cbCapabilityValues.banking_group_id, groupId));
   }
   async upsertCbCapability(data: InsertCbCapabilityValue) {
-    const conditions = [
+    const conditions: any[] = [
       eq(cbCapabilityValues.banking_group_id, data.banking_group_id),
       eq(cbCapabilityValues.taxonomy_item_id, data.taxonomy_item_id),
     ];
     if (data.legal_entity_id) {
       conditions.push(eq(cbCapabilityValues.legal_entity_id, data.legal_entity_id));
+    } else {
+      conditions.push(sql`${cbCapabilityValues.legal_entity_id} IS NULL`);
     }
     if (data.correspondent_service_id) {
       conditions.push(eq(cbCapabilityValues.correspondent_service_id, data.correspondent_service_id));
+    } else {
+      conditions.push(sql`${cbCapabilityValues.correspondent_service_id} IS NULL`);
     }
     const [existing] = await db.select().from(cbCapabilityValues).where(and(...conditions));
     if (existing) {
