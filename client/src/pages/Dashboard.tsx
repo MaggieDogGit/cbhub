@@ -5,7 +5,7 @@ import { Link } from "wouter";
 import { BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, PieChart, Pie, Cell } from "recharts";
 import { useState, useMemo, useEffect, useCallback } from "react";
 import CoverageMap from "@/components/market/CoverageMap";
-import type { BankingGroup, LegalEntity, Fmi, CorrespondentService, IntelObservation } from "@shared/schema";
+import type { BankingGroup, LegalEntity, Fmi, CorrespondentService, IntelObservation, Bic } from "@shared/schema";
 
 const COLORS = ["#3b82f6","#10b981","#f59e0b","#ef4444","#8b5cf6","#ec4899","#06b6d4","#84cc16"];
 
@@ -58,6 +58,7 @@ export default function Dashboard() {
   const { data: fmis = [], isLoading: loadingFmis } = useQuery<Fmi[]>({ queryKey: ["/api/fmis"] });
   const { data: coverageMapData = [], isLoading: loadingMap } = useQuery<CoverageMapRow[]>({ queryKey: ["/api/dashboard/coverage-map"] });
   const { data: services = [], isLoading: loadingServices } = useQuery<CorrespondentService[]>({ queryKey: ["/api/correspondent-services"] });
+  const { data: bics = [], isLoading: loadingBics } = useQuery<Bic[]>({ queryKey: ["/api/bics"] });
   const { data: intelObs = [], isLoading: loadingIntel } = useQuery<IntelObservation[]>({ queryKey: ["/api/intel"] });
 
   const [cbProbFilter, setCbProbFilter] = useState("all");
@@ -71,7 +72,7 @@ export default function Dashboard() {
   const windowWidth = useWindowWidth();
   const isMobile = windowWidth < 640;
 
-  const loading = loadingGroups || loadingEntities || loadingCurrency || loadingFmis || loadingMap || loadingServices || loadingIntel;
+  const loading = loadingGroups || loadingEntities || loadingCurrency || loadingFmis || loadingMap || loadingServices || loadingBics || loadingIntel;
 
   const hasAnyIntel = intelObs.length > 0;
   const hasIntelFilter = showCompetitors || showMyCb;
@@ -84,6 +85,13 @@ export default function Dashboard() {
     });
     return names;
   }, [intelObs, showCompetitors, showMyCb]);
+
+  const intelBicIds = useMemo(() => {
+    if (!hasIntelFilter) return null;
+    const groupIds = new Set(groups.filter(g => intelGroupNames.has(g.group_name)).map(g => g.id));
+    const entityIds = new Set(entities.filter(e => groupIds.has(e.group_id)).map(e => e.id));
+    return new Set(bics.filter(b => entityIds.has(b.legal_entity_id)).map(b => b.id));
+  }, [hasIntelFilter, intelGroupNames, groups, entities, bics]);
 
   const groupsWithServices = useMemo(() => {
     const svcGroupNames = new Set(services.map(s => s.group_name).filter(Boolean));
@@ -157,18 +165,25 @@ export default function Dashboard() {
   ].filter(d => d.value > 0);
 
   const activeCurrencyData = useMemo(() => {
-    if (!hasIntelFilter) return currencyData;
-    const filtered = services.filter(s => s.service_type === "Correspondent Banking" && intelGroupNames.has(s.group_name));
+    if (!hasIntelFilter || !intelBicIds) return currencyData;
+    const bicToGroup = new Map<string, string>();
+    bics.forEach(b => {
+      const entity = entities.find(e => e.id === b.legal_entity_id);
+      if (!entity) return;
+      const group = groups.find(g => g.id === entity.group_id);
+      if (group) bicToGroup.set(b.id, group.group_name);
+    });
+    const filtered = services.filter(s => s.clearing_model === "Onshore" && s.currency && intelBicIds.has(s.bic_id));
     const byCurrency = new Map<string, Set<string>>();
     filtered.forEach(s => {
-      if (!s.currency) return;
-      if (!byCurrency.has(s.currency)) byCurrency.set(s.currency, new Set());
-      byCurrency.get(s.currency)!.add(s.group_name);
+      const groupName = bicToGroup.get(s.bic_id) || s.group_name || "Unknown";
+      if (!byCurrency.has(s.currency!)) byCurrency.set(s.currency!, new Set());
+      byCurrency.get(s.currency!)!.add(groupName);
     });
     return Array.from(byCurrency.entries())
-      .map(([currency, banks]) => ({ currency, count: banks.size, banks: Array.from(banks) }))
+      .map(([currency, banks]) => ({ currency, count: banks.size, banks: Array.from(banks).sort() }))
       .sort((a, b) => b.count - a.count || a.currency.localeCompare(b.currency));
-  }, [hasIntelFilter, currencyData, services, intelGroupNames]);
+  }, [hasIntelFilter, intelBicIds, currencyData, services, bics, entities, groups]);
 
   const mapResults = useMemo(() => {
     const data = hasIntelFilter
