@@ -12,10 +12,11 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "
 import {
   ChevronDown, ChevronRight, Search, ShieldCheck, Globe, Radio, TrendingUp,
   Bot, Zap, ExternalLink, CheckCircle2, AlertCircle, XCircle, Clock, Loader2, RefreshCw, X,
-  CheckSquare, Square, PlusCircle, Trash2, User, BotIcon, Swords, Building2, Cpu,
+  CheckSquare, Square, PlusCircle, Trash2, User, BotIcon, Swords, Building2, Cpu, BarChart3,
 } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
-import type { BankingGroup, LegalEntity, Bic, CorrespondentService, Fmi, AgentJob, IntelObservation } from "@shared/schema";
+import type { BankingGroup, LegalEntity, Bic, CorrespondentService, Fmi, AgentJob, IntelObservation, CbCapabilityValue, CbTaxonomyItem } from "@shared/schema";
+import CbProfile, { ServiceFeatureBadges, IndirectParticipationSection, type TaxonomyGrouped } from "@/components/CbProfile";
 
 type CurrencyScope = "home_only" | "major" | "all";
 type JobMode = "light" | "normal";
@@ -147,6 +148,64 @@ type IntelDialog =
   | { type: "entity"; groupId: string; groupName: string; entityId: string; entityName: string }
   | null;
 
+function ServiceRow({
+  svc, isOnshore, isExpanded, onToggle, groupId, taxonomy,
+}: {
+  svc: CorrespondentService;
+  isOnshore: boolean;
+  isExpanded: boolean;
+  onToggle: () => void;
+  groupId: string;
+  taxonomy: TaxonomyGrouped;
+}) {
+  const { data: capabilities = [] } = useQuery<CbCapabilityValue[]>({
+    queryKey: ["/api/cb-capabilities", groupId],
+    enabled: isExpanded && isOnshore,
+  });
+
+  return (
+    <>
+      <tr
+        className={`border-t border-slate-200 ${isOnshore ? "cursor-pointer hover:bg-slate-100/50" : ""}`}
+        onClick={isOnshore ? onToggle : undefined}
+        data-testid={`svc-row-${svc.id}`}
+      >
+        <td className="py-1 pr-3 font-semibold text-slate-700">
+          <div className="flex items-center gap-1">
+            {isOnshore && (
+              isExpanded
+                ? <ChevronDown className="w-3 h-3 text-slate-400 shrink-0" />
+                : <ChevronRight className="w-3 h-3 text-slate-400 shrink-0" />
+            )}
+            {svc.currency}
+          </div>
+        </td>
+        <td className="py-1 pr-3 text-slate-600">{svc.service_type}</td>
+        <td className="py-1 pr-3">
+          {svc.clearing_model
+            ? <span className={`px-1.5 py-0.5 rounded text-xs font-medium ${svc.clearing_model === "Onshore" ? "bg-emerald-50 text-emerald-700" : "bg-sky-50 text-sky-700"}`}>{svc.clearing_model}</span>
+            : "—"}
+        </td>
+        <td className="py-1 pr-3 text-center">{svc.rtgs_membership ? "✓" : "—"}</td>
+        <td className="py-1 pr-3 text-center">{svc.instant_scheme_access ? "✓" : "—"}</td>
+        <td className="py-1 text-slate-500">{svc.target_clients || "—"}</td>
+      </tr>
+      {isExpanded && isOnshore && (
+        <tr>
+          <td colSpan={6} className="px-2 pb-2">
+            <ServiceFeatureBadges
+              groupId={groupId}
+              serviceId={svc.id}
+              capabilities={capabilities}
+              taxonomy={taxonomy}
+            />
+          </td>
+        </tr>
+      )}
+    </>
+  );
+}
+
 export default function Providers() {
   const [, setLocation] = useLocation();
   const { toast } = useToast();
@@ -167,6 +226,8 @@ export default function Providers() {
   const [expandedGroups, setExpandedGroups] = useState<Record<string, boolean>>({});
   const [expandedEntities, setExpandedEntities] = useState<Record<string, boolean>>({});
   const [expandedValidation, setExpandedValidation] = useState<Record<string, boolean>>({});
+  const [expandedCbProfiles, setExpandedCbProfiles] = useState<Record<string, boolean>>({});
+  const [expandedServices, setExpandedServices] = useState<Record<string, boolean>>({});
 
   // Multi-select
   const [selectedGroups, setSelectedGroups] = useState<Set<string>>(new Set());
@@ -219,6 +280,7 @@ export default function Providers() {
   const { data: services = [], isLoading: ls } = useQuery<CorrespondentService[]>({ queryKey: ["/api/correspondent-services"] });
   const { data: fmis = [], isLoading: lf } = useQuery<Fmi[]>({ queryKey: ["/api/fmis"] });
   const { data: intel = [] } = useQuery<IntelObservation[]>({ queryKey: ["/api/intel"] });
+  const { data: taxonomy = {} as TaxonomyGrouped } = useQuery<TaxonomyGrouped>({ queryKey: ["/api/cb-taxonomy"] });
   const { data: jobs = [] } = useQuery<AgentJob[]>({
     queryKey: ["/api/jobs"],
     refetchInterval: (query) => {
@@ -1033,6 +1095,26 @@ export default function Providers() {
                       </div>
                     )}
 
+                    <div className="border-b border-slate-100">
+                      <button
+                        className="w-full flex items-center gap-2 px-8 py-2.5 text-left hover:bg-slate-50 transition-colors"
+                        onClick={() => setExpandedCbProfiles(p => ({ ...p, [group.id]: !p[group.id] }))}
+                        data-testid={`cb-profile-toggle-${group.id}`}
+                      >
+                        <BarChart3 className="w-4 h-4 text-blue-500 shrink-0" />
+                        <span className="text-sm font-medium text-slate-700">CB Profile</span>
+                        {expandedCbProfiles[group.id] ? <ChevronDown className="w-3.5 h-3.5 text-slate-400" /> : <ChevronRight className="w-3.5 h-3.5 text-slate-400" />}
+                      </button>
+                      {expandedCbProfiles[group.id] && (
+                        <CbProfile
+                          groupId={group.id}
+                          groupName={group.group_name}
+                          entities={groupEntities}
+                          services={groupEntities.flatMap(e => getBicsForEntity(e.id).flatMap(b => services.filter(s => s.bic_id === b.id)))}
+                        />
+                      )}
+                    </div>
+
                     {groupEntities.length === 0 ? (
                       <div className="px-8 py-4 text-slate-400 text-sm">No legal entities for this group.</div>
                     ) : (
@@ -1114,7 +1196,7 @@ export default function Providers() {
                                   entityBics.map(bic => {
                                     const bicServices = getServicesForBic(bic.id);
                                     return (
-                                      <div key={bic.id} className="mb-3 bg-slate-50 rounded-lg p-3">
+                                      <div key={bic.id} className="mb-3 bg-slate-50 rounded-lg p-3" data-testid={`bic-card-${bic.id}`}>
                                         <div className="flex items-center gap-2 mb-2">
                                           <span className="font-mono font-bold text-slate-800">{bic.bic_code}</span>
                                           <span className="text-xs text-slate-500">{bic.city}{bic.city && bic.country ? ", " : ""}{bic.country}</span>
@@ -1136,20 +1218,21 @@ export default function Providers() {
                                                 </tr>
                                               </thead>
                                               <tbody>
-                                                {bicServices.map(svc => (
-                                                  <tr key={svc.id} className="border-t border-slate-200">
-                                                    <td className="py-1 pr-3 font-semibold text-slate-700">{svc.currency}</td>
-                                                    <td className="py-1 pr-3 text-slate-600">{svc.service_type}</td>
-                                                    <td className="py-1 pr-3">
-                                                      {svc.clearing_model
-                                                        ? <span className={`px-1.5 py-0.5 rounded text-xs font-medium ${svc.clearing_model === "Onshore" ? "bg-emerald-50 text-emerald-700" : "bg-sky-50 text-sky-700"}`}>{svc.clearing_model}</span>
-                                                        : "—"}
-                                                    </td>
-                                                    <td className="py-1 pr-3 text-center">{svc.rtgs_membership ? "✓" : "—"}</td>
-                                                    <td className="py-1 pr-3 text-center">{svc.instant_scheme_access ? "✓" : "—"}</td>
-                                                    <td className="py-1 text-slate-500">{svc.target_clients || "—"}</td>
-                                                  </tr>
-                                                ))}
+                                                {bicServices.map(svc => {
+                                                  const isOnshore = svc.clearing_model === "Onshore";
+                                                  const svcExpanded = expandedServices[svc.id];
+                                                  return (
+                                                    <ServiceRow
+                                                      key={svc.id}
+                                                      svc={svc}
+                                                      isOnshore={isOnshore}
+                                                      isExpanded={!!svcExpanded}
+                                                      onToggle={() => setExpandedServices(p => ({ ...p, [svc.id]: !p[svc.id] }))}
+                                                      groupId={group.id}
+                                                      taxonomy={taxonomy}
+                                                    />
+                                                  );
+                                                })}
                                               </tbody>
                                             </table>
                                           </div>
@@ -1158,6 +1241,12 @@ export default function Providers() {
                                     );
                                   })
                                 )}
+                                <IndirectParticipationSection
+                                  groupId={group.id}
+                                  groupName={group.group_name}
+                                  entityId={entity.id}
+                                  entityName={entity.legal_name}
+                                />
                               </div>
                             )}
                           </div>

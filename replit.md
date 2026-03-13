@@ -34,6 +34,7 @@ client/src/
     DatabaseAdmin.tsx      – Full CRUD for all 5 core entities via tabbed forms
   components/
     Layout.tsx             – Dark sidebar nav, header with global search
+    CbProfile.tsx          – CB Profile section: capability category panels, edit dialog, service feature badges, indirect participation
     cls/CLSProfileForm.tsx – Inline CLS profile create/edit form
     market/CoverageMap.tsx – React-Leaflet world map with circle markers
     agent/MessageBubble.tsx – Chat message bubble (user right-aligned, AI left)
