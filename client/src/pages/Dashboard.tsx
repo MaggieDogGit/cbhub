@@ -1,6 +1,6 @@
 import { useQuery } from "@tanstack/react-query";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { Building2, Globe, CreditCard, ShieldCheck, BarChart3, Coins, Eye, ArrowRight, X } from "lucide-react";
+import { Building2, Globe, CreditCard, ShieldCheck, BarChart3, Coins, Eye, ArrowRight } from "lucide-react";
 import { Link } from "wouter";
 import { BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, PieChart, Pie, Cell } from "recharts";
 import { useState, useMemo, useEffect, useCallback } from "react";
@@ -22,7 +22,12 @@ function useWindowWidth() {
   return width;
 }
 
-function ToggleStrip({ label, options, value, onChange }: { label: string; options: { key: string; label: string; count?: number }[]; value: string; onChange: (v: string) => void }) {
+function ToggleStrip({ label, options, value, onChange }: {
+  label: string;
+  options: { key: string; label: string; count?: number }[];
+  value: string;
+  onChange: (v: string) => void;
+}) {
   return (
     <div className="flex flex-col md:flex-row md:items-center gap-1 md:gap-2" data-testid={`toggle-strip-${label.toLowerCase().replace(/\s+/g, "-")}`}>
       <span className="text-xs font-semibold text-slate-500 uppercase tracking-wider mr-1 shrink-0">{label}</span>
@@ -46,46 +51,6 @@ function ToggleStrip({ label, options, value, onChange }: { label: string; optio
   );
 }
 
-function MultiSelectStrip({ label, items, selected, onToggle, onClear }: {
-  label: string;
-  items: { name: string; count: number }[];
-  selected: Set<string>;
-  onToggle: (name: string) => void;
-  onClear: () => void;
-}) {
-  if (items.length === 0) return null;
-  return (
-    <div className="flex flex-col md:flex-row md:items-center gap-1 md:gap-2" data-testid={`multi-strip-${label.toLowerCase().replace(/\s+/g, "-")}`}>
-      <span className="text-xs font-semibold text-slate-500 uppercase tracking-wider mr-1 shrink-0">{label}</span>
-      <div className="flex flex-wrap gap-1.5 md:gap-2 items-center">
-        {items.map(item => (
-          <button
-            key={item.name}
-            onClick={() => onToggle(item.name)}
-            className={`px-2.5 py-1 rounded-full text-xs font-medium transition-colors ${
-              selected.has(item.name)
-                ? "bg-violet-600 text-white shadow-sm"
-                : "bg-slate-100 text-slate-600 hover:bg-slate-200"
-            }`}
-            data-testid={`multi-${label.toLowerCase().replace(/\s+/g, "-")}-${item.name.toLowerCase().replace(/\s+/g, "-")}`}
-          >
-            {item.name} ({item.count})
-          </button>
-        ))}
-        {selected.size > 0 && (
-          <button
-            onClick={onClear}
-            className="px-2 py-1 rounded-full text-xs font-medium text-red-600 bg-red-50 hover:bg-red-100 transition-colors flex items-center gap-0.5"
-            data-testid={`multi-${label.toLowerCase().replace(/\s+/g, "-")}-clear`}
-          >
-            Clear <X className="w-3 h-3" />
-          </button>
-        )}
-      </div>
-    </div>
-  );
-}
-
 export default function Dashboard() {
   const { data: groups = [], isLoading: loadingGroups } = useQuery<BankingGroup[]>({ queryKey: ["/api/banking-groups"] });
   const { data: entities = [], isLoading: loadingEntities } = useQuery<LegalEntity[]>({ queryKey: ["/api/legal-entities"] });
@@ -98,44 +63,27 @@ export default function Dashboard() {
   const [cbProbFilter, setCbProbFilter] = useState("all");
   const [gsibFilter, setGsibFilter] = useState("all");
   const [providerFilter, setProviderFilter] = useState("all");
+  const [showCompetitors, setShowCompetitors] = useState(false);
+  const [showMyCb, setShowMyCb] = useState(false);
   const [intelType, setIntelType] = useState<"competitor" | "cb_provider">("competitor");
   const [expandedIntelIds, setExpandedIntelIds] = useState<Set<string>>(new Set());
-  const [selectedCompetitors, setSelectedCompetitors] = useState<Set<string>>(new Set());
-  const [selectedMyCb, setSelectedMyCb] = useState<Set<string>>(new Set());
 
   const windowWidth = useWindowWidth();
   const isMobile = windowWidth < 640;
 
   const loading = loadingGroups || loadingEntities || loadingCurrency || loadingFmis || loadingMap || loadingServices || loadingIntel;
 
-  const competitorIntelGroups = useMemo(() => {
-    const counts = new Map<string, number>();
-    intelObs.filter(o => o.obs_type === "competitor").forEach(o => {
-      counts.set(o.banking_group_name, (counts.get(o.banking_group_name) || 0) + 1);
+  const hasAnyIntel = intelObs.length > 0;
+  const hasIntelFilter = showCompetitors || showMyCb;
+
+  const intelGroupNames = useMemo(() => {
+    const names = new Set<string>();
+    intelObs.forEach(o => {
+      if (showCompetitors && o.obs_type === "competitor") names.add(o.banking_group_name);
+      if (showMyCb && o.obs_type === "cb_provider") names.add(o.banking_group_name);
     });
-    return Array.from(counts.entries())
-      .map(([name, count]) => ({ name, count }))
-      .sort((a, b) => b.count - a.count);
-  }, [intelObs]);
-
-  const myCbIntelGroups = useMemo(() => {
-    const counts = new Map<string, number>();
-    intelObs.filter(o => o.obs_type === "cb_provider").forEach(o => {
-      counts.set(o.banking_group_name, (counts.get(o.banking_group_name) || 0) + 1);
-    });
-    return Array.from(counts.entries())
-      .map(([name, count]) => ({ name, count }))
-      .sort((a, b) => b.count - a.count);
-  }, [intelObs]);
-
-  const selectedGroupNames = useMemo(() => {
-    const combined = new Set<string>();
-    selectedCompetitors.forEach(n => combined.add(n));
-    selectedMyCb.forEach(n => combined.add(n));
-    return combined;
-  }, [selectedCompetitors, selectedMyCb]);
-
-  const hasIntelFilter = selectedGroupNames.size > 0;
+    return names;
+  }, [intelObs, showCompetitors, showMyCb]);
 
   const groupsWithServices = useMemo(() => {
     const svcGroupNames = new Set(services.map(s => s.group_name).filter(Boolean));
@@ -163,12 +111,10 @@ export default function Dashboard() {
         if (providerFilter === "has_services" && !hasSvc) return false;
         if (providerFilter === "no_services" && hasSvc) return false;
       }
-      if (hasIntelFilter) {
-        if (!selectedGroupNames.has(g.group_name)) return false;
-      }
+      if (hasIntelFilter && !intelGroupNames.has(g.group_name)) return false;
       return true;
     });
-  }, [groups, cbProbFilter, gsibFilter, providerFilter, groupsWithServices, hasIntelFilter, selectedGroupNames]);
+  }, [groups, cbProbFilter, gsibFilter, providerFilter, groupsWithServices, hasIntelFilter, intelGroupNames]);
 
   const cbProbCounts = useMemo(() => ({
     high: groups.filter(g => g.cb_probability === "High").length,
@@ -212,7 +158,7 @@ export default function Dashboard() {
 
   const activeCurrencyData = useMemo(() => {
     if (!hasIntelFilter) return currencyData;
-    const filtered = services.filter(s => s.service_type === "Correspondent Banking" && selectedGroupNames.has(s.group_name));
+    const filtered = services.filter(s => s.service_type === "Correspondent Banking" && intelGroupNames.has(s.group_name));
     const byCurrency = new Map<string, Set<string>>();
     filtered.forEach(s => {
       if (!s.currency) return;
@@ -222,11 +168,11 @@ export default function Dashboard() {
     return Array.from(byCurrency.entries())
       .map(([currency, banks]) => ({ currency, count: banks.size, banks: Array.from(banks) }))
       .sort((a, b) => b.count - a.count || a.currency.localeCompare(b.currency));
-  }, [hasIntelFilter, currencyData, services, selectedGroupNames]);
+  }, [hasIntelFilter, currencyData, services, intelGroupNames]);
 
   const mapResults = useMemo(() => {
     const data = hasIntelFilter
-      ? coverageMapData.filter(r => selectedGroupNames.has(r.group_name))
+      ? coverageMapData.filter(r => intelGroupNames.has(r.group_name))
       : coverageMapData;
     return data.map(r => ({
       bankingGroup: r.group_name,
@@ -236,10 +182,11 @@ export default function Dashboard() {
       instant: r.instant_scheme_access,
       cls: r.cls_member,
     }));
-  }, [coverageMapData, hasIntelFilter, selectedGroupNames]);
+  }, [coverageMapData, hasIntelFilter, intelGroupNames]);
 
   const competitorCount = intelObs.filter(o => o.obs_type === "competitor").length;
   const myCbCount = intelObs.filter(o => o.obs_type === "cb_provider").length;
+
   const filteredIntel = useMemo(() => {
     return intelObs
       .filter(o => o.obs_type === intelType)
@@ -247,23 +194,9 @@ export default function Dashboard() {
       .slice(0, 5);
   }, [intelObs, intelType]);
 
-  const toggleCompetitor = useCallback((name: string) => {
-    setSelectedCompetitors(prev => {
-      const next = new Set(prev);
-      if (next.has(name)) next.delete(name); else next.add(name);
-      return next;
-    });
-  }, []);
-
-  const toggleMyCb = useCallback((name: string) => {
-    setSelectedMyCb(prev => {
-      const next = new Set(prev);
-      if (next.has(name)) next.delete(name); else next.add(name);
-      return next;
-    });
-  }, []);
-
-  const renderCustomPieLabel = ({ cx, cy, midAngle, outerRadius, name, value }: { cx: number; cy: number; midAngle: number; outerRadius: number; name: string; value: number }) => {
+  const renderCustomPieLabel = ({ cx, cy, midAngle, outerRadius, name, value }: {
+    cx: number; cy: number; midAngle: number; outerRadius: number; name: string; value: number;
+  }) => {
     if (isMobile) return null;
     const RADIAN = Math.PI / 180;
     const radius = outerRadius + 25;
@@ -281,6 +214,8 @@ export default function Dashboard() {
       <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600" />
     </div>
   );
+
+  const sibTotal = gsibData.reduce((s, d) => s + d.value, 0);
 
   return (
     <div className="space-y-4 sm:space-y-6">
@@ -325,23 +260,36 @@ export default function Dashboard() {
             value={providerFilter}
             onChange={setProviderFilter}
           />
-          {(competitorIntelGroups.length > 0 || myCbIntelGroups.length > 0) && (
+          {hasAnyIntel && (
             <>
               <div className="border-t border-slate-200" />
-              <MultiSelectStrip
-                label="Competitors"
-                items={competitorIntelGroups}
-                selected={selectedCompetitors}
-                onToggle={toggleCompetitor}
-                onClear={() => setSelectedCompetitors(new Set())}
-              />
-              <MultiSelectStrip
-                label="My CB"
-                items={myCbIntelGroups}
-                selected={selectedMyCb}
-                onToggle={toggleMyCb}
-                onClear={() => setSelectedMyCb(new Set())}
-              />
+              <div className="flex flex-col md:flex-row md:items-center gap-1 md:gap-2" data-testid="toggle-strip-intel-filter">
+                <span className="text-xs font-semibold text-slate-500 uppercase tracking-wider mr-1 shrink-0">Intel Filter</span>
+                <div className="flex flex-wrap gap-1.5 md:gap-2">
+                  <button
+                    onClick={() => setShowCompetitors(v => !v)}
+                    className={`px-2.5 py-1 rounded-full text-xs font-medium transition-colors ${
+                      showCompetitors
+                        ? "bg-violet-600 text-white shadow-sm"
+                        : "bg-slate-100 text-slate-600 hover:bg-slate-200"
+                    }`}
+                    data-testid="toggle-intel-filter-competitors"
+                  >
+                    Competitors {showCompetitors && competitorCount > 0 ? `(${competitorCount})` : ""}
+                  </button>
+                  <button
+                    onClick={() => setShowMyCb(v => !v)}
+                    className={`px-2.5 py-1 rounded-full text-xs font-medium transition-colors ${
+                      showMyCb
+                        ? "bg-violet-600 text-white shadow-sm"
+                        : "bg-slate-100 text-slate-600 hover:bg-slate-200"
+                    }`}
+                    data-testid="toggle-intel-filter-my-cb"
+                  >
+                    My CB {showMyCb && myCbCount > 0 ? `(${myCbCount})` : ""}
+                  </button>
+                </div>
+              </div>
             </>
           )}
         </CardContent>
@@ -393,7 +341,7 @@ export default function Dashboard() {
           <CardContent>
             {activeCurrencyData.length === 0 ? (
               <div className="h-48 flex items-center justify-center text-slate-400 text-sm">
-                {hasIntelFilter ? "No onshore services for the selected groups" : "No data yet — add providers to see chart"}
+                {hasIntelFilter ? "No onshore services for selected groups" : "No data yet — add providers to see chart"}
               </div>
             ) : (
               <div className="overflow-x-auto -mx-2 px-2">
@@ -428,34 +376,42 @@ export default function Dashboard() {
           </CardContent>
         </Card>
 
-        <Card className="border-0 shadow-sm">
+        <Card className="border-0 shadow-sm" data-testid="card-sib-classification">
           <CardHeader className="pb-2">
             <CardTitle className="text-sm font-semibold text-slate-700">SIB Classification</CardTitle>
           </CardHeader>
           <CardContent>
             {gsibData.length === 0 ? (
               <div className="h-48 flex items-center justify-center text-slate-400 text-sm">No data yet</div>
-            ) : (
-              <>
-                <ResponsiveContainer width="100%" height={isMobile ? 180 : 220}>
-                  <PieChart>
-                    <Pie data={gsibData} dataKey="value" nameKey="name" cx="50%" cy="50%" outerRadius={isMobile ? 55 : 65} label={renderCustomPieLabel} labelLine={!isMobile}>
-                      {gsibData.map((_, i) => <Cell key={i} fill={COLORS[i]} />)}
-                    </Pie>
-                    <Tooltip />
-                  </PieChart>
-                </ResponsiveContainer>
-                {isMobile && (
-                  <div className="flex flex-wrap justify-center gap-3 mt-2">
-                    {gsibData.map((d, i) => (
-                      <div key={d.name} className="flex items-center gap-1.5 text-xs text-slate-600">
-                        <span className="w-2.5 h-2.5 rounded-full inline-block" style={{ backgroundColor: COLORS[i] }} />
-                        {d.name}: {d.value}
+            ) : isMobile ? (
+              <div className="space-y-3 py-2">
+                {gsibData.map((d, i) => (
+                  <div key={d.name} className="space-y-1">
+                    <div className="flex items-center justify-between text-xs">
+                      <div className="flex items-center gap-2">
+                        <span className="w-2.5 h-2.5 rounded-full shrink-0" style={{ backgroundColor: COLORS[i] }} />
+                        <span className="font-medium text-slate-700">{d.name}</span>
                       </div>
-                    ))}
+                      <span className="font-bold text-slate-900 tabular-nums">{d.value}</span>
+                    </div>
+                    <div className="w-full h-2 bg-slate-100 rounded-full overflow-hidden">
+                      <div
+                        className="h-full rounded-full transition-all"
+                        style={{ width: `${sibTotal > 0 ? (d.value / sibTotal) * 100 : 0}%`, backgroundColor: COLORS[i] }}
+                      />
+                    </div>
                   </div>
-                )}
-              </>
+                ))}
+              </div>
+            ) : (
+              <ResponsiveContainer width="100%" height={220}>
+                <PieChart>
+                  <Pie data={gsibData} dataKey="value" nameKey="name" cx="50%" cy="50%" outerRadius={65} label={renderCustomPieLabel} labelLine>
+                    {gsibData.map((_, i) => <Cell key={i} fill={COLORS[i]} />)}
+                  </Pie>
+                  <Tooltip />
+                </PieChart>
+              </ResponsiveContainer>
             )}
           </CardContent>
         </Card>
@@ -471,7 +427,7 @@ export default function Dashboard() {
         <CardContent>
           {mapResults.length === 0 ? (
             <div className="h-48 flex items-center justify-center text-slate-400 text-sm">
-              {hasIntelFilter ? "No onshore services for the selected groups" : "No onshore services with country data yet"}
+              {hasIntelFilter ? "No onshore services for selected groups" : "No onshore services with country data yet"}
             </div>
           ) : (
             <CoverageMap results={mapResults} />
