@@ -1,9 +1,9 @@
 import { useQuery } from "@tanstack/react-query";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { Building2, Globe, CreditCard, ShieldCheck, BarChart3, Target, Coins, Eye, ArrowRight } from "lucide-react";
+import { Building2, Globe, CreditCard, ShieldCheck, BarChart3, Coins, Eye, ArrowRight } from "lucide-react";
 import { Link } from "wouter";
 import { BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, PieChart, Pie, Cell } from "recharts";
-import { useState, useMemo } from "react";
+import { useState, useMemo, useEffect, useCallback } from "react";
 import CoverageMap from "@/components/market/CoverageMap";
 import type { BankingGroup, LegalEntity, Fmi, CorrespondentService, IntelObservation } from "@shared/schema";
 
@@ -12,24 +12,36 @@ const COLORS = ["#3b82f6","#10b981","#f59e0b","#ef4444","#8b5cf6","#ec4899","#06
 type CurrencyProviderRow = { currency: string; count: number; banks: string[] };
 type CoverageMapRow = { country: string; currency: string; group_name: string; rtgs_membership: boolean; instant_scheme_access: boolean; cls_member: boolean };
 
+function useWindowWidth() {
+  const [width, setWidth] = useState(typeof window !== "undefined" ? window.innerWidth : 1024);
+  const handleResize = useCallback(() => setWidth(window.innerWidth), []);
+  useEffect(() => {
+    window.addEventListener("resize", handleResize);
+    return () => window.removeEventListener("resize", handleResize);
+  }, [handleResize]);
+  return width;
+}
+
 function ToggleStrip({ label, options, value, onChange }: { label: string; options: { key: string; label: string; count?: number }[]; value: string; onChange: (v: string) => void }) {
   return (
-    <div className="flex items-center gap-2 flex-wrap" data-testid={`toggle-strip-${label.toLowerCase().replace(/\s+/g, "-")}`}>
-      <span className="text-xs font-semibold text-slate-500 uppercase tracking-wider mr-1">{label}</span>
-      {options.map(opt => (
-        <button
-          key={opt.key}
-          onClick={() => onChange(opt.key)}
-          className={`px-3 py-1 rounded-full text-xs font-medium transition-colors ${
-            value === opt.key
-              ? "bg-blue-600 text-white shadow-sm"
-              : "bg-slate-100 text-slate-600 hover:bg-slate-200"
-          }`}
-          data-testid={`toggle-${label.toLowerCase().replace(/\s+/g, "-")}-${opt.key}`}
-        >
-          {opt.label}{opt.count !== undefined ? ` (${opt.count})` : ""}
-        </button>
-      ))}
+    <div className="flex flex-col md:flex-row md:items-center gap-1 md:gap-2" data-testid={`toggle-strip-${label.toLowerCase().replace(/\s+/g, "-")}`}>
+      <span className="text-xs font-semibold text-slate-500 uppercase tracking-wider mr-1 shrink-0">{label}</span>
+      <div className="flex flex-wrap gap-1.5 md:gap-2">
+        {options.map(opt => (
+          <button
+            key={opt.key}
+            onClick={() => onChange(opt.key)}
+            className={`px-2.5 py-1 rounded-full text-xs font-medium transition-colors ${
+              value === opt.key
+                ? "bg-blue-600 text-white shadow-sm"
+                : "bg-slate-100 text-slate-600 hover:bg-slate-200"
+            }`}
+            data-testid={`toggle-${label.toLowerCase().replace(/\s+/g, "-")}-${opt.key}`}
+          >
+            {opt.label}{opt.count !== undefined ? ` (${opt.count})` : ""}
+          </button>
+        ))}
+      </div>
     </div>
   );
 }
@@ -48,6 +60,9 @@ export default function Dashboard() {
   const [providerFilter, setProviderFilter] = useState("all");
   const [intelType, setIntelType] = useState<"competitor" | "cb_provider">("competitor");
   const [expandedIntelIds, setExpandedIntelIds] = useState<Set<string>>(new Set());
+
+  const windowWidth = useWindowWidth();
+  const isMobile = windowWidth < 640;
 
   const loading = loadingGroups || loadingEntities || loadingCurrency || loadingFmis || loadingMap || loadingServices || loadingIntel;
 
@@ -115,12 +130,6 @@ export default function Dashboard() {
     return fmis.filter(f => f.fmi_name === "CLS" && filteredEntityIds.has(f.legal_entity_id)).length;
   }, [fmis, filteredEntities]);
 
-  const covHigh = filteredGroups.filter(g => g.cb_probability === "High").length;
-  const covMedium = filteredGroups.filter(g => g.cb_probability === "Medium").length;
-  const covLow = filteredGroups.filter(g => g.cb_probability === "Low").length;
-  const covUnconfirmed = filteredGroups.filter(g => g.cb_probability === "Unconfirmed").length;
-  const covAssessed = covHigh + covMedium + covLow + covUnconfirmed;
-
   const gsibData = [
     { name: "G-SIB", value: gsibCount },
     { name: "D-SIB", value: dsibCount },
@@ -148,6 +157,7 @@ export default function Dashboard() {
   }, [intelObs, intelType]);
 
   const renderCustomPieLabel = ({ cx, cy, midAngle, outerRadius, name, value }: { cx: number; cy: number; midAngle: number; outerRadius: number; name: string; value: number }) => {
+    if (isMobile) return null;
     const RADIAN = Math.PI / 180;
     const radius = outerRadius + 25;
     const x = cx + radius * Math.cos(-midAngle * RADIAN);
@@ -166,14 +176,14 @@ export default function Dashboard() {
   );
 
   return (
-    <div className="space-y-6">
+    <div className="space-y-4 sm:space-y-6">
       <div>
-        <h1 className="text-2xl font-bold text-slate-900" data-testid="text-dashboard-title">Dashboard</h1>
-        <p className="text-slate-500 text-sm mt-1">Global correspondent banking intelligence overview</p>
+        <h1 className="text-xl sm:text-2xl font-bold text-slate-900" data-testid="text-dashboard-title">Dashboard</h1>
+        <p className="text-slate-500 text-xs sm:text-sm mt-1">Global correspondent banking intelligence overview</p>
       </div>
 
       <Card className="border-0 shadow-sm" data-testid="card-toggles">
-        <CardContent className="p-4 space-y-3">
+        <CardContent className="p-3 sm:p-4 space-y-3">
           <ToggleStrip
             label="CB Probability"
             options={[
@@ -211,34 +221,34 @@ export default function Dashboard() {
         </CardContent>
       </Card>
 
-      <div className="grid grid-cols-2 lg:grid-cols-5 gap-4">
+      <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-3 sm:gap-4">
         {[
           { label: "Banking Groups", value: filteredGroups.length, icon: Building2, color: "text-blue-600 bg-blue-50", link: "/providers" },
           { label: "Legal Entities", value: filteredEntities.length, icon: CreditCard, color: "text-emerald-600 bg-emerald-50", link: "/legal-entities" },
           { label: "CLS Members", value: filteredClsMembers, icon: Globe, color: "text-teal-600 bg-teal-50", link: "/cls" },
           { label: "G-SIB Providers", value: gsibCount, icon: ShieldCheck, color: "text-purple-600 bg-purple-50" },
-          { label: "Onshore Currencies Covered", value: currencyData.length, icon: Coins, color: "text-amber-600 bg-amber-50", link: "/currencies" },
+          { label: "Onshore Currencies", value: currencyData.length, icon: Coins, color: "text-amber-600 bg-amber-50", link: "/currencies" },
         ].map(stat => (
           <Card key={stat.label} className={`border-0 shadow-sm ${stat.link ? "hover:shadow-md transition-shadow cursor-pointer" : ""}`} data-testid={`card-stat-${stat.label.toLowerCase().replace(/\s+/g, "-")}`}>
-            <CardContent className="p-5">
+            <CardContent className="p-3 sm:p-5">
               {stat.link ? (
-                <Link href={stat.link} className="flex items-center gap-3 no-underline">
-                  <div className={`p-2 rounded-lg ${stat.color}`}>
-                    <stat.icon className="w-5 h-5" />
+                <Link href={stat.link} className="flex items-center gap-2 sm:gap-3 no-underline">
+                  <div className={`p-1.5 sm:p-2 rounded-lg ${stat.color} shrink-0`}>
+                    <stat.icon className="w-4 h-4 sm:w-5 sm:h-5" />
                   </div>
-                  <div>
-                    <div className="text-2xl font-bold text-slate-900">{stat.value}</div>
-                    <div className="text-xs text-slate-500">{stat.label}</div>
+                  <div className="min-w-0">
+                    <div className="text-xl sm:text-2xl font-bold text-slate-900">{stat.value}</div>
+                    <div className="text-[10px] sm:text-xs text-slate-500 leading-tight">{stat.label}</div>
                   </div>
                 </Link>
               ) : (
-                <div className="flex items-center gap-3">
-                  <div className={`p-2 rounded-lg ${stat.color}`}>
-                    <stat.icon className="w-5 h-5" />
+                <div className="flex items-center gap-2 sm:gap-3">
+                  <div className={`p-1.5 sm:p-2 rounded-lg ${stat.color} shrink-0`}>
+                    <stat.icon className="w-4 h-4 sm:w-5 sm:h-5" />
                   </div>
-                  <div>
-                    <div className="text-2xl font-bold text-slate-900">{stat.value}</div>
-                    <div className="text-xs text-slate-500">{stat.label}</div>
+                  <div className="min-w-0">
+                    <div className="text-xl sm:text-2xl font-bold text-slate-900">{stat.value}</div>
+                    <div className="text-[10px] sm:text-xs text-slate-500 leading-tight">{stat.label}</div>
                   </div>
                 </div>
               )}
@@ -247,45 +257,7 @@ export default function Dashboard() {
         ))}
       </div>
 
-      <Link href="/coverage">
-        <Card className="border-0 shadow-sm hover:shadow-md transition-shadow cursor-pointer" data-testid="card-coverage-overview">
-          <CardContent className="p-5">
-            <div className="flex items-center justify-between mb-3">
-              <div className="flex items-center gap-2">
-                <div className="p-2 rounded-lg text-orange-600 bg-orange-50">
-                  <Target className="w-5 h-5" />
-                </div>
-                <div>
-                  <div className="text-xs text-slate-500">CB Coverage</div>
-                  <div className="flex items-baseline gap-3">
-                    <span className="text-lg font-bold text-emerald-600">High: {covHigh}</span>
-                    <span className="text-lg font-bold text-blue-500">Medium: {covMedium}</span>
-                  </div>
-                </div>
-              </div>
-              <div className="text-right text-sm text-slate-500">
-                <div><span className="font-semibold text-slate-700">{covAssessed}</span> of {filteredGroups.length} groups assessed</div>
-                <div className="text-xs mt-0.5">click to manage queue</div>
-              </div>
-            </div>
-            <div className="w-full h-3 rounded-full bg-slate-100 overflow-hidden flex">
-              {covHigh > 0 && <div className="h-full bg-emerald-500 transition-all" style={{ width: `${(covHigh / filteredGroups.length) * 100}%` }} title={`High: ${covHigh}`} />}
-              {covMedium > 0 && <div className="h-full bg-blue-400 transition-all" style={{ width: `${(covMedium / filteredGroups.length) * 100}%` }} title={`Medium: ${covMedium}`} />}
-              {covLow > 0 && <div className="h-full bg-amber-400 transition-all" style={{ width: `${(covLow / filteredGroups.length) * 100}%` }} title={`Low: ${covLow}`} />}
-              {covUnconfirmed > 0 && <div className="h-full bg-slate-300 transition-all" style={{ width: `${(covUnconfirmed / filteredGroups.length) * 100}%` }} title={`Unconfirmed: ${covUnconfirmed}`} />}
-            </div>
-            <div className="flex gap-4 mt-2 text-xs text-slate-500">
-              {covHigh > 0 && <span className="flex items-center gap-1"><span className="w-2 h-2 rounded-full bg-emerald-500 inline-block" />High: {covHigh}</span>}
-              {covMedium > 0 && <span className="flex items-center gap-1"><span className="w-2 h-2 rounded-full bg-blue-400 inline-block" />Medium: {covMedium}</span>}
-              {covLow > 0 && <span className="flex items-center gap-1"><span className="w-2 h-2 rounded-full bg-amber-400 inline-block" />Low: {covLow}</span>}
-              {covUnconfirmed > 0 && <span className="flex items-center gap-1"><span className="w-2 h-2 rounded-full bg-slate-300 inline-block" />Unconfirmed: {covUnconfirmed}</span>}
-              {filteredGroups.length - covAssessed > 0 && <span className="flex items-center gap-1"><span className="w-2 h-2 rounded-full bg-slate-100 border border-slate-300 inline-block" />Not assessed: {filteredGroups.length - covAssessed}</span>}
-            </div>
-          </CardContent>
-        </Card>
-      </Link>
-
-      <div className="grid lg:grid-cols-3 gap-6">
+      <div className="grid lg:grid-cols-3 gap-4 sm:gap-6">
         <Card className="lg:col-span-2 border-0 shadow-sm">
           <CardHeader className="pb-2">
             <CardTitle className="text-sm font-semibold text-slate-700 flex items-center gap-2">
@@ -296,7 +268,7 @@ export default function Dashboard() {
             {currencyData.length === 0 ? (
               <div className="h-48 flex items-center justify-center text-slate-400 text-sm">No data yet — add providers to see chart</div>
             ) : (
-              <div className="overflow-x-auto">
+              <div className="overflow-x-auto -mx-2 px-2">
                 <div style={{ width: Math.max(500, currencyData.length * 52), height: 240 }}>
                   <BarChart
                     width={Math.max(500, currencyData.length * 52)}
@@ -336,14 +308,26 @@ export default function Dashboard() {
             {gsibData.length === 0 ? (
               <div className="h-48 flex items-center justify-center text-slate-400 text-sm">No data yet</div>
             ) : (
-              <ResponsiveContainer width="100%" height={220}>
-                <PieChart>
-                  <Pie data={gsibData} dataKey="value" nameKey="name" cx="50%" cy="50%" outerRadius={65} label={renderCustomPieLabel} labelLine>
-                    {gsibData.map((_, i) => <Cell key={i} fill={COLORS[i]} />)}
-                  </Pie>
-                  <Tooltip />
-                </PieChart>
-              </ResponsiveContainer>
+              <>
+                <ResponsiveContainer width="100%" height={isMobile ? 180 : 220}>
+                  <PieChart>
+                    <Pie data={gsibData} dataKey="value" nameKey="name" cx="50%" cy="50%" outerRadius={isMobile ? 55 : 65} label={renderCustomPieLabel} labelLine={!isMobile}>
+                      {gsibData.map((_, i) => <Cell key={i} fill={COLORS[i]} />)}
+                    </Pie>
+                    <Tooltip />
+                  </PieChart>
+                </ResponsiveContainer>
+                {isMobile && (
+                  <div className="flex flex-wrap justify-center gap-3 mt-2">
+                    {gsibData.map((d, i) => (
+                      <div key={d.name} className="flex items-center gap-1.5 text-xs text-slate-600">
+                        <span className="w-2.5 h-2.5 rounded-full inline-block" style={{ backgroundColor: COLORS[i] }} />
+                        {d.name}: {d.value}
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </>
             )}
           </CardContent>
         </Card>
@@ -367,14 +351,14 @@ export default function Dashboard() {
 
       <Card className="border-0 shadow-sm" data-testid="card-intel-strip">
         <CardHeader className="pb-2">
-          <div className="flex items-center justify-between">
+          <div className="flex flex-wrap items-center gap-2 justify-between">
             <CardTitle className="text-sm font-semibold text-slate-700 flex items-center gap-2">
               <Eye className="w-4 h-4" /> Latest Intel
             </CardTitle>
             <div className="flex items-center gap-2">
               <button
                 onClick={() => setIntelType("competitor")}
-                className={`px-3 py-1 rounded-full text-xs font-medium transition-colors ${
+                className={`px-2.5 sm:px-3 py-1 rounded-full text-xs font-medium transition-colors ${
                   intelType === "competitor" ? "bg-red-100 text-red-700" : "bg-slate-100 text-slate-600 hover:bg-slate-200"
                 }`}
                 data-testid="toggle-intel-competitor"
@@ -383,7 +367,7 @@ export default function Dashboard() {
               </button>
               <button
                 onClick={() => setIntelType("cb_provider")}
-                className={`px-3 py-1 rounded-full text-xs font-medium transition-colors ${
+                className={`px-2.5 sm:px-3 py-1 rounded-full text-xs font-medium transition-colors ${
                   intelType === "cb_provider" ? "bg-emerald-100 text-emerald-700" : "bg-slate-100 text-slate-600 hover:bg-slate-200"
                 }`}
                 data-testid="toggle-intel-cb-provider"
@@ -401,10 +385,10 @@ export default function Dashboard() {
           ) : (
             <div className="space-y-2">
               {filteredIntel.map(obs => (
-                <div key={obs.id} className="flex items-start gap-3 p-3 bg-slate-50 rounded-lg" data-testid={`intel-row-${obs.id}`}>
+                <div key={obs.id} className="flex items-start gap-2 sm:gap-3 p-2 sm:p-3 bg-slate-50 rounded-lg" data-testid={`intel-row-${obs.id}`}>
                   <div className="flex-1 min-w-0">
-                    <div className="flex items-center gap-2 mb-1">
-                      <span className="font-semibold text-sm text-slate-800">{obs.banking_group_name}</span>
+                    <div className="flex flex-wrap items-center gap-1.5 sm:gap-2 mb-1">
+                      <span className="font-semibold text-xs sm:text-sm text-slate-800">{obs.banking_group_name}</span>
                       <span className={`px-1.5 py-0.5 rounded text-[10px] font-medium ${
                         obs.source_type === "user" ? "bg-blue-100 text-blue-700" : "bg-violet-100 text-violet-700"
                       }`}>
