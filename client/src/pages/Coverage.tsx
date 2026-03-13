@@ -4,12 +4,17 @@ import { queryClient, apiRequest } from "@/lib/queryClient";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { CheckCircle2, AlertCircle, XCircle, Bot, Search, ShieldCheck, Clock, Loader2, ExternalLink, Trash2, Play, StopCircle, RefreshCw, Zap, Swords, Building2 } from "lucide-react";
+import {
+  CheckCircle2, AlertCircle, XCircle, Bot, Search, ShieldCheck, Clock,
+  Loader2, ExternalLink, Trash2, Play, StopCircle, RefreshCw, Zap, Swords, Building2,
+  MapPin, Coins, Landmark, FileCheck, TriangleAlert,
+} from "lucide-react";
 import { useState } from "react";
 import { useToast } from "@/hooks/use-toast";
-import type { BankingGroup, LegalEntity, Bic, CorrespondentService, AgentJob, IntelObservation } from "@shared/schema";
+import type { BankingGroup, LegalEntity, Bic, CorrespondentService, AgentJob, IntelObservation, Fmi } from "@shared/schema";
 
 type CoverageStatus = "complete" | "partial" | "empty";
+type GapType = "missing_fields" | "no_fmi" | "stale";
 type CurrencyScope = "home_only" | "major" | "all";
 
 const SCOPE_OPTIONS: { value: CurrencyScope; label: string; desc: string }[] = [
@@ -29,11 +34,11 @@ const CLS_CURRENCIES = new Set(["AUD","CAD","CHF","DKK","EUR","GBP","HKD","JPY",
 function buildCurrencyInstruction(scope: CurrencyScope, primaryCurrency?: string | null): string {
   switch (scope) {
     case "home_only":
-      return `For each BIC, ensure a Correspondent Banking service exists in the home currency${primaryCurrency ? ` (${primaryCurrency})` : ""} only. Do not create services for other currencies — strictly limit to the home currency.`;
+      return `For each BIC, ensure a Correspondent Banking service exists in the home currency${primaryCurrency ? ` (${primaryCurrency})` : ""} only.`;
     case "major":
-      return `For each BIC, focus only on EUR, GBP, and USD correspondent banking services. Only create services for these three currencies; skip the home currency if it is not one of these three.`;
+      return `For each BIC, focus only on EUR, GBP, and USD correspondent banking services.`;
     case "all":
-      return `For each BIC, identify and add all currencies that entity is known to offer Correspondent Banking services in. Include the home currency${primaryCurrency ? ` (${primaryCurrency})` : ""} plus any additional currencies confirmed through research.`;
+      return `For each BIC, identify and add all currencies that entity is known to offer Correspondent Banking services in.`;
   }
 }
 
@@ -44,14 +49,8 @@ function buildCBSetupPrompt(group: BankingGroup, entityCount: number, bicCount: 
   const rtgsMemberKnown = !!group.rtgs_member && !!group.rtgs_system;
 
   const step2 = entityCount > 0
-    ? `STEP 2 — IDENTIFY CORRESPONDENT BANKING LEGAL ENTITIES
-${entityCount} entit${entityCount !== 1 ? "ies are" : "y is"} already recorded for this group. DO NOT run a web search.
-Use find_legal_entity_by_name to get the ID for each known entity, then update any missing fields (country, entity_type) with update_legal_entity if needed.`
-    : `STEP 2 — IDENTIFY CORRESPONDENT BANKING LEGAL ENTITIES
-No entities recorded yet. Run ONE search: "${group.group_name} correspondent banking SWIFT BIC legal entity".
-Target ONLY: (a) the primary HQ licensed banking entity, (b) dedicated CB-hub subsidiaries.
-For each candidate: use find_legal_entity_by_name to confirm before creating.
-• Not found → create with create_legal_entity linked to group_id ${group.id}.`;
+    ? `STEP 2 — IDENTIFY CORRESPONDENT BANKING LEGAL ENTITIES\n${entityCount} entit${entityCount !== 1 ? "ies are" : "y is"} already recorded for this group. DO NOT run a web search.\nUse find_legal_entity_by_name to get the ID for each known entity, then update any missing fields (country, entity_type) with update_legal_entity if needed.`
+    : `STEP 2 — IDENTIFY CORRESPONDENT BANKING LEGAL ENTITIES\nNo entities recorded yet. Run ONE search: "${group.group_name} correspondent banking SWIFT BIC legal entity".\nTarget ONLY: (a) the primary HQ licensed banking entity, (b) dedicated CB-hub subsidiaries.\nFor each candidate: use find_legal_entity_by_name to confirm before creating.\n• Not found → create with create_legal_entity linked to group_id ${group.id}.`;
 
   const step5FmiLines = [
     `• SWIFT (fmi_type "Messaging Networks") — Record directly without searching; all major international banks are SWIFT members.`,
@@ -84,17 +83,9 @@ For every entity: use list_bics to check if a BIC is already linked.
 STEP 4 — CORRESPONDENT SERVICES
 ${currencyInstruction}
 Before creating any service: call list_correspondent_services and confirm no existing record exists for that BIC + currency combination.
-• Exists → update with any missing details using update_correspondent_service; do NOT create a duplicate.
-• Missing → create with create_correspondent_service. bic_id must be a real UUID obtained from list_bics.
-For clearing_model AND service_type, use the entity's actual country — NOT the banking group's home currency:
-• Onshore ONLY if this entity's country is the home country/region of that currency's settlement infrastructure → service_type = "Correspondent Banking"
-• All other combinations → Offshore → service_type = "Global Currency Clearing"
-TRAP TO AVOID: Do NOT mark a service Onshore just because the currency matches the group's primary_currency. A foreign subsidiary offering its parent's home currency is still Offshore with service_type "Global Currency Clearing" (e.g. a US bank's Irish entity offering USD = Offshore / Global Currency Clearing, a UK bank's UK entity offering EUR = Offshore / Global Currency Clearing).
 
 ---
 STEP 5 — FMI MEMBERSHIPS
-For the primary HQ entity, always check locally stored FMI data before searching externally.
-Order of precedence: (1) call check_fmi_membership — if the record exists, skip creation; (2) if missing, create from the reference table or known rules below; (3) only run a web search if the reference table has no answer.
 ${step5FmiLines}
 
 ---
@@ -105,6 +96,30 @@ const statusConfig: Record<CoverageStatus, { label: string; icon: React.ReactNod
   complete: { label: "Complete", icon: <CheckCircle2 className="w-3.5 h-3.5" />, badge: "bg-emerald-100 text-emerald-700 border-emerald-200" },
   partial:  { label: "Partial",  icon: <AlertCircle  className="w-3.5 h-3.5" />, badge: "bg-amber-100 text-amber-700 border-amber-200"   },
   empty:    { label: "Empty",    icon: <XCircle      className="w-3.5 h-3.5" />, badge: "bg-red-100 text-red-700 border-red-200"          },
+};
+
+const GAP_CONFIG: Record<GapType, { label: string; icon: React.ReactNode; chip: string; tag: string; desc: string }> = {
+  missing_fields: {
+    label: "Missing Fields",
+    icon: <MapPin className="w-3 h-3" />,
+    chip: "border-red-200 text-red-700 hover:bg-red-50",
+    tag: "bg-red-50 text-red-700",
+    desc: "No country or currency set — CB setup will be degraded",
+  },
+  no_fmi: {
+    label: "No FMI",
+    icon: <Landmark className="w-3 h-3" />,
+    chip: "border-orange-200 text-orange-700 hover:bg-orange-50",
+    tag: "bg-orange-50 text-orange-700",
+    desc: "Has entities but no SWIFT/RTGS FMI records",
+  },
+  stale: {
+    label: "Unverified",
+    icon: <FileCheck className="w-3 h-3" />,
+    chip: "border-slate-300 text-slate-600 hover:bg-slate-50",
+    tag: "bg-slate-100 text-slate-600",
+    desc: "Services exist but none have a verified date",
+  },
 };
 
 function JobStatusBadge({ job }: { job: AgentJob }) {
@@ -143,6 +158,7 @@ export default function Coverage() {
   const [, setLocation] = useLocation();
   const [search, setSearch] = useState("");
   const [filterStatus, setFilterStatus] = useState<CoverageStatus | "all">("all");
+  const [filterGap, setFilterGap] = useState<GapType | "all">("all");
   const [filterIntel, setFilterIntel] = useState<"all" | "competitor" | "cb_provider">("all");
   const [currencyScope, setCurrencyScope] = useState<CurrencyScope>("home_only");
   const [jobMode, setJobMode] = useState<JobMode>("normal");
@@ -153,6 +169,7 @@ export default function Coverage() {
   const { data: entities = [], isLoading: le } = useQuery<LegalEntity[]>({ queryKey: ["/api/legal-entities"] });
   const { data: bics = [], isLoading: lb } = useQuery<Bic[]>({ queryKey: ["/api/bics"] });
   const { data: services = [], isLoading: ls } = useQuery<CorrespondentService[]>({ queryKey: ["/api/correspondent-services"] });
+  const { data: fmis = [] } = useQuery<Fmi[]>({ queryKey: ["/api/fmis"] });
   const { data: intel = [] } = useQuery<IntelObservation[]>({ queryKey: ["/api/intel"] });
   const { data: jobs = [] } = useQuery<AgentJob[]>({
     queryKey: ["/api/jobs"],
@@ -228,6 +245,18 @@ export default function Coverage() {
     const groupEntities = entities.filter(e => e.group_id === g.id);
     const groupBics = groupEntities.flatMap(e => bics.filter(b => b.legal_entity_id === e.id));
     const groupServices = groupBics.flatMap(b => services.filter(s => s.bic_id === b.id));
+
+    const groupEntityIds = new Set(groupEntities.map(e => e.id));
+    const groupFmis = fmis.filter(f => groupEntityIds.has(f.legal_entity_id));
+    const hasSwiftFmi = groupFmis.some(f => f.fmi_name === "SWIFT");
+    const hasAnyFmi = groupFmis.length > 0;
+    const hasVerifiedService = groupServices.some(s => !!s.last_verified);
+
+    const gaps: GapType[] = [];
+    if (!g.headquarters_country || !g.primary_currency) gaps.push("missing_fields");
+    if (groupEntities.length > 0 && !hasSwiftFmi) gaps.push("no_fmi");
+    if (groupServices.length > 0 && !hasVerifiedService) gaps.push("stale");
+
     return {
       group: g,
       entityCount: groupEntities.length,
@@ -235,6 +264,10 @@ export default function Coverage() {
       serviceCount: groupServices.length,
       status: getStatus(g.id),
       job: jobByGroup(g.id),
+      hasSwiftFmi,
+      hasAnyFmi,
+      hasVerifiedService,
+      gaps,
     };
   });
 
@@ -243,8 +276,15 @@ export default function Coverage() {
   const emptyCount    = enrichedGroups.filter(r => r.status === "empty").length;
   const activeJobCount = jobs.filter(j => j.status === "pending" || j.status === "running").length;
 
+  const gapCounts: Record<GapType, number> = {
+    missing_fields: enrichedGroups.filter(r => r.gaps.includes("missing_fields")).length,
+    no_fmi: enrichedGroups.filter(r => r.gaps.includes("no_fmi")).length,
+    stale: enrichedGroups.filter(r => r.gaps.includes("stale")).length,
+  };
+
   const filtered = enrichedGroups.filter(r => {
     if (filterStatus !== "all" && r.status !== filterStatus) return false;
+    if (filterGap !== "all" && !r.gaps.includes(filterGap)) return false;
     if (filterIntel !== "all") {
       const groupIntelObs = intel.filter(o => o.banking_group_id === r.group.id);
       if (!groupIntelObs.some(o => o.obs_type === filterIntel)) return false;
@@ -275,7 +315,7 @@ export default function Coverage() {
       <div className="flex items-start justify-between gap-4 flex-wrap">
         <div>
           <h1 className="text-2xl font-bold text-slate-900">Data Coverage</h1>
-          <p className="text-slate-500 text-sm mt-1">Track which banking groups have complete data chains: entity → BIC → service</p>
+          <p className="text-slate-500 text-sm mt-1">Track data chain completeness and identify gaps across all banking groups</p>
         </div>
         {activeJobCount > 0 && (
           <Badge className="bg-blue-100 text-blue-700 border-blue-200 gap-1 self-center">
@@ -286,42 +326,35 @@ export default function Coverage() {
 
       {/* Job Configuration Panel */}
       <div className="rounded-xl border border-slate-200 bg-white p-4 space-y-3">
-        {/* Row 1: Mode + Scope selectors */}
         <div className="flex items-center gap-4 flex-wrap">
-          {/* Mode selector */}
           <div className="flex items-center gap-2">
             <span className="text-sm font-medium text-slate-700 whitespace-nowrap">Mode:</span>
             <div className="flex rounded-lg border border-slate-200 overflow-hidden text-sm" data-testid="mode-selector">
               <button
                 data-testid="mode-option-light"
-                title="Light: gpt-4o-mini, no web search, DB-only. ~$0.01/group. User reviews results."
+                title="Light: gpt-4o-mini, no web search, DB-only. ~$0.01/group."
                 onClick={() => { setJobMode("light"); setCurrencyScope("home_only"); }}
                 className={`flex items-center gap-1 px-3 py-1.5 transition-colors border-r border-slate-200 ${
-                  jobMode === "light"
-                    ? "bg-amber-500 text-white font-medium"
-                    : "bg-white text-slate-600 hover:bg-slate-50"
+                  jobMode === "light" ? "bg-amber-500 text-white font-medium" : "bg-white text-slate-600 hover:bg-slate-50"
                 }`}
               >
                 <Zap className="w-3 h-3" /> Light
               </button>
               <button
                 data-testid="mode-option-normal"
-                title="Normal: gpt-4o, conditional web searches. ~$0.07/group."
+                title="Normal: gpt-4o, conditional web searches, intel-aware. ~$0.07/group."
                 onClick={() => setJobMode("normal")}
                 className={`flex items-center gap-1 px-3 py-1.5 transition-colors ${
-                  jobMode === "normal"
-                    ? "bg-blue-600 text-white font-medium"
-                    : "bg-white text-slate-600 hover:bg-slate-50"
+                  jobMode === "normal" ? "bg-blue-600 text-white font-medium" : "bg-white text-slate-600 hover:bg-slate-50"
                 }`}
               >
                 <Bot className="w-3 h-3" /> Normal
               </button>
             </div>
             <span className="text-xs text-slate-400 italic">
-              {jobMode === "light" ? "gpt-4o-mini · no web search · ~$0.01/group" : "gpt-4o · conditional search · ~$0.07/group"}
+              {jobMode === "light" ? "gpt-4o-mini · no web search · ~$0.01/group" : "gpt-4o · conditional search · intel-aware · ~$0.07/group"}
             </span>
           </div>
-          {/* Scope selector — disabled in light mode */}
           <div className="flex items-center gap-2">
             <span className={`text-sm font-medium whitespace-nowrap ${jobMode === "light" ? "text-slate-400" : "text-slate-700"}`}>Scope:</span>
             <div className={`flex rounded-lg border overflow-hidden text-sm ${jobMode === "light" ? "border-slate-100 opacity-40 pointer-events-none" : "border-slate-200"}`} data-testid="scope-selector">
@@ -332,9 +365,7 @@ export default function Coverage() {
                   title={jobMode === "light" ? "Light mode always uses home currency only" : opt.desc}
                   onClick={() => setCurrencyScope(opt.value)}
                   className={`px-3 py-1.5 transition-colors border-r border-slate-200 last:border-r-0 ${
-                    currencyScope === opt.value
-                      ? "bg-blue-600 text-white font-medium"
-                      : "bg-white text-slate-600 hover:bg-slate-50"
+                    currencyScope === opt.value ? "bg-blue-600 text-white font-medium" : "bg-white text-slate-600 hover:bg-slate-50"
                   }`}
                 >
                   {opt.label}
@@ -344,11 +375,9 @@ export default function Coverage() {
             {jobMode === "light" && <span className="text-xs text-amber-600 italic">locked to Home in Light mode</span>}
           </div>
         </div>
-        {/* Row 2: Action buttons */}
         <div className="flex gap-2 flex-wrap pt-2 border-t border-slate-100 items-center">
           <Button
-            size="sm"
-            variant="outline"
+            size="sm" variant="outline"
             className="text-xs border-amber-200 text-amber-700 hover:bg-amber-50"
             data-testid="button-queue-all-empty"
             disabled={queueAllMutation.isPending || emptyGroups.length === 0}
@@ -369,8 +398,7 @@ export default function Coverage() {
           </Button>
           {jobs.filter(j => j.status === "pending").length > 0 && (
             <Button
-              size="sm"
-              variant="outline"
+              size="sm" variant="outline"
               className="text-xs border-red-200 text-red-600 hover:bg-red-50 ml-auto"
               data-testid="button-stop-queue"
               disabled={stopQueueMutation.isPending}
@@ -412,6 +440,49 @@ export default function Coverage() {
         ))}
       </div>
 
+      {/* Gap Analysis Filter Strip */}
+      {(gapCounts.missing_fields > 0 || gapCounts.no_fmi > 0 || gapCounts.stale > 0) && (
+        <div className="rounded-xl border border-slate-200 bg-white p-3">
+          <div className="flex items-center gap-2 flex-wrap">
+            <span className="text-xs font-semibold text-slate-500 uppercase tracking-wider flex items-center gap-1 shrink-0">
+              <TriangleAlert className="w-3.5 h-3.5 text-amber-500" /> Gap Focus
+            </span>
+            <button
+              onClick={() => setFilterGap("all")}
+              className={`px-2.5 py-1 rounded-full text-xs font-medium transition-colors border ${
+                filterGap === "all"
+                  ? "bg-slate-700 text-white border-slate-700"
+                  : "bg-white text-slate-600 border-slate-200 hover:bg-slate-50"
+              }`}
+              data-testid="gap-filter-all"
+            >
+              All groups
+            </button>
+            {(["missing_fields", "no_fmi", "stale"] as GapType[]).map(gap => {
+              const count = gapCounts[gap];
+              if (count === 0) return null;
+              const cfg = GAP_CONFIG[gap];
+              return (
+                <button
+                  key={gap}
+                  onClick={() => setFilterGap(filterGap === gap ? "all" : gap)}
+                  title={cfg.desc}
+                  className={`flex items-center gap-1 px-2.5 py-1 rounded-full text-xs font-medium transition-colors border ${
+                    filterGap === gap
+                      ? "bg-slate-700 text-white border-slate-700"
+                      : `bg-white ${cfg.chip}`
+                  }`}
+                  data-testid={`gap-filter-${gap}`}
+                >
+                  {cfg.icon}
+                  {cfg.label} ({count})
+                </button>
+              );
+            })}
+          </div>
+        </div>
+      )}
+
       {/* Search / Intel filter / Count */}
       <div className="flex gap-3 flex-wrap items-center">
         <div className="relative flex-1 min-w-48">
@@ -425,7 +496,6 @@ export default function Coverage() {
           />
         </div>
 
-        {/* Intel filter */}
         <div className="flex rounded-lg border border-slate-200 overflow-hidden text-sm" data-testid="intel-filter-coverage">
           <button
             data-testid="intel-filter-coverage-all"
@@ -466,7 +536,7 @@ export default function Coverage() {
             </tr>
           </thead>
           <tbody>
-            {filtered.map(({ group, entityCount, bicCount, serviceCount, status, job }, i) => {
+            {filtered.map(({ group, entityCount, bicCount, serviceCount, status, job, gaps, hasSwiftFmi, hasVerifiedService }, i) => {
               const isActive = job && (job.status === "pending" || job.status === "running");
               return (
                 <tr
@@ -475,6 +545,7 @@ export default function Coverage() {
                   className={`border-b border-slate-100 last:border-0 transition-colors hover:bg-slate-50 ${i % 2 === 0 ? "" : "bg-slate-50/30"}`}
                 >
                   <td className="px-4 py-3">
+                    {/* Row 1: Name + badges */}
                     <div className="flex items-center gap-2 flex-wrap">
                       <span className="font-medium text-slate-900">{group.group_name}</span>
                       {group.gsib_status === "G-SIB" && (
@@ -501,6 +572,7 @@ export default function Coverage() {
                         </>;
                       })()}
                     </div>
+                    {/* Row 2: Country + currency */}
                     {(group.headquarters_country || group.primary_currency) && (
                       <div className="flex items-center gap-1.5 mt-0.5">
                         {group.headquarters_country && (
@@ -514,6 +586,21 @@ export default function Coverage() {
                         )}
                       </div>
                     )}
+                    {/* Row 3: Gap scorecard — only shown when gaps exist */}
+                    {gaps.length > 0 && (
+                      <div className="flex items-center gap-1 mt-1.5 flex-wrap">
+                        {gaps.map(gap => (
+                          <span
+                            key={gap}
+                            className={`inline-flex items-center gap-0.5 px-1.5 py-0.5 rounded text-[10px] font-medium ${GAP_CONFIG[gap].tag}`}
+                            title={GAP_CONFIG[gap].desc}
+                          >
+                            {GAP_CONFIG[gap].icon}
+                            {GAP_CONFIG[gap].label}
+                          </span>
+                        ))}
+                      </div>
+                    )}
                   </td>
                   <td className="px-3 py-3 text-center" title="Entities / BICs / Services">
                     <span className="font-mono text-xs text-slate-500 whitespace-nowrap">
@@ -525,10 +612,30 @@ export default function Coverage() {
                     </span>
                   </td>
                   <td className="px-3 py-3">
-                    <Badge className={`${statusConfig[status].badge} text-xs gap-1`} data-testid={`status-${group.id}`}>
-                      {statusConfig[status].icon}
-                      {statusConfig[status].label}
-                    </Badge>
+                    <div className="space-y-1">
+                      <Badge className={`${statusConfig[status].badge} text-xs gap-1`} data-testid={`status-${group.id}`}>
+                        {statusConfig[status].icon}
+                        {statusConfig[status].label}
+                      </Badge>
+                      {/* FMI indicators */}
+                      {entityCount > 0 && (
+                        <div className="flex items-center gap-1">
+                          <span className={`inline-flex items-center gap-0.5 text-[10px] font-medium ${hasSwiftFmi ? "text-emerald-600" : "text-slate-300"}`} title={hasSwiftFmi ? "SWIFT FMI recorded" : "No SWIFT FMI recorded"}>
+                            <Landmark className="w-3 h-3" />
+                            {hasSwiftFmi ? "SWIFT" : "No SWIFT"}
+                          </span>
+                          {serviceCount > 0 && (
+                            <>
+                              <span className="text-slate-200">·</span>
+                              <span className={`inline-flex items-center gap-0.5 text-[10px] font-medium ${hasVerifiedService ? "text-emerald-600" : "text-slate-300"}`} title={hasVerifiedService ? "At least one service has a verified date" : "No services have been verified"}>
+                                <FileCheck className="w-3 h-3" />
+                                {hasVerifiedService ? "Verified" : "Not verified"}
+                              </span>
+                            </>
+                          )}
+                        </div>
+                      )}
+                    </div>
                   </td>
                   <td className="px-3 py-3">
                     <div className="space-y-1.5">
@@ -561,16 +668,16 @@ export default function Coverage() {
                           if (vs.issueCount > 0) {
                             return (
                               <div className="text-xs space-y-1 pl-1 border-l-2 border-amber-200 ml-1">
-                                {vs.issues?.length > 0 && vs.issues.map((issue: string, i: number) => (
-                                  <div key={i} className="text-amber-800 flex items-start gap-1">
+                                {vs.issues?.length > 0 && vs.issues.map((issue: string, idx: number) => (
+                                  <div key={idx} className="text-amber-800 flex items-start gap-1">
                                     <span className="text-amber-400 shrink-0">•</span> {issue}
                                   </div>
                                 ))}
                                 {vs.missingEntities?.length > 0 && (
                                   <div className="text-slate-600 mt-1">
                                     <span className="font-medium">Missing:</span>
-                                    {vs.missingEntities.map((me: string, i: number) => (
-                                      <div key={i} className="text-slate-500 flex items-start gap-1 ml-2">
+                                    {vs.missingEntities.map((me: string, idx: number) => (
+                                      <div key={idx} className="text-slate-500 flex items-start gap-1 ml-2">
                                         <span className="text-slate-300 shrink-0">–</span> {me}
                                       </div>
                                     ))}

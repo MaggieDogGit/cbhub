@@ -1,5 +1,6 @@
 import { storage } from "./storage";
 import { buildSystemPrompt, getLightTools, getDryRunTools, runAgentLoop } from "./agentCore";
+import type { IntelObservation, AgentJob } from "../shared/schema";
 
 let isProcessing = false;
 
@@ -424,6 +425,44 @@ Score = from Phase 2b scoring. Confidence Tier = High (>=80) / Medium (60–79).
 |---|---|---|`;
 }
 
+function buildIntelContext(intelObs: IntelObservation[], relevantScans: AgentJob[]): string {
+  if (intelObs.length === 0 && relevantScans.length === 0) return "";
+
+  const lines: string[] = [
+    "INTELLIGENCE CONTEXT — use this to inform your research",
+    "---",
+  ];
+
+  if (intelObs.length > 0) {
+    lines.push("User observations recorded for this banking group:");
+    for (const obs of intelObs) {
+      const type = obs.obs_type === "competitor" ? "Competitor observation" : "My CB Provider observation";
+      const currency = obs.currency ? ` [${obs.currency}]` : "";
+      const notes = obs.notes ? `: ${obs.notes}` : "";
+      lines.push(`• ${type}${currency}${notes}`);
+    }
+    lines.push("Action: During Step 4, verify and create services for any currencies mentioned above if they are not already in the snapshot.");
+  }
+
+  if (relevantScans.length > 0) {
+    if (intelObs.length > 0) lines.push("");
+    lines.push("Relevant market scan findings (same currency or country — entities here are pre-qualified):");
+    for (const scan of relevantScans) {
+      const label = `${scan.market_country || "?"}/${scan.market_currency || "?"}`;
+      let summary = "";
+      try {
+        const parsed = JSON.parse(scan.scan_summary!);
+        summary = parsed.summaryText ? parsed.summaryText.slice(0, 400) : "";
+      } catch { summary = scan.scan_summary?.slice(0, 400) || ""; }
+      if (summary) lines.push(`• [${label} scan] ${summary}`);
+    }
+    lines.push("Action: During Step 2, treat entities found in these scans as already-researched candidates — no additional web search needed for them.");
+  }
+
+  lines.push("---", "");
+  return lines.join("\n") + "\n";
+}
+
 async function processNextJob() {
   if (isProcessing) return;
 
@@ -484,10 +523,12 @@ async function processNextJob() {
       const group = await storage.getBankingGroup(pending.banking_group_id!);
       if (!group) throw new Error(`Banking group ${pending.banking_group_id} not found`);
 
-      const [entities, bics, services] = await Promise.all([
+      const [entities, bics, services, groupIntelObs, allJobsList] = await Promise.all([
         storage.listLegalEntities(),
         storage.listBics(),
         storage.listCorrespondentServices(),
+        isLight ? Promise.resolve([] as IntelObservation[]) : storage.listIntelObservations({ banking_group_id: group.id }),
+        isLight ? Promise.resolve([] as AgentJob[]) : storage.listJobs(),
       ]);
 
       const groupEntities = entities.filter(e => e.group_id === group.id);
@@ -495,7 +536,22 @@ async function processNextJob() {
       const groupServices = groupBics.flatMap(b => services.filter(s => s.bic_id === b.id));
       const snapshot = buildGroupSnapshot(groupEntities, groupBics, groupServices);
 
-      message = isLight
+      // For normal (non-light) jobs: inject intel observations and relevant market scan context
+      let intelContext = "";
+      if (!isLight) {
+        const relevantScans = allJobsList.filter(j =>
+          j.job_type === "market_scan" &&
+          j.status === "completed" &&
+          j.scan_summary &&
+          (j.market_currency === group.primary_currency || j.market_country === group.headquarters_country)
+        );
+        intelContext = buildIntelContext(groupIntelObs, relevantScans);
+        if (intelContext) {
+          console.log(`[JobRunner] ${jobLabel} — intel context: ${groupIntelObs.length} observations, ${relevantScans.length} relevant scans`);
+        }
+      }
+
+      const basePrompt = isLight
         ? buildLightJobPrompt(
             group.group_name, group.id, group.headquarters_country,
             group.primary_currency, group.rtgs_system, group.rtgs_member, snapshot,
@@ -504,6 +560,8 @@ async function processNextJob() {
             group.group_name, group.id, group.primary_currency,
             group.cb_probability, group.rtgs_system, group.rtgs_member, snapshot, scope,
           );
+
+      message = intelContext ? intelContext + basePrompt : basePrompt;
     }
 
     await storage.createMessage({ conversation_id: conv.id, role: "user", content: message });
