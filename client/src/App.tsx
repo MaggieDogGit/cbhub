@@ -16,6 +16,7 @@ import DatabaseAdmin from "@/pages/DatabaseAdmin";
 import Sources from "@/pages/Sources";
 import Coverage from "@/pages/Coverage";
 import FmiManagement from "@/pages/FmiManagement";
+import Registry from "@/pages/Registry";
 import Login from "@/pages/Login";
 import NotFound from "@/pages/not-found";
 import { useAuth } from "@/hooks/useAuth";
@@ -36,6 +37,7 @@ function Router() {
         <Route path="/sources" component={Sources} />
         <Route path="/coverage" component={Coverage} />
         <Route path="/admin" component={DatabaseAdmin} />
+        <Route path="/registry" component={Registry} />
         <Route component={NotFound} />
       </Switch>
     </Layout>

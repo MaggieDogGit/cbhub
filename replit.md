@@ -31,6 +31,7 @@ client/src/
     MarketCoverage.tsx     – Multi-currency selection + react-leaflet map + results table
     ResearchAssistant.tsx  – AI bank research → approval review → bulk DB save
     AgentChat.tsx          – Multi-conversation AI chat with sidebar; ?conv= param auto-creates named conversations
+    Registry.tsx           – Two-panel registry editor: group browser (search/filters) + hierarchical tree editor (entity→BIC→service→FMI), edit drawer with verify-before-save, AlertDialog deletions, mobile-responsive
     DatabaseAdmin.tsx      – Full CRUD for all 5 core entities via tabbed forms
   components/
     Layout.tsx             – Dark sidebar nav, header with global search
