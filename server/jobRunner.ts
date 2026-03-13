@@ -111,7 +111,7 @@ function buildJobPrompt(
   // Entity targeting rule used in all Step 2 branches
   const entityTargetingRule = `Include: (a) the primary HQ licensed banking entity, (b) dedicated CB-hub or transaction-banking subsidiaries, and (c) regional or national banking subsidiaries that hold a local banking licence and are direct participants in a local RTGS or payment clearing system — even if they are primarily retail/commercial banks. Local RTGS/clearing participation is sufficient qualification.
 For globally active or G-SIB banks, additionally check for documented CB operations in the following major clearing centres: United States (USD/Fedwire), United Kingdom (GBP/CHAPS), Singapore (SGD/MEPS+), Hong Kong (HKD/CHATS), Japan (JPY/BOJ-NET), Australia (AUD/RITS). If the bank has a licensed branch or subsidiary with confirmed RTGS direct participation in any of these markets, include it.
-Exclude: holding companies, insurance or asset-management arms, dormant entities, and any subsidiary that does not hold a direct banking licence or payment system membership.
+Exclude: holding companies, insurance or asset-management arms, dormant entities, securities firms, markets entities, and any subsidiary that does not hold a direct banking licence or payment system membership. Treat any entity whose name contains "Markets", "Securities", "Capital Markets", "Global Markets", "Investments", or "Asset Management" as a non-banking subsidiary — do NOT add it unless you can explicitly confirm it holds a banking licence separate from its parent. The HQ entity must be the primary licensed bank (e.g. "Banco Bilbao Vizcaya Argentaria, S.A." not "BBVA Global Markets, S.A.").
 Ownership check: verify each candidate is currently owned/operated by ${groupName} — do not add subsidiaries that have been divested or are under a different parent.`;
 
   const step2 = hasEntities && scope === "home_only"
@@ -151,7 +151,8 @@ ${step2}
 STEP 3 — BIC CODES
 The existing BICs for each entity are shown in the snapshot. Only create BICs for entities that show "(no BIC recorded)".
 • BIC exists in snapshot → call list_bics filtered to that entity to get the UUID, then proceed.
-• Missing → add with create_bic. Set is_headquarters=true and swift_member=true for the primary HQ entity's BIC.
+• Missing → before calling create_bic, you MUST have a confirmed real-world BIC code (from search results or official SWIFT data). Do NOT invent or derive a BIC code. If you cannot confirm the BIC through research, skip it and note it as unresolved. Set is_headquarters=true and swift_member=true for the primary HQ entity's BIC.
+• If create_bic returns an error indicating the BIC already exists under a different entity, do NOT create an alternative BIC code — instead note the conflict in the final summary for human review. A BIC belongs to exactly one entity; duplicating it is not permitted.
 
 ---
 STEP 4 — CORRESPONDENT SERVICES
@@ -230,7 +231,7 @@ A. GROUP: If primary_currency is "not set" above, call update_banking_group(id="
 
 B. ENTITY: ${hasEntities ? `Entity already in DB STATE above — use its ID directly. Skip create.` : `Call find_legal_entity_by_name("${groupName}"). If not found → call create_legal_entity(group_id="${groupId}", legal_name="${groupName}", entity_type="Bank", country="${country || ""}").`}
 
-C. BIC: ${hasEntities ? `BIC already in DB STATE above — use its ID directly. Skip create.` : `Call list_bics filtered to entity from B. If none → call create_bic(legal_entity_id=<entity ID>, bic_code="<derive from name + country: first 4 chars + CC + XXXX>", is_headquarters=true, swift_member=true). The user will correct the BIC code if needed.`}
+C. BIC: ${hasEntities ? `BIC already in DB STATE above — use its ID directly. Skip create.` : `Call list_bics filtered to entity from B. If none → skip BIC creation. Do NOT invent or derive a BIC code. The user will add the correct confirmed BIC manually.`}
 
 D. SWIFT FMI: Call check_fmi_membership(legal_entity_id=<entity ID from B>, fmi_name="SWIFT"). If not exists → call create_fmi(fmi_type="Messaging Networks", fmi_name="SWIFT"). Do NOT search the web.
 
@@ -339,11 +340,13 @@ For each candidate that passed Phase 2 qualification, immediately perform these 
       - If entity_type = Bank (domestic) → create a new banking group using the local entity name. Set headquarters_country = "${country}", primary_currency = "${currency}".
 
 3b. Local legal entity — call find_legal_entity_by_name.
-  • Found → use existing entity_id.
+  • Found AND the entity's group_id matches the group_id from step 3a → use existing entity_id.
+  • Found BUT the entity's group_id is DIFFERENT from step 3a → do NOT reuse it. The entity already exists under another group. Create a new legal entity with create_legal_entity linked to the group_id from step 3a.
   • Not found → create with create_legal_entity:
       group_id = from 3a
       country = "${country}"
       entity_type = Bank | Subsidiary | Branch (from Phase 2 evaluation)
+  IMPORTANT: Every legal entity must be linked to exactly the banking group resolved in step 3a. Never place an entity under a different group than the one you identified for it.
 
 3c. BIC code — call list_bics for the entity.
   • Found → use existing bic_id.
