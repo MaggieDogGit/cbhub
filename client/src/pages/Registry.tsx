@@ -28,7 +28,7 @@ import {
 
 const CURRENCIES = ["all","USD","EUR","GBP","AED","AUD","BGN","BHD","BRL","CAD","CHF","CLP","CNH","CNY","COP","CZK","DKK","EGP","HKD","HUF","IDR","ILS","INR","JPY","KES","KRW","KWD","MAD","MXN","MYR","NGN","NOK","NZD","OMR","PEN","PHP","PLN","QAR","RON","SAR","SEK","SGD","THB","TRY","TWD","ZAR"];
 const CB_CURRENCIES = CURRENCIES.filter(c => c !== "all");
-const SERVICE_TYPES = ["all","Correspondent Banking","Global Currency Clearing","Currency Clearing","RTGS Participation","Instant Payments Access","FX Liquidity","CLS Settlement","Custody Services","Transaction Banking","Liquidity Services"];
+const SERVICE_TYPES = ["all","Correspondent Banking","Global Currency Clearing","Currency Clearing","RTGS Participation","Instant Payments Access","FX Liquidity","CLS Settlement","CLS Third Party Settlement","CLS Nostro Payments","Custody Services","Transaction Banking","Liquidity Services"];
 const ENTITY_TYPES = ["Bank", "Branch", "Subsidiary", "Representative Office", "Other"];
 const GSIB_OPTIONS = ["G-SIB", "D-SIB", "N/A"];
 const CB_PROBS = ["High", "Medium", "Low", "Unconfirmed"];
