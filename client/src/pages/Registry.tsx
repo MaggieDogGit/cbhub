@@ -41,11 +41,12 @@ type DrawerState = {
   mode: "create" | "edit";
   level: EditLevel;
   data: Record<string, any>;
+  originalData: Record<string, any>;
   parentIds: Record<string, string>;
   step: "form" | "review";
 };
 
-const emptyDrawer: DrawerState = { open: false, mode: "create", level: "group", data: {}, parentIds: {}, step: "form" };
+const emptyDrawer: DrawerState = { open: false, mode: "create", level: "group", data: {}, originalData: {}, parentIds: {}, step: "form" };
 
 type DeleteTarget = { id: string; level: EditLevel; label: string } | null;
 
@@ -123,7 +124,7 @@ export default function Registry() {
   }
 
   function openDrawer(mode: "create" | "edit", level: EditLevel, data: Record<string, any> = {}, parentIds: Record<string, string> = {}) {
-    setDrawer({ open: true, mode, level, data: { ...data }, parentIds, step: "form" });
+    setDrawer({ open: true, mode, level, data: { ...data }, originalData: mode === "edit" ? { ...data } : {}, parentIds, step: "form" });
   }
 
   function closeDrawer() {
@@ -414,25 +415,67 @@ export default function Registry() {
     const fields = fieldDefs[level];
 
     if (step === "review") {
+      const isEdit = mode === "edit";
+      const changedFields = isEdit
+        ? fields.filter(f => {
+            const oldVal = drawer.originalData[f.key];
+            const newVal = data[f.key];
+            return String(newVal ?? "") !== String(oldVal ?? "");
+          })
+        : fields.filter(f => data[f.key] !== undefined && data[f.key] !== null && data[f.key] !== "");
+      const unchangedFields = isEdit
+        ? fields.filter(f => {
+            const oldVal = drawer.originalData[f.key];
+            const newVal = data[f.key];
+            return String(newVal ?? "") === String(oldVal ?? "") && (newVal !== undefined && newVal !== null && newVal !== "");
+          })
+        : [];
+      const fmt = (v: any) => typeof v === "boolean" ? (v ? "Yes" : "No") : String(v ?? "—");
+
       return (
         <>
           <SheetHeader>
             <SheetTitle>{title} — Review</SheetTitle>
           </SheetHeader>
           <div className="mt-4 space-y-3">
-            <p className="text-sm text-slate-500">Please review the details below before saving.</p>
-            <div className="bg-slate-50 border border-slate-200 rounded-lg p-4 space-y-2">
-              {fields.map(f => {
-                const v = data[f.key];
-                if (v === undefined || v === null || v === "") return null;
-                return (
-                  <div key={f.key} className="flex justify-between text-sm">
-                    <span className="text-slate-500">{f.label}</span>
-                    <span className="font-medium text-right max-w-[60%] break-words" data-testid={`review-${f.key}`}>{typeof v === "boolean" ? (v ? "Yes" : "No") : String(v)}</span>
+            <p className="text-sm text-slate-500">
+              {isEdit
+                ? changedFields.length > 0
+                  ? `${changedFields.length} field${changedFields.length > 1 ? "s" : ""} changed. Review before saving.`
+                  : "No changes detected."
+                : "Please review the details below before saving."}
+            </p>
+            {changedFields.length > 0 && (
+              <div className="bg-slate-50 border border-slate-200 rounded-lg p-4 space-y-2">
+                {isEdit && <div className="text-[10px] font-semibold text-slate-400 uppercase tracking-wider mb-1">Changed</div>}
+                {changedFields.map(f => {
+                  const v = data[f.key];
+                  const oldV = drawer.originalData[f.key];
+                  return (
+                    <div key={f.key} className="flex justify-between text-sm">
+                      <span className="text-slate-500">{f.label}</span>
+                      <div className="text-right max-w-[60%] break-words">
+                        {isEdit && (
+                          <span className="line-through text-red-400 mr-2" data-testid={`review-old-${f.key}`}>{fmt(oldV)}</span>
+                        )}
+                        <span className="font-medium text-green-700" data-testid={`review-${f.key}`}>{fmt(v)}</span>
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            )}
+            {unchangedFields.length > 0 && (
+              <div className="bg-white border border-slate-100 rounded-lg p-4 space-y-1">
+                <div className="text-[10px] font-semibold text-slate-400 uppercase tracking-wider mb-1">Unchanged</div>
+                {unchangedFields.map(f => (
+                  <div key={f.key} className="flex justify-between text-xs text-slate-400">
+                    <span>{f.label}</span>
+                    <span>{fmt(data[f.key])}</span>
                   </div>
-                );
-              })}
-            </div>
+                ))}
+              </div>
+            )}
             <div className="flex gap-2 pt-2">
               <Button variant="outline" className="flex-1" onClick={() => setDrawer(prev => ({ ...prev, step: "form" }))} data-testid="button-back-to-edit">
                 <ArrowLeft className="w-4 h-4 mr-1" /> Back to Edit
@@ -570,7 +613,7 @@ export default function Registry() {
 
       {/* Mobile editor — full-screen Sheet below lg */}
       <Sheet open={mobileEditorOpen && !!selectedGroupId} onOpenChange={open => { if (!open) setMobileEditorOpen(false); }}>
-        <SheetContent side="bottom" className="lg:hidden h-[95vh] overflow-y-auto rounded-t-2xl" data-testid="sheet-mobile-editor">
+        <SheetContent side="bottom" className="lg:hidden h-screen overflow-y-auto" data-testid="sheet-mobile-editor">
           <SheetHeader>
             <SheetTitle className="sr-only">Group Editor</SheetTitle>
           </SheetHeader>
