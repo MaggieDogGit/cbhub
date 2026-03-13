@@ -326,9 +326,21 @@ export const cbIndirectParticipation = pgTable("cb_indirect_participation", {
   ai_generated: boolean("ai_generated").default(true),
   created_at: timestamp("created_at").defaultNow(),
   updated_at: timestamp("updated_at").defaultNow(),
-});
+}, (table) => ({
+  uniqueEntityScheme: uniqueIndex("cb_indirect_entity_scheme_idx").on(
+    table.legal_entity_id,
+    table.scheme_id,
+  ),
+}));
 
-export const insertCbTaxonomyItemSchema = createInsertSchema(cbTaxonomyItems).omit({ id: true });
+export const insertCbTaxonomyItemSchema = createInsertSchema(cbTaxonomyItems).omit({ id: true }).superRefine((d, ctx) => {
+  if (!CB_TAXONOMY_CATEGORIES.includes(d.category as CbTaxonomyCategory)) {
+    ctx.addIssue({ code: z.ZodIssueCode.custom, message: "category must be one of: " + CB_TAXONOMY_CATEGORIES.join(", "), path: ["category"] });
+  }
+  if (!CB_VALUE_TYPES.includes(d.value_type as CbValueType)) {
+    ctx.addIssue({ code: z.ZodIssueCode.custom, message: "value_type must be one of: " + CB_VALUE_TYPES.join(", "), path: ["value_type"] });
+  }
+});
 export const insertCbCapabilityValueSchema = createInsertSchema(cbCapabilityValues).omit({ id: true, created_at: true, updated_at: true });
 export const insertCbSchemeMasterSchema = createInsertSchema(cbSchemeMaster).omit({ id: true });
 export const insertCbIndirectParticipationSchema = createInsertSchema(cbIndirectParticipation).omit({ id: true, created_at: true, updated_at: true });
