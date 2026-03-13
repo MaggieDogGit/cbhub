@@ -169,6 +169,26 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
     res.json(data);
   });
 
+  app.get("/api/dashboard/coverage-map", async (_req, res) => {
+    const result = await pool.query(`
+      SELECT
+        cs.country,
+        cs.currency::text,
+        bg.group_name,
+        cs.rtgs_membership,
+        cs.instant_scheme_access,
+        cs.cls_member
+      FROM correspondent_services cs
+      JOIN bics b ON b.id = cs.bic_id
+      JOIN legal_entities le ON le.id = b.legal_entity_id
+      JOIN banking_groups bg ON bg.id = le.group_id
+      WHERE cs.clearing_model = 'Onshore'
+        AND cs.country IS NOT NULL
+        AND cs.country != ''
+    `);
+    res.json(result.rows);
+  });
+
   // Correspondent Services
   app.get("/api/correspondent-services", async (req, res) => {
     const currency = req.query.currency as string | undefined;
