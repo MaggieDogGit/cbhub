@@ -1,6 +1,6 @@
 import { useQuery } from "@tanstack/react-query";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { Building2, Globe, CreditCard, ShieldCheck, BarChart3, Coins, Eye, ArrowRight } from "lucide-react";
+import { Building2, Globe, CreditCard, ShieldCheck, BarChart3, Coins, Eye, ArrowRight, X } from "lucide-react";
 import { Link } from "wouter";
 import { BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, PieChart, Pie, Cell } from "recharts";
 import { useState, useMemo, useEffect, useCallback } from "react";
@@ -46,6 +46,46 @@ function ToggleStrip({ label, options, value, onChange }: { label: string; optio
   );
 }
 
+function MultiSelectStrip({ label, items, selected, onToggle, onClear }: {
+  label: string;
+  items: { name: string; count: number }[];
+  selected: Set<string>;
+  onToggle: (name: string) => void;
+  onClear: () => void;
+}) {
+  if (items.length === 0) return null;
+  return (
+    <div className="flex flex-col md:flex-row md:items-center gap-1 md:gap-2" data-testid={`multi-strip-${label.toLowerCase().replace(/\s+/g, "-")}`}>
+      <span className="text-xs font-semibold text-slate-500 uppercase tracking-wider mr-1 shrink-0">{label}</span>
+      <div className="flex flex-wrap gap-1.5 md:gap-2 items-center">
+        {items.map(item => (
+          <button
+            key={item.name}
+            onClick={() => onToggle(item.name)}
+            className={`px-2.5 py-1 rounded-full text-xs font-medium transition-colors ${
+              selected.has(item.name)
+                ? "bg-violet-600 text-white shadow-sm"
+                : "bg-slate-100 text-slate-600 hover:bg-slate-200"
+            }`}
+            data-testid={`multi-${label.toLowerCase().replace(/\s+/g, "-")}-${item.name.toLowerCase().replace(/\s+/g, "-")}`}
+          >
+            {item.name} ({item.count})
+          </button>
+        ))}
+        {selected.size > 0 && (
+          <button
+            onClick={onClear}
+            className="px-2 py-1 rounded-full text-xs font-medium text-red-600 bg-red-50 hover:bg-red-100 transition-colors flex items-center gap-0.5"
+            data-testid={`multi-${label.toLowerCase().replace(/\s+/g, "-")}-clear`}
+          >
+            Clear <X className="w-3 h-3" />
+          </button>
+        )}
+      </div>
+    </div>
+  );
+}
+
 export default function Dashboard() {
   const { data: groups = [], isLoading: loadingGroups } = useQuery<BankingGroup[]>({ queryKey: ["/api/banking-groups"] });
   const { data: entities = [], isLoading: loadingEntities } = useQuery<LegalEntity[]>({ queryKey: ["/api/legal-entities"] });
@@ -60,11 +100,42 @@ export default function Dashboard() {
   const [providerFilter, setProviderFilter] = useState("all");
   const [intelType, setIntelType] = useState<"competitor" | "cb_provider">("competitor");
   const [expandedIntelIds, setExpandedIntelIds] = useState<Set<string>>(new Set());
+  const [selectedCompetitors, setSelectedCompetitors] = useState<Set<string>>(new Set());
+  const [selectedMyCb, setSelectedMyCb] = useState<Set<string>>(new Set());
 
   const windowWidth = useWindowWidth();
   const isMobile = windowWidth < 640;
 
   const loading = loadingGroups || loadingEntities || loadingCurrency || loadingFmis || loadingMap || loadingServices || loadingIntel;
+
+  const competitorIntelGroups = useMemo(() => {
+    const counts = new Map<string, number>();
+    intelObs.filter(o => o.obs_type === "competitor").forEach(o => {
+      counts.set(o.banking_group_name, (counts.get(o.banking_group_name) || 0) + 1);
+    });
+    return Array.from(counts.entries())
+      .map(([name, count]) => ({ name, count }))
+      .sort((a, b) => b.count - a.count);
+  }, [intelObs]);
+
+  const myCbIntelGroups = useMemo(() => {
+    const counts = new Map<string, number>();
+    intelObs.filter(o => o.obs_type === "cb_provider").forEach(o => {
+      counts.set(o.banking_group_name, (counts.get(o.banking_group_name) || 0) + 1);
+    });
+    return Array.from(counts.entries())
+      .map(([name, count]) => ({ name, count }))
+      .sort((a, b) => b.count - a.count);
+  }, [intelObs]);
+
+  const selectedGroupNames = useMemo(() => {
+    const combined = new Set<string>();
+    selectedCompetitors.forEach(n => combined.add(n));
+    selectedMyCb.forEach(n => combined.add(n));
+    return combined;
+  }, [selectedCompetitors, selectedMyCb]);
+
+  const hasIntelFilter = selectedGroupNames.size > 0;
 
   const groupsWithServices = useMemo(() => {
     const svcGroupNames = new Set(services.map(s => s.group_name).filter(Boolean));
@@ -92,9 +163,12 @@ export default function Dashboard() {
         if (providerFilter === "has_services" && !hasSvc) return false;
         if (providerFilter === "no_services" && hasSvc) return false;
       }
+      if (hasIntelFilter) {
+        if (!selectedGroupNames.has(g.group_name)) return false;
+      }
       return true;
     });
-  }, [groups, cbProbFilter, gsibFilter, providerFilter, groupsWithServices]);
+  }, [groups, cbProbFilter, gsibFilter, providerFilter, groupsWithServices, hasIntelFilter, selectedGroupNames]);
 
   const cbProbCounts = useMemo(() => ({
     high: groups.filter(g => g.cb_probability === "High").length,
@@ -136,8 +210,25 @@ export default function Dashboard() {
     { name: "N/A", value: naCount },
   ].filter(d => d.value > 0);
 
+  const activeCurrencyData = useMemo(() => {
+    if (!hasIntelFilter) return currencyData;
+    const filtered = services.filter(s => s.service_type === "Correspondent Banking" && selectedGroupNames.has(s.group_name));
+    const byCurrency = new Map<string, Set<string>>();
+    filtered.forEach(s => {
+      if (!s.currency) return;
+      if (!byCurrency.has(s.currency)) byCurrency.set(s.currency, new Set());
+      byCurrency.get(s.currency)!.add(s.group_name);
+    });
+    return Array.from(byCurrency.entries())
+      .map(([currency, banks]) => ({ currency, count: banks.size, banks: Array.from(banks) }))
+      .sort((a, b) => b.count - a.count || a.currency.localeCompare(b.currency));
+  }, [hasIntelFilter, currencyData, services, selectedGroupNames]);
+
   const mapResults = useMemo(() => {
-    return coverageMapData.map(r => ({
+    const data = hasIntelFilter
+      ? coverageMapData.filter(r => selectedGroupNames.has(r.group_name))
+      : coverageMapData;
+    return data.map(r => ({
       bankingGroup: r.group_name,
       hqCountry: r.country,
       currency: r.currency,
@@ -145,16 +236,32 @@ export default function Dashboard() {
       instant: r.instant_scheme_access,
       cls: r.cls_member,
     }));
-  }, [coverageMapData]);
+  }, [coverageMapData, hasIntelFilter, selectedGroupNames]);
 
   const competitorCount = intelObs.filter(o => o.obs_type === "competitor").length;
-  const cbProviderCount = intelObs.filter(o => o.obs_type === "cb_provider").length;
+  const myCbCount = intelObs.filter(o => o.obs_type === "cb_provider").length;
   const filteredIntel = useMemo(() => {
     return intelObs
       .filter(o => o.obs_type === intelType)
       .sort((a, b) => new Date(b.created_at!).getTime() - new Date(a.created_at!).getTime())
       .slice(0, 5);
   }, [intelObs, intelType]);
+
+  const toggleCompetitor = useCallback((name: string) => {
+    setSelectedCompetitors(prev => {
+      const next = new Set(prev);
+      if (next.has(name)) next.delete(name); else next.add(name);
+      return next;
+    });
+  }, []);
+
+  const toggleMyCb = useCallback((name: string) => {
+    setSelectedMyCb(prev => {
+      const next = new Set(prev);
+      if (next.has(name)) next.delete(name); else next.add(name);
+      return next;
+    });
+  }, []);
 
   const renderCustomPieLabel = ({ cx, cy, midAngle, outerRadius, name, value }: { cx: number; cy: number; midAngle: number; outerRadius: number; name: string; value: number }) => {
     if (isMobile) return null;
@@ -218,6 +325,25 @@ export default function Dashboard() {
             value={providerFilter}
             onChange={setProviderFilter}
           />
+          {(competitorIntelGroups.length > 0 || myCbIntelGroups.length > 0) && (
+            <>
+              <div className="border-t border-slate-200" />
+              <MultiSelectStrip
+                label="Competitors"
+                items={competitorIntelGroups}
+                selected={selectedCompetitors}
+                onToggle={toggleCompetitor}
+                onClear={() => setSelectedCompetitors(new Set())}
+              />
+              <MultiSelectStrip
+                label="My CB"
+                items={myCbIntelGroups}
+                selected={selectedMyCb}
+                onToggle={toggleMyCb}
+                onClear={() => setSelectedMyCb(new Set())}
+              />
+            </>
+          )}
         </CardContent>
       </Card>
 
@@ -227,7 +353,7 @@ export default function Dashboard() {
           { label: "Legal Entities", value: filteredEntities.length, icon: CreditCard, color: "text-emerald-600 bg-emerald-50", link: "/legal-entities" },
           { label: "CLS Members", value: filteredClsMembers, icon: Globe, color: "text-teal-600 bg-teal-50", link: "/cls" },
           { label: "G-SIB Providers", value: gsibCount, icon: ShieldCheck, color: "text-purple-600 bg-purple-50" },
-          { label: "Onshore Currencies", value: currencyData.length, icon: Coins, color: "text-amber-600 bg-amber-50", link: "/currencies" },
+          { label: "Onshore Currencies", value: activeCurrencyData.length, icon: Coins, color: "text-amber-600 bg-amber-50", link: "/currencies" },
         ].map(stat => (
           <Card key={stat.label} className={`border-0 shadow-sm ${stat.link ? "hover:shadow-md transition-shadow cursor-pointer" : ""}`} data-testid={`card-stat-${stat.label.toLowerCase().replace(/\s+/g, "-")}`}>
             <CardContent className="p-3 sm:p-5">
@@ -265,15 +391,17 @@ export default function Dashboard() {
             </CardTitle>
           </CardHeader>
           <CardContent>
-            {currencyData.length === 0 ? (
-              <div className="h-48 flex items-center justify-center text-slate-400 text-sm">No data yet — add providers to see chart</div>
+            {activeCurrencyData.length === 0 ? (
+              <div className="h-48 flex items-center justify-center text-slate-400 text-sm">
+                {hasIntelFilter ? "No onshore services for the selected groups" : "No data yet — add providers to see chart"}
+              </div>
             ) : (
               <div className="overflow-x-auto -mx-2 px-2">
-                <div style={{ width: Math.max(500, currencyData.length * 52), height: 240 }}>
+                <div style={{ width: Math.max(500, activeCurrencyData.length * 52), height: 240 }}>
                   <BarChart
-                    width={Math.max(500, currencyData.length * 52)}
+                    width={Math.max(500, activeCurrencyData.length * 52)}
                     height={240}
-                    data={currencyData}
+                    data={activeCurrencyData}
                     margin={{ top: 5, right: 10, left: -20, bottom: 5 }}
                   >
                     <XAxis dataKey="currency" tick={{ fontSize: 11 }} />
@@ -342,7 +470,9 @@ export default function Dashboard() {
         </CardHeader>
         <CardContent>
           {mapResults.length === 0 ? (
-            <div className="h-48 flex items-center justify-center text-slate-400 text-sm">No onshore services with country data yet</div>
+            <div className="h-48 flex items-center justify-center text-slate-400 text-sm">
+              {hasIntelFilter ? "No onshore services for the selected groups" : "No onshore services with country data yet"}
+            </div>
           ) : (
             <CoverageMap results={mapResults} />
           )}
@@ -370,9 +500,9 @@ export default function Dashboard() {
                 className={`px-2.5 sm:px-3 py-1 rounded-full text-xs font-medium transition-colors ${
                   intelType === "cb_provider" ? "bg-emerald-100 text-emerald-700" : "bg-slate-100 text-slate-600 hover:bg-slate-200"
                 }`}
-                data-testid="toggle-intel-cb-provider"
+                data-testid="toggle-intel-my-cb"
               >
-                CB Provider ({cbProviderCount})
+                My CB ({myCbCount})
               </button>
             </div>
           </div>
@@ -380,7 +510,7 @@ export default function Dashboard() {
         <CardContent>
           {filteredIntel.length === 0 ? (
             <div className="h-20 flex items-center justify-center text-slate-400 text-sm">
-              No {intelType === "competitor" ? "competitor" : "CB provider"} observations yet
+              No {intelType === "competitor" ? "competitor" : "My CB"} observations yet
             </div>
           ) : (
             <div className="space-y-2">
