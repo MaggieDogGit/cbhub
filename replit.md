@@ -42,11 +42,33 @@ client/src/
 
 server/
   index.ts      – Express app entry point
-  routes.ts     – All REST API routes; /api/chat uses agentCore; starts jobRunner on init
-  agentCore.ts  – Shared agent logic: buildSystemPrompt, getTools, executeTool, runAgentLoop
-  jobRunner.ts  – Background job runner: polls agent_jobs every 30s, runs CB Setup and Market Scan workflows
+  routes.ts     – Thin index: mounts auth (unprotected), requireAuth middleware, then all protected routers
+  agentCore.ts  – Backward-compat barrel → re-exports from server/agent/
+  jobRunner.ts  – Backward-compat barrel → re-exports from server/services/
   storage.ts    – DatabaseStorage class implementing IStorage
   db.ts         – Drizzle ORM + pg pool setup
+
+  routes/
+    authRoutes.ts       – Login/logout/me endpoints (unprotected)
+    registryRoutes.ts   – CRUD for banking-groups, legal-entities, BICs, services, CLS, FMIs, taxonomy, capabilities, schemes, indirect
+    researchRoutes.ts   – POST /research AI research endpoint
+    jobRoutes.ts        – Job CRUD, queue-all, stop-queue, market-scan
+    chatRoutes.ts       – Conversations CRUD + POST /chat SSE streaming
+    dashboardRoutes.ts  – Dashboard analytics: currency-providers, data-sources, intel
+
+  agent/
+    prompts.ts     – buildSystemPrompt, getStatusText
+    tools.ts       – getTools, getDryRunTools, getLightTools definitions
+    executor.ts    – executeTool, runAgentLoop
+    retry.ts       – withRetry, sleep utilities
+    validators.ts  – StepCallback type
+    index.ts       – Barrel re-exporting all agent modules
+
+  services/
+    cbDiscoveryService.ts   – COUNTRY_CURRENCY, COUNTRY_RTGS, EUROZONE_COUNTRIES, CLS_CURRENCIES lookup maps
+    jobService.ts           – processNextJob, startJobRunner (polls every 30s)
+    chatAgentService.ts     – runChat (SSE streaming agent loop)
+    bankingGroupService.ts  – mergeBankingGroups helper
 
 shared/
   schema.ts     – All Drizzle entities + Zod insert schemas + TypeScript types
@@ -92,13 +114,14 @@ All prefixed with `/api`:
 
 ## Agent Architecture
 
-- `server/agentCore.ts` is the shared agent core. It exports:
-  - `buildSystemPrompt(sources)` – builds the system prompt with DB schema and data source context
-  - `getTools()` – returns the full OpenAI tool definitions (all DB CRUD + web_search)
-  - `executeTool(name, args)` – executes a tool call and returns a result string
-  - `runAgentLoop(messages, onStep?, maxIterations, firstIterToolChoice)` – runs the full agentic loop
-- `/api/chat` uses `runAgentLoop` for interactive chat with SSE streaming
-- `server/jobRunner.ts` uses `runAgentLoop` for background autonomous processing
+- `server/agent/` is the modular agent core (barrel-exported via `server/agent/index.ts` and backward-compat via `server/agentCore.ts`):
+  - `prompts.ts`: `buildSystemPrompt(sources)`, `getStatusText()`
+  - `tools.ts`: `getTools()`, `getDryRunTools()`, `getLightTools()` – OpenAI tool definitions
+  - `executor.ts`: `executeTool(name, args)`, `runAgentLoop(messages, onStep?, maxIterations, firstIterToolChoice)`
+  - `retry.ts`: `withRetry()`, `sleep()` utilities
+  - `validators.ts`: `StepCallback` type
+- `server/services/chatAgentService.ts` handles `/api/chat` SSE streaming via `runChat()`
+- `server/services/jobService.ts` handles background job processing via `processNextJob()` / `startJobRunner()`
 - Tool confirmation pattern: if user message matches `yes|confirmed|proceed|...`, passes `firstIterToolChoice: "required"` to immediately act without re-asking
 
 ## Background Job System
@@ -117,7 +140,7 @@ Two job types (dispatched by `job_type` field):
 - No FMI memberships recorded (deferred to CB Setup)
 - Always runs in Normal mode with gpt-4o; max 20 iterations
 - Queued via `POST /api/jobs/market-scan`; UI panel in Providers page
-- COUNTRY_RTGS and CURRENCY_COUNTRY lookup maps exported from `server/jobRunner.ts`
+- COUNTRY_RTGS and CURRENCY_COUNTRY lookup maps exported from `server/services/cbDiscoveryService.ts` (backward-compat via `server/jobRunner.ts`)
 - Parent-company matching: prompt instructs the agent to search for parent groups before creating regional subsidiaries
 - **Dry-Run mode** (`dry_run: true`): Uses read-only tool set (`getDryRunTools()` — no create/update/delete). Agent produces a structured discovery report. No DB writes. Scan summary stores the full report. UI shows amber "Dry Run" badge + "Run for real →" button to re-queue as a live scan.
 
