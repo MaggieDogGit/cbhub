@@ -12,8 +12,8 @@ Completed the service-layer refactor that was started in Task #13. Routes are no
 |------|--------|
 | `server/services/bankingGroupService.ts` | Added `listBankingGroups`, `createBankingGroup`, `updateBankingGroup`, `deleteBankingGroup` (previously only had merge ops) |
 | `server/services/researchService.ts` | **New file.** Extracted OpenAI web-search + JSON-structuring logic from `researchRoutes.ts` into `researchBank(bankName)` |
-| `server/services/jobService.ts` | Added `listJobs`, `getJob`, `createJob`, `updateJobStatus`, `deleteJob` CRUD wrappers. Market-scan orchestration logic extracted to `cbDiscoveryService.runMarketScanJob()` |
-| `server/services/cbDiscoveryService.ts` | Added `runMarketScanJob(...)` — contains market-scan prompt-building, agent loop, and post-scan diff/summary logic. Constants (`COUNTRY_RTGS`, `CURRENCY_COUNTRY`, etc.) retained |
+| `server/services/jobService.ts` | Added `listJobs`, `getJob`, `createJob`, `updateJobStatus`, `deleteJob`, `getJobResults` CRUD wrappers. Market-scan orchestration logic extracted to `cbDiscoveryService.runMarketScan()` |
+| `server/services/cbDiscoveryService.ts` | Added `runMarketScan(...)` — contains market-scan prompt-building, agent loop, and post-scan diff/summary logic. Constants (`COUNTRY_RTGS`, `CURRENCY_COUNTRY`, etc.) retained |
 
 ### Routes — Thinned
 
