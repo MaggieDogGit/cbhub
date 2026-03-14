@@ -493,6 +493,46 @@ router.get("/regions/:id", async (req, res) => {
 
 // ── FMI Specifications & Payment Capability Model ───────────────────────────
 
+interface FmiSpecRow {
+  supports_cross_border_processing: boolean | null;
+  supports_one_leg_out_processing: boolean | null;
+  [key: string]: unknown;
+}
+
+interface SchemeSpecRow {
+  scheme_cross_border_allowed: boolean | null;
+  scheme_one_leg_out_allowed: boolean | null;
+  [key: string]: unknown;
+}
+
+interface ScenarioRow {
+  id: string;
+  name: string;
+  supports_cross_border: boolean | null;
+  supports_one_leg_out: boolean | null;
+  [key: string]: unknown;
+}
+
+interface EntryRow {
+  id: string;
+  name: string;
+  code: string | null;
+  category_code: string;
+  category_name: string;
+}
+
+interface ScenarioRelRow {
+  id: string;
+  notes: string | null;
+  is_active: boolean;
+  rel_type_code: string;
+  rel_type_name: string;
+  target_id: string;
+  target_name: string;
+  target_code: string;
+  target_category_name: string;
+}
+
 router.get("/fmi-specifications/:fmiId", async (req, res) => {
   try {
     const { rows } = await pool.query(
@@ -504,7 +544,7 @@ router.get("/fmi-specifications/:fmiId", async (req, res) => {
     );
     if (!rows.length) return res.status(404).json({ message: "No specification found for this FMI" });
     res.json(rows[0]);
-  } catch (err: any) { res.status(500).json({ message: err.message }); }
+  } catch (err: unknown) { res.status(500).json({ message: (err instanceof Error) ? err.message : "Internal error" }); }
 });
 
 router.get("/payment-scheme-specs/:fmiId", async (req, res) => {
@@ -518,7 +558,7 @@ router.get("/payment-scheme-specs/:fmiId", async (req, res) => {
     );
     if (!rows.length) return res.status(404).json({ message: "No scheme specification found for this FMI" });
     res.json(rows[0]);
-  } catch (err: any) { res.status(500).json({ message: err.message }); }
+  } catch (err: unknown) { res.status(500).json({ message: (err instanceof Error) ? err.message : "Internal error" }); }
 });
 
 router.get("/payment-scheme-scenarios/:schemeId", async (req, res) => {
@@ -531,7 +571,7 @@ router.get("/payment-scheme-scenarios/:schemeId", async (req, res) => {
       [req.params.schemeId]
     );
     for (const sc of scenarios) {
-      const { rows: rels } = await pool.query(
+      const { rows: rels } = await pool.query<ScenarioRelRow>(
         `SELECT sr.id, sr.notes, sr.is_active,
            rt.code AS rel_type_code, rt.name AS rel_type_name,
            tgt.id AS target_id, tgt.name AS target_name, tgt.code AS target_code,
@@ -547,7 +587,7 @@ router.get("/payment-scheme-scenarios/:schemeId", async (req, res) => {
       sc.relationships = rels;
     }
     res.json(scenarios);
-  } catch (err: any) { res.status(500).json({ message: err.message }); }
+  } catch (err: unknown) { res.status(500).json({ message: (err instanceof Error) ? err.message : "Internal error" }); }
 });
 
 router.get("/payment-scheme-processing-scenarios/:id", async (req, res) => {
@@ -560,8 +600,8 @@ router.get("/payment-scheme-processing-scenarios/:id", async (req, res) => {
       [req.params.id]
     );
     if (!rows.length) return res.status(404).json({ message: "Processing scenario not found" });
-    const scenario = rows[0] as any;
-    const { rows: rels } = await pool.query(
+    const scenario = rows[0];
+    const { rows: rels } = await pool.query<ScenarioRelRow>(
       `SELECT sr.id, sr.notes, sr.is_active,
          rt.code AS rel_type_code, rt.name AS rel_type_name,
          tgt.id AS target_id, tgt.name AS target_name, tgt.code AS target_code,
@@ -574,9 +614,9 @@ router.get("/payment-scheme-processing-scenarios/:id", async (req, res) => {
        ORDER BY rt.code`,
       [req.params.id]
     );
-    scenario.relationships = rels;
+    (scenario as Record<string, unknown>).relationships = rels;
     res.json(scenario);
-  } catch (err: any) { res.status(500).json({ message: err.message }); }
+  } catch (err: unknown) { res.status(500).json({ message: (err instanceof Error) ? err.message : "Internal error" }); }
 });
 
 router.get("/fmi-entries/:id/capability", async (req, res) => {
@@ -584,7 +624,7 @@ router.get("/fmi-entries/:id/capability", async (req, res) => {
     const fmiId = req.params.id;
     const scenarioId = req.query.scenario_id as string | undefined;
 
-    const { rows: entryRows } = await pool.query(
+    const { rows: entryRows } = await pool.query<EntryRow>(
       `SELECT e.id, e.name, e.code,
          c.code AS category_code, c.name AS category_name
        FROM fmi_entries e
@@ -593,26 +633,26 @@ router.get("/fmi-entries/:id/capability", async (req, res) => {
       [fmiId]
     );
     if (!entryRows.length) return res.status(404).json({ message: "FMI not found" });
-    const entry = entryRows[0] as any;
+    const entry = entryRows[0];
 
-    const { rows: specRows } = await pool.query(
+    const { rows: specRows } = await pool.query<FmiSpecRow>(
       `SELECT * FROM fmi_specifications WHERE fmi_id = $1`, [fmiId]
     );
-    const spec = specRows[0] as any | undefined;
+    const spec: FmiSpecRow | undefined = specRows[0];
 
-    const { rows: schemeRows } = await pool.query(
+    const { rows: schemeRows } = await pool.query<SchemeSpecRow>(
       `SELECT * FROM payment_scheme_specifications WHERE fmi_id = $1`, [fmiId]
     );
-    const scheme = schemeRows[0] as any | undefined;
+    const scheme: SchemeSpecRow | undefined = schemeRows[0];
 
-    let scenario: any = undefined;
+    let scenario: ScenarioRow | undefined = undefined;
     if (scenarioId) {
-      const { rows: scRows } = await pool.query(
+      const { rows: scRows } = await pool.query<ScenarioRow>(
         `SELECT * FROM payment_scheme_processing_scenarios WHERE id = $1 AND scheme_fmi_id = $2`,
         [scenarioId, fmiId]
       );
       if (!scRows.length) return res.status(404).json({ message: "Scenario not found or not associated with this FMI" });
-      scenario = scRows[0] as any;
+      scenario = scRows[0];
     }
 
     const infraCrossBorder = spec?.supports_cross_border_processing ?? null;

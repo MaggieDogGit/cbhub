@@ -281,6 +281,16 @@ export async function bootstrapFmiSpecsTables() {
     `);
 
     await client.query(`
+      CREATE UNIQUE INDEX IF NOT EXISTS uq_scenario_rel
+        ON payment_scheme_scenario_relationships (scenario_id, relationship_type_id, target_fmi_id);
+    `);
+
+    await client.query(`
+      CREATE UNIQUE INDEX IF NOT EXISTS uq_fmi_rel
+        ON fmi_relationships (source_fmi_id, relationship_type_id, target_fmi_id);
+    `);
+
+    await client.query(`
       INSERT INTO payment_scheme_scenario_relationships (scenario_id, relationship_type_id, target_fmi_id, notes)
       SELECT s.id, rt.id, e.id, v.notes
       FROM (VALUES
@@ -294,18 +304,21 @@ export async function bootstrapFmiSpecsTables() {
       JOIN payment_scheme_processing_scenarios s ON s.code = v.scenario_code
       JOIN fmi_relationship_types rt ON rt.code = v.rel_type_code
       JOIN fmi_entries e ON e.code = v.target_code
-      WHERE NOT EXISTS (
-        SELECT 1 FROM payment_scheme_scenario_relationships x
-        WHERE x.scenario_id = s.id AND x.relationship_type_id = rt.id AND x.target_fmi_id = e.id
-      );
+      ON CONFLICT (scenario_id, relationship_type_id, target_fmi_id) DO NOTHING;
     `);
 
     await client.query(`
       INSERT INTO fmi_relationships (source_fmi_id, relationship_type_id, target_fmi_id, notes)
       SELECT src.id, rt.id, tgt.id, v.notes
       FROM (VALUES
+        ('SCT-INST','SCHEME_USES_CLEARING_MECHANISM','RT1','SCT Inst payments can be cleared via EBA RT1'),
+        ('SCT-INST','SCHEME_USES_CLEARING_MECHANISM','TIPS','SCT Inst payments can settle directly in TIPS'),
         ('OCT-INST','SCHEME_USES_CLEARING_MECHANISM','RT1','OCT Inst payments can be cleared via EBA RT1'),
         ('OCT-INST','SCHEME_USES_CLEARING_MECHANISM','TIPS','OCT Inst payments can settle directly in TIPS'),
+        ('RT1','CLEARING_MECHANISM_SETTLES_IN_SETTLEMENT_SYSTEM','TIPS','RT1 net positions settle in TIPS'),
+        ('STEP2-SCT','CLEARING_MECHANISM_SETTLES_IN_SETTLEMENT_SYSTEM','T2','STEP2 SCT net positions settle in T2'),
+        ('STEP2-SDD','CLEARING_MECHANISM_SETTLES_IN_SETTLEMENT_SYSTEM','T2','STEP2 SDD net positions settle in T2'),
+        ('EURO1','CLEARING_MECHANISM_SETTLES_IN_SETTLEMENT_SYSTEM','T2','EURO1 end-of-day net positions settle in T2'),
         ('FPS','SCHEME_USES_CLEARING_MECHANISM','FPS-INFRA','Faster Payments Scheme clears via FPS central infrastructure'),
         ('FPS-INFRA','CLEARING_MECHANISM_SETTLES_IN_SETTLEMENT_SYSTEM','BOE-RTGS','FPS central infrastructure net positions settle in Bank of England RTGS'),
         ('CHAPS','CLEARING_MECHANISM_SETTLES_IN_SETTLEMENT_SYSTEM','BOE-RTGS','CHAPS payments settle in Bank of England RTGS'),
@@ -314,10 +327,7 @@ export async function bootstrapFmiSpecsTables() {
       JOIN fmi_entries src ON src.code = v.src_code
       JOIN fmi_relationship_types rt ON rt.code = v.rel_type_code
       JOIN fmi_entries tgt ON tgt.code = v.tgt_code
-      WHERE NOT EXISTS (
-        SELECT 1 FROM fmi_relationships x
-        WHERE x.source_fmi_id = src.id AND x.relationship_type_id = rt.id AND x.target_fmi_id = tgt.id
-      );
+      ON CONFLICT (source_fmi_id, relationship_type_id, target_fmi_id) DO NOTHING;
     `);
 
     console.log("[FmiSpecs] Bootstrap complete: tables created, seed data applied");
