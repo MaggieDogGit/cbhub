@@ -13,7 +13,7 @@ export async function bootstrapFmiSpecsTables() {
         performs_scheme_governance boolean,
         settlement_model text,
         settlement_asset_type text,
-        settles_in_fmi_id varchar,
+        settles_in_fmi_id varchar REFERENCES fmi_entries(id),
         finality_model text,
         settlement_cycle_description text,
         operating_model text,

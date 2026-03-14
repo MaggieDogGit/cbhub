@@ -650,7 +650,7 @@ export const fmiSpecifications = pgTable("fmi_specifications", {
   performs_scheme_governance: boolean("performs_scheme_governance"),
   settlement_model: text("settlement_model"),
   settlement_asset_type: text("settlement_asset_type"),
-  settles_in_fmi_id: varchar("settles_in_fmi_id"),
+  settles_in_fmi_id: varchar("settles_in_fmi_id").references(() => fmiEntries.id),
   finality_model: text("finality_model"),
   settlement_cycle_description: text("settlement_cycle_description"),
   operating_model: text("operating_model"),
