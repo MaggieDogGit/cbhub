@@ -1,0 +1,74 @@
+Proceed to complete the service-layer refactor now.
+
+Use the migration audit as the source of truth and implement the remaining work without changing user-facing behaviour, database schema, or API contracts.
+
+Required changes:
+
+1. Expand server/services/bankingGroupService.ts
+- Add:
+  - createBankingGroup(...)
+  - getBankingGroups(...)
+  - updateBankingGroup(...)
+  - deleteBankingGroup(...)
+- These should wrap existing storage methods and contain the business logic currently called directly from registryRoutes.ts
+
+2. Update server/routes/registryRoutes.ts
+- Remove direct storage calls for banking group CRUD
+- Route handlers should validate input, call bankingGroupService, and return responses
+- Keep existing endpoints and response shapes unchanged
+
+3. Create server/services/researchService.ts
+- Move the inline OpenAI/web-search/prompt structuring logic out of researchRoutes.ts
+- researchRoutes.ts should become thin: validate request -> call researchService -> return result
+- Keep current behaviour unchanged
+
+4. Expand server/services/jobService.ts
+- Add:
+  - createJob(...)
+  - updateJobStatus(...)
+  - getJobResults(...)
+- Move direct storage interaction from jobRoutes.ts into jobService.ts
+- Keep startJobRunner() working as-is
+
+5. Update server/routes/jobRoutes.ts
+- Remove direct storage.createJob() and related direct storage usage
+- Route handlers should call jobService methods instead
+- Keep API contracts unchanged
+
+6. Expand server/services/cbDiscoveryService.ts
+- Move market scan orchestration logic out of jobService.ts into cbDiscoveryService.ts
+- Add a clearly named function such as runMarketScan(...)
+- Keep constants in cbDiscoveryService.ts if still useful
+- jobService.ts may orchestrate jobs, but discovery logic should live in cbDiscoveryService.ts
+
+7. Clean up dashboard access
+- Move raw SQL from dashboardRoutes.ts into storage.ts methods or a dedicated dashboardService.ts
+- Prefer storage.ts methods if simpler
+- dashboardRoutes.ts should not contain raw SQL
+
+8. Remove legacy wrappers when safe
+- Delete server/jobRunner.ts
+- Update server/agentFmiResearch.ts to import from ./agent instead of ./agentCore
+- Then delete server/agentCore.ts
+
+9. Preserve intentional compatibility index
+- Keep server/routes.ts as the top-level mount index if that remains the cleanest entrypoint
+
+10. After implementation, create a file REFACTOR_STATUS.md in the repo root with:
+- completed changes
+- files touched
+- wrappers removed
+- remaining known technical debt, if any
+- confirmation that endpoints, UI, and schema were not changed
+
+Important constraints:
+- Do not change UI
+- Do not change database schema
+- Do not change endpoint paths or response contracts unless strictly necessary
+- Do not leave business logic in route files where it can be moved cleanly into services
+- Minimise risk and keep backward compatibility
+
+At the end, provide:
+1. a list of files changed
+2. a short summary of architecture improvements
+3. any remaining technical debt
