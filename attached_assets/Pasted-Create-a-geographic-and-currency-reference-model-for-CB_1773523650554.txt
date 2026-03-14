@@ -1,0 +1,175 @@
+Create a geographic and currency reference model for CBHub.
+
+Objective
+Allow the system to:
+• Store countries
+• Store currencies
+• Define regions (EU, SEPA, Euro Area, etc.)
+• Link countries to regions
+• Link countries to currencies
+• Allow currencies to have a “currency area”
+
+This data will later be used by:
+• FMI definitions
+• Correspondent banking market scans
+• Payment scheme coverage logic
+• One-leg-out analysis
+
+------------------------------------------------
+1. Countries table
+------------------------------------------------
+
+countries
+
+Fields:
+id (uuid, pk)
+name (text)
+iso2 (text)          -- e.g. NL
+iso3 (text)          -- e.g. NLD
+numeric_code (int)
+official_name (text)
+capital (text)
+region_hint (text)   -- optional
+created_at
+updated_at
+
+Example rows:
+
+Netherlands | NL | NLD
+Belgium | BE | BEL
+Germany | DE | DEU
+United Kingdom | GB | GBR
+
+------------------------------------------------
+2. Currencies table
+------------------------------------------------
+
+currencies
+
+Fields:
+id (uuid, pk)
+code (text)          -- ISO 4217 e.g. EUR
+name (text)
+symbol (text)
+minor_units (int)
+created_at
+updated_at
+
+Example rows:
+
+EUR | Euro
+USD | US Dollar
+GBP | Pound Sterling
+HUF | Hungarian Forint
+CZK | Czech Koruna
+RON | Romanian Leu
+PLN | Polish Zloty
+
+------------------------------------------------
+3. Country currency relationship
+------------------------------------------------
+
+country_currencies
+
+Fields:
+id (uuid, pk)
+country_id (fk -> countries)
+currency_id (fk -> currencies)
+is_primary (boolean)
+valid_from
+valid_to
+
+Example:
+
+Germany -> EUR
+Hungary -> HUF
+Romania -> RON
+
+------------------------------------------------
+4. Regions table
+------------------------------------------------
+
+regions
+
+Purpose:
+Allow definition of geographic or regulatory groupings.
+
+Examples:
+EU
+SEPA
+Euro Area
+EEA
+Nordics
+CEE
+
+Fields:
+
+id (uuid, pk)
+name (text)
+type (text)
+
+Example types:
+
+economic_union
+payment_scheme_region
+geographic_region
+regulatory_region
+
+------------------------------------------------
+5. Region membership table
+------------------------------------------------
+
+region_members
+
+Fields:
+
+id (uuid)
+region_id (fk -> regions)
+country_id (fk -> countries)
+
+Example:
+
+SEPA -> Netherlands
+SEPA -> Germany
+EU -> Netherlands
+Euro Area -> Germany
+
+------------------------------------------------
+6. Currency areas
+------------------------------------------------
+
+currency_areas
+
+Purpose:
+Define where a currency is official or commonly used.
+
+Fields:
+
+id (uuid)
+currency_id (fk -> currencies)
+region_id (fk -> regions)
+is_official (boolean)
+
+Example:
+
+EUR -> Euro Area (official)
+EUR -> Montenegro (official but not EU)
+USD -> United States
+
+------------------------------------------------
+7. Future compatibility
+
+Design must support:
+
+• FMI participation rules
+• One-leg-out logic
+• Correspondent banking coverage
+• Payment scheme eligibility
+• Regional analytics
+
+Example queries later:
+
+Find all SEPA countries
+Find all Euro Area countries
+Find all currencies used in EU
+Find FMIs accessible to SEPA banks

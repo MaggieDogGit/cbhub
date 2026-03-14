@@ -28,6 +28,7 @@ client/src/
     LegalEntities.tsx      – Expandable entity list with BIC/service inline tables
     FmiProfiles.tsx        – FMI list page (/fmis): 49 FMIs, faceted type sidebar, subtype/search filters, card grid
     FmiProfileDetail.tsx   – FMI detail page (/fmis/:id): 6 sections (objective, role, scope, access, operator, importance); sources
+    GeoReference.tsx       – Geographic & Currency Reference (/geo-reference): Countries/Currencies/Regions tabs; 66 countries, 47 currencies, 14 regions
     Coverage.tsx           – Coverage dashboard (Complete/Partial/Empty per group) + job queue UI
     CLS.tsx                – CLS profiles table, inline create/edit
     Currencies.tsx         – Per-currency competitor view table
@@ -126,6 +127,29 @@ All prefixed with `/api`:
 - `server/services/chatAgentService.ts` handles `/api/chat` SSE streaming via `runChat()`
 - `server/services/jobService.ts` handles background job processing via `processNextJob()` / `startJobRunner()`
 - Tool confirmation pattern: if user message matches `yes|confirmed|proceed|...`, passes `firstIterToolChoice: "required"` to immediately act without re-asking
+
+## Geographic & Currency Reference Model
+
+Six interconnected tables forming a complete geographic and currency reference for CB analysis:
+
+| Table | Rows | Purpose |
+|---|---|---|
+| `countries` | 66 | ISO 3166 country reference (EU-27, SEPA non-EU, Americas, APAC, MENA, SSA) |
+| `geo_currencies` | 47 | ISO 4217 currencies with symbol and minor units |
+| `country_currencies` | 67 | Country ↔ currency links (primary flag) |
+| `regions` | 14 | Named groupings: EU, Euro Area, SEPA, EEA, Nordics, CEE, GCC, Americas, APAC, MENA, SSA, G10, G20, CLS Eligible |
+| `region_members` | 348 | Country ↔ region memberships |
+| `currency_areas` | 72 | Currency ↔ region links (official flag, e.g. EUR → Euro Area) |
+
+API routes (all under `/api/`):
+- `GET /api/countries` — all countries with primary currency
+- `GET /api/countries/:iso2` — country detail with currencies + regions
+- `GET /api/currencies` — all currencies with country count + area flag
+- `GET /api/currencies/:code` — currency detail with countries + regions
+- `GET /api/regions` — all regions with member count
+- `GET /api/regions/:id` — region detail with member countries + currencies
+
+UI: `/geo-reference` — 3-tab page (Countries searchable table, Currencies card grid, Regions grouped expandable cards). Accessible from sidebar under Tools → Geo Reference.
 
 ## Background Job System
 

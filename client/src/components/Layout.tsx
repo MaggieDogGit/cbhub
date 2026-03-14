@@ -2,7 +2,7 @@ import { useState } from "react";
 import { Link, useLocation } from "wouter";
 import {
   LayoutDashboard, Building2, Users, Swords, Bot, Database,
-  Menu, Search, MessageSquare, LogOut, BookOpen, Network, ClipboardEdit,
+  Menu, Search, MessageSquare, LogOut, BookOpen, Network, ClipboardEdit, Globe,
 } from "lucide-react";
 import { Input } from "@/components/ui/input";
 import { useAuth } from "@/hooks/useAuth";
@@ -28,8 +28,9 @@ const RESEARCH_NAV: NavItem[] = [
 ];
 
 const TOOLS_NAV: NavItem[] = [
-  { name: "Registry Editor",  path: "/registry", icon: ClipboardEdit },
-  { name: "Database Admin",   path: "/admin",    icon: Database },
+  { name: "Registry Editor",  path: "/registry",      icon: ClipboardEdit },
+  { name: "Geo Reference",    path: "/geo-reference",  icon: Globe },
+  { name: "Database Admin",   path: "/admin",          icon: Database },
 ];
 
 function NavSection({ label, items, location, onNavigate }: {

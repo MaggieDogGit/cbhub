@@ -20,6 +20,7 @@ import FmiManagement from "@/pages/FmiManagement";
 import FmiProfiles from "@/pages/FmiProfiles";
 import FmiProfileDetail from "@/pages/FmiProfileDetail";
 import Registry from "@/pages/Registry";
+import GeoReference from "@/pages/GeoReference";
 import Login from "@/pages/Login";
 import NotFound from "@/pages/not-found";
 import { useAuth } from "@/hooks/useAuth";
@@ -48,6 +49,7 @@ function Router() {
         <Route path="/coverage" component={Coverage} />
         <Route path="/admin" component={DatabaseAdmin} />
         <Route path="/registry" component={Registry} />
+        <Route path="/geo-reference" component={GeoReference} />
         <Route component={NotFound} />
       </Switch>
     </Layout>

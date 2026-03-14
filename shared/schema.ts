@@ -460,3 +460,99 @@ export const fmiTaxonomy = pgTable("fmi_taxonomy", {
 export const insertFmiTaxonomySchema = createInsertSchema(fmiTaxonomy).omit({ id: true, created_at: true });
 export type InsertFmiTaxonomy = z.infer<typeof insertFmiTaxonomySchema>;
 export type FmiTaxonomy = typeof fmiTaxonomy.$inferSelect;
+
+// ── Geographic & Currency Reference Model ────────────────────────────────────
+
+export const REGION_TYPES = [
+  "economic_union",
+  "payment_scheme_region",
+  "geographic_region",
+  "regulatory_region",
+  "currency_union",
+] as const;
+export type RegionType = typeof REGION_TYPES[number];
+
+// 1. Countries
+export const countries = pgTable("countries", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  name: text("name").notNull(),
+  iso2: varchar("iso2", { length: 2 }).notNull().unique(),
+  iso3: varchar("iso3", { length: 3 }).notNull().unique(),
+  numeric_code: integer("numeric_code"),
+  official_name: text("official_name"),
+  capital: text("capital"),
+  region_hint: text("region_hint"),
+  created_at: timestamp("created_at").defaultNow(),
+  updated_at: timestamp("updated_at").defaultNow(),
+});
+
+// 2. Currencies
+export const geoCurrencies = pgTable("geo_currencies", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  code: varchar("code", { length: 10 }).notNull().unique(),
+  name: text("name").notNull(),
+  symbol: text("symbol"),
+  minor_units: integer("minor_units").default(2),
+  created_at: timestamp("created_at").defaultNow(),
+  updated_at: timestamp("updated_at").defaultNow(),
+});
+
+// 3. Country ↔ Currency (many-to-many with is_primary + validity period)
+export const countryCurrencies = pgTable("country_currencies", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  country_id: varchar("country_id").notNull().references(() => countries.id, { onDelete: "cascade" }),
+  currency_id: varchar("currency_id").notNull().references(() => geoCurrencies.id, { onDelete: "cascade" }),
+  is_primary: boolean("is_primary").default(true),
+  valid_from: date("valid_from"),
+  valid_to: date("valid_to"),
+});
+
+// 4. Regions (geographic / regulatory groupings)
+export const regions = pgTable("regions", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  name: text("name").notNull().unique(),
+  type: text("type").notNull(),
+  description: text("description"),
+  created_at: timestamp("created_at").defaultNow(),
+  updated_at: timestamp("updated_at").defaultNow(),
+});
+
+// 5. Region membership (country ↔ region many-to-many)
+export const regionMembers = pgTable("region_members", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  region_id: varchar("region_id").notNull().references(() => regions.id, { onDelete: "cascade" }),
+  country_id: varchar("country_id").notNull().references(() => countries.id, { onDelete: "cascade" }),
+});
+
+// 6. Currency areas (currency ↔ region, with is_official flag)
+export const currencyAreas = pgTable("currency_areas", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  currency_id: varchar("currency_id").notNull().references(() => geoCurrencies.id, { onDelete: "cascade" }),
+  region_id: varchar("region_id").notNull().references(() => regions.id, { onDelete: "cascade" }),
+  is_official: boolean("is_official").default(true),
+});
+
+// Insert schemas and types
+export const insertCountrySchema = createInsertSchema(countries).omit({ id: true, created_at: true, updated_at: true });
+export type InsertCountry = z.infer<typeof insertCountrySchema>;
+export type Country = typeof countries.$inferSelect;
+
+export const insertGeoCurrencySchema = createInsertSchema(geoCurrencies).omit({ id: true, created_at: true, updated_at: true });
+export type InsertGeoCurrency = z.infer<typeof insertGeoCurrencySchema>;
+export type GeoCurrency = typeof geoCurrencies.$inferSelect;
+
+export const insertCountryCurrencySchema = createInsertSchema(countryCurrencies).omit({ id: true });
+export type InsertCountryCurrency = z.infer<typeof insertCountryCurrencySchema>;
+export type CountryCurrency = typeof countryCurrencies.$inferSelect;
+
+export const insertRegionSchema = createInsertSchema(regions).omit({ id: true, created_at: true, updated_at: true });
+export type InsertRegion = z.infer<typeof insertRegionSchema>;
+export type Region = typeof regions.$inferSelect;
+
+export const insertRegionMemberSchema = createInsertSchema(regionMembers).omit({ id: true });
+export type InsertRegionMember = z.infer<typeof insertRegionMemberSchema>;
+export type RegionMember = typeof regionMembers.$inferSelect;
+
+export const insertCurrencyAreaSchema = createInsertSchema(currencyAreas).omit({ id: true });
+export type InsertCurrencyArea = z.infer<typeof insertCurrencyAreaSchema>;
+export type CurrencyArea = typeof currencyAreas.$inferSelect;
