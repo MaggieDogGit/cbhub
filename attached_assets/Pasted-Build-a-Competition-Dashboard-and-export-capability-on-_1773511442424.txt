@@ -1,0 +1,83 @@
+Build a Competition Dashboard and export capability on top of the redesigned UI structure.
+
+Core modeling rules:
+1. Banking Group is the comparison unit.
+2. Legal Entity is the actual provider unit.
+3. BICs, CB Services, and market coverage are attributes of Legal Entity.
+4. Group-level comparisons must be aggregated from underlying legal-entity data.
+5. No CB service should be modeled directly on Banking Group.
+
+Objective:
+Turn the app into a competition intelligence dashboard that allows the user to compare all banks with the competition marker and export up-to-date peer comparison views.
+
+Competition Dashboard requirements:
+1. Add a primary Competition page if not already created
+2. Display all banking groups with the competition marker
+3. Compare them at Banking Group level using aggregated legal-entity data
+4. Allow drill-down into the underlying legal entities supporting each group-level conclusion
+
+Recommended filters:
+- market
+- currency
+- service category
+- region
+- competition marker
+- confidence level if available
+- updated/reviewed status if available
+
+Recommended group-level comparison columns:
+- Group name
+- Headquarters / home market
+- Competition marker
+- Number of relevant legal entities
+- Aggregated CB services summary
+- Aggregated market coverage summary
+- Key currencies covered
+- Key scheme/participation indicators where available
+- Confidence / evidence completeness if available
+- Last updated / reviewed if available
+
+Views to support:
+1. Executive view
+- Simplified group-level comparison
+- Cleaner and presentation-friendly
+- Focus on strategic comparison
+
+2. Analyst view
+- More detailed comparison
+- More legal-entity depth
+- More service/market detail
+- Confidence/evidence visibility where available
+
+Drill-down behavior:
+- Clicking a group should open a detail view or panel showing:
+  - the legal entities in scope
+  - which entity underpins which services
+  - relevant market coverage
+  - confidence/evidence/notes if available
+
+Export requirements:
+1. Export the current filtered competition view
+2. Support CSV export
+3. Support Excel export if practical
+4. Export should work for both executive and analyst-style comparison views
+5. Ensure exported output is presentation-friendly and easy to reuse
+
+Design goals:
+- Make this the main peer benchmarking cockpit
+- Optimise for comparing ING’s peers over time
+- Make it easy to present results externally or in management materials
+- Keep the experience intuitive and fast
+
+Implementation guidance:
+1. Build the Competition Dashboard using the new UI structure from the previous step
+2. Aggregate comparison data from legal-entity-level attributes
+3. Add filter controls and view toggles
+4. Add export actions for the current filtered view
+5. Ensure drill-down to group and legal-entity detail works correctly
+
+Constraints:
+- Do not redesign around BIC as a first-class comparison object
+- Do not attach services directly to Banking Group
+- Preserve existing functionality where possible
+- Avoid unnecessary complexity; optimise for a single-user analyst workflow
