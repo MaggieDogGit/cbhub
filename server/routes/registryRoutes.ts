@@ -3,7 +3,10 @@
 
 import { Router } from "express";
 import { storage } from "../storage";
-import { mergeBankingGroups, mergeLegalEntities } from "../services/bankingGroupService";
+import {
+  listBankingGroups, createBankingGroup, updateBankingGroup, deleteBankingGroup,
+  mergeBankingGroups, mergeLegalEntities,
+} from "../services/bankingGroupService";
 import {
   insertBankingGroupSchema, insertLegalEntitySchema, insertBicSchema,
   insertCorrespondentServiceSchema, insertClsProfileSchema, insertFmiSchema,
@@ -14,18 +17,18 @@ import {
 const router = Router();
 
 router.get("/banking-groups", async (_req, res) => {
-  res.json(await storage.listBankingGroups());
+  res.json(await listBankingGroups());
 });
 router.post("/banking-groups", async (req, res) => {
   const parsed = insertBankingGroupSchema.safeParse(req.body);
   if (!parsed.success) return res.status(400).json({ message: parsed.error.message });
-  res.json(await storage.createBankingGroup(parsed.data));
+  res.json(await createBankingGroup(parsed.data));
 });
 router.patch("/banking-groups/:id", async (req, res) => {
-  res.json(await storage.updateBankingGroup(req.params.id, req.body));
+  res.json(await updateBankingGroup(req.params.id, req.body));
 });
 router.delete("/banking-groups/:id", async (req, res) => {
-  await storage.deleteBankingGroup(req.params.id);
+  await deleteBankingGroup(req.params.id);
   res.json({ ok: true });
 });
 router.post("/banking-groups/merge", async (req, res) => {

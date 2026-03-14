@@ -1,5 +1,5 @@
 import { eq, and, desc, sql } from "drizzle-orm";
-import { db } from "./db";
+import { db, pool } from "./db";
 import {
   bankingGroups, legalEntities, bics, correspondentServices,
   clsProfiles, fmis, fmiRegistry, fmiResearchJobs, dataSources, conversations, chatMessages, agentJobs,
@@ -26,7 +26,12 @@ import {
 } from "@shared/schema";
 import { randomUUID } from "crypto";
 
-export interface IStorage {
+export interface IDashboardQueries {
+  getDashboardCurrencyProviders(): Promise<{ currency: string; count: number; banks: string[] }[]>;
+  getDashboardCoverageMap(): Promise<any[]>;
+}
+
+export interface IStorage extends IDashboardQueries {
   // BankingGroups
   listBankingGroups(): Promise<BankingGroup[]>;
   getBankingGroup(id: string): Promise<BankingGroup | undefined>;
@@ -343,6 +348,49 @@ export class DatabaseStorage implements IStorage {
   }
   async deleteCbIndirectParticipation(id: string) {
     await db.delete(cbIndirectParticipation).where(eq(cbIndirectParticipation.id, id));
+  }
+
+  async getDashboardCurrencyProviders(): Promise<{ currency: string; count: number; banks: string[] }[]> {
+    const result = await pool.query(`
+      SELECT
+        cs.currency,
+        bg.group_name
+      FROM correspondent_services cs
+      JOIN bics b ON b.id = cs.bic_id
+      JOIN legal_entities le ON le.id = b.legal_entity_id
+      JOIN banking_groups bg ON bg.id = le.group_id
+      WHERE cs.clearing_model = 'Onshore'
+        AND cs.currency IS NOT NULL
+        AND bg.group_name IS NOT NULL
+    `);
+    const map: Record<string, Set<string>> = {};
+    for (const row of result.rows) {
+      if (!map[row.currency]) map[row.currency] = new Set();
+      map[row.currency].add(row.group_name);
+    }
+    return Object.entries(map)
+      .map(([currency, banks]) => ({ currency, count: banks.size, banks: Array.from(banks).sort() }))
+      .sort((a, b) => b.count - a.count);
+  }
+
+  async getDashboardCoverageMap(): Promise<any[]> {
+    const result = await pool.query(`
+      SELECT
+        cs.country,
+        cs.currency::text,
+        bg.group_name,
+        cs.rtgs_membership,
+        cs.instant_scheme_access,
+        cs.cls_member
+      FROM correspondent_services cs
+      JOIN bics b ON b.id = cs.bic_id
+      JOIN legal_entities le ON le.id = b.legal_entity_id
+      JOIN banking_groups bg ON bg.id = le.group_id
+      WHERE cs.clearing_model = 'Onshore'
+        AND cs.country IS NOT NULL
+        AND cs.country != ''
+    `);
+    return result.rows;
   }
 }
 

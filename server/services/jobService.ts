@@ -4,11 +4,31 @@
 //            and could be extracted into a dedicated summarisation helper.
 
 import { storage } from "../storage";
-import { buildSystemPrompt, buildJobPrompt, buildLightJobPrompt, buildMarketScanPrompt, buildDryRunSuffix, buildIntelContext, buildGroupSnapshot, runAgentLoop, getLightTools, getDryRunTools } from "../agent";
-import { COUNTRY_RTGS, COUNTRY_CURRENCY } from "./cbDiscoveryService";
-import type { IntelObservation, AgentJob } from "@shared/schema";
+import { buildSystemPrompt, buildJobPrompt, buildLightJobPrompt, buildIntelContext, buildGroupSnapshot, runAgentLoop, getLightTools, getDryRunTools } from "../agent";
+import { COUNTRY_RTGS, COUNTRY_CURRENCY, runMarketScanJob } from "./cbDiscoveryService";
+import type { IntelObservation, AgentJob, InsertAgentJob } from "@shared/schema";
 
 export { COUNTRY_CURRENCY, COUNTRY_RTGS };
+
+export async function listJobs() {
+  return storage.listJobs();
+}
+
+export async function getJob(id: string) {
+  return storage.getJob(id);
+}
+
+export async function createJob(data: InsertAgentJob) {
+  return storage.createJob(data);
+}
+
+export async function updateJobStatus(id: string, data: Partial<AgentJob>) {
+  return storage.updateJob(id, data);
+}
+
+export async function deleteJob(id: string) {
+  return storage.deleteJob(id);
+}
 
 let isProcessing = false;
 
@@ -46,30 +66,18 @@ async function processNextJob() {
     });
 
     const sources = await storage.listDataSources();
-    let message: string;
-
-    let preExistingGroupIds: Set<string> = new Set();
-    let preExistingEntityIds: Set<string> = new Set();
-    let preExistingBicIds: Set<string> = new Set();
-    let entityGroupMap: Map<string, string> = new Map();
-    if (isMarketScan && !isDryRun) {
-      const [allGroups, allEntities, allBics] = await Promise.all([
-        storage.listBankingGroups(),
-        storage.listLegalEntities(),
-        storage.listBics(),
-      ]);
-      preExistingGroupIds = new Set(allGroups.map(g => g.id));
-      preExistingEntityIds = new Set(allEntities.map(e => e.id));
-      preExistingBicIds = new Set(allBics.map(b => b.id));
-      for (const e of allEntities) entityGroupMap.set(e.id, e.group_id);
-    }
 
     if (isMarketScan) {
-      const mCountry = pending.market_country as string;
-      const mCurrency = pending.market_currency as string;
-      const rtgs = mCurrency === "EUR" ? "TARGET2" : (COUNTRY_RTGS[mCountry] || null);
-      message = buildMarketScanPrompt(mCountry, mCurrency, rtgs);
-      if (isDryRun) message += buildDryRunSuffix(mCountry, mCurrency);
+      const { stepCount, scanSummaryJson } = await runMarketScanJob(pending, isDryRun, jobLabel, conv.id, sources);
+
+      await storage.updateJob(pending.id, {
+        status: "completed",
+        completed_at: new Date(),
+        steps_completed: stepCount,
+        ...(scanSummaryJson ? { scan_summary: scanSummaryJson } : {}),
+      });
+
+      console.log(`[JobRunner] Completed job ${pending.id} — ${jobLabel} (${stepCount} steps). Cooling down ${JOB_COOLDOWN_MS / 1000}s before next job.`);
     } else {
       const group = await storage.getBankingGroup(pending.banking_group_id!);
       if (!group) throw new Error(`Banking group ${pending.banking_group_id} not found`);
@@ -111,125 +119,78 @@ async function processNextJob() {
             group.cb_probability, group.rtgs_system, group.rtgs_member, snapshot, scope,
           );
 
-      message = intelContext ? intelContext + basePrompt : basePrompt;
-    }
+      const message = intelContext ? intelContext + basePrompt : basePrompt;
 
-    await storage.createMessage({ conversation_id: conv.id, role: "user", content: message });
+      await storage.createMessage({ conversation_id: conv.id, role: "user", content: message });
 
-    const mode = isMarketScan ? "job" : (isLight ? "light" : "job");
-    const systemPrompt = buildSystemPrompt(sources, undefined, mode);
-    const openaiMessages: any[] = [
-      { role: "system", content: systemPrompt },
-      { role: "user", content: message },
-    ];
+      const mode = isLight ? "light" : "job";
+      const systemPrompt = buildSystemPrompt(sources, undefined, mode);
+      const openaiMessages: any[] = [
+        { role: "system", content: systemPrompt },
+        { role: "user", content: message },
+      ];
 
-    const maxIter = isMarketScan ? 50 : (isLight ? 3 : 15);
-    const model = isLight ? "gpt-4o-mini" : "gpt-4o";
-    const tools = isDryRun ? getDryRunTools() : (isLight ? getLightTools() : undefined);
+      const maxIter = isLight ? 3 : 15;
+      const model = isLight ? "gpt-4o-mini" : "gpt-4o";
+      const tools = isLight ? getLightTools() : undefined;
 
-    let stepCount = 0;
-    const assistantContent = await runAgentLoop(
-      openaiMessages,
-      async (_toolName, _args, statusText) => {
-        stepCount++;
-        console.log(`[JobRunner] ${jobLabel} — step ${stepCount}: ${statusText}`);
-        await storage.updateJob(pending.id, { steps_completed: stepCount });
-      },
-      maxIter,
-      "auto",
-      model,
-      tools,
-    );
+      let stepCount = 0;
+      const assistantContent = await runAgentLoop(
+        openaiMessages,
+        async (_toolName, _args, statusText) => {
+          stepCount++;
+          console.log(`[JobRunner] ${jobLabel} — step ${stepCount}: ${statusText}`);
+          await storage.updateJob(pending.id, { steps_completed: stepCount });
+        },
+        maxIter,
+        "auto",
+        model,
+        tools,
+      );
 
-    await storage.createMessage({ conversation_id: conv.id, role: "assistant", content: assistantContent });
+      await storage.createMessage({ conversation_id: conv.id, role: "assistant", content: assistantContent });
 
-    let scanSummaryJson: string | undefined;
-    if (isMarketScan && isDryRun) {
-      scanSummaryJson = JSON.stringify({
-        summaryText: assistantContent,
-        dryRun: true,
-        newGroupIds: [],
-        newGroupNames: [],
-        createdCount: 0,
-        updatedCount: 0,
-      });
-    } else if (isMarketScan) {
-      const [allGroupsAfter, allEntitiesAfter, allBicsAfter] = await Promise.all([
-        storage.listBankingGroups(),
-        storage.listLegalEntities(),
-        storage.listBics(),
-      ]);
-      const groupLookup = new Map(allGroupsAfter.map(g => [g.id, g]));
-      const postEntityGroupMap = new Map(allEntitiesAfter.map(e => [e.id, e.group_id]));
-      const newGroups = allGroupsAfter.filter(g => !preExistingGroupIds.has(g.id));
-      const newGroupIds = new Set(newGroups.map(g => g.id));
-      const touchedExistingGroupIds = new Set<string>();
-      for (const e of allEntitiesAfter) {
-        if (!preExistingEntityIds.has(e.id) && preExistingGroupIds.has(e.group_id)) {
-          touchedExistingGroupIds.add(e.group_id);
+      let scanSummaryJson: string | undefined;
+      if (!isLight) {
+        const validationMatch = assistantContent.match(/VALIDATION_JSON:\s*(\{[\s\S]*?\})\s*(?:\n|$)/);
+        let validationValid: boolean | null = null;
+        let issues: string[] = [];
+        let missingEntities: string[] = [];
+        let notes = "";
+        if (validationMatch) {
+          try {
+            const vJson = JSON.parse(validationMatch[1]);
+            validationValid = !!vJson.structure_valid;
+            issues = Array.isArray(vJson.issues) ? vJson.issues : [];
+            missingEntities = Array.isArray(vJson.missing_entities) ? vJson.missing_entities : [];
+            notes = vJson.notes || "";
+          } catch {}
+        }
+        const summaryLines = assistantContent.match(/Entities added[\s\S]*/i);
+        const summaryText = summaryLines ? summaryLines[0].trim() : assistantContent.slice(-500).trim();
+        if (validationValid !== null) {
+          scanSummaryJson = JSON.stringify({
+            summaryText,
+            validationValid,
+            issueCount: issues.length,
+            issues,
+            missingEntities,
+            notes,
+          });
+        } else {
+          scanSummaryJson = JSON.stringify({ summaryText });
         }
       }
-      for (const b of allBicsAfter) {
-        if (!preExistingBicIds.has(b.id)) {
-          const groupId = entityGroupMap.get(b.legal_entity_id) || postEntityGroupMap.get(b.legal_entity_id);
-          if (groupId && preExistingGroupIds.has(groupId)) {
-            touchedExistingGroupIds.add(groupId);
-          }
-        }
-      }
-      const touchedExistingGroups = [...touchedExistingGroupIds]
-        .filter(gid => !newGroupIds.has(gid))
-        .map(gid => groupLookup.get(gid))
-        .filter(Boolean) as typeof allGroupsAfter;
-      const allTouchedGroups = [...newGroups, ...touchedExistingGroups];
-      const summaryMatch = assistantContent.match(/Providers found[\s\S]*/i);
-      const summaryText = summaryMatch ? summaryMatch[0].trim() : assistantContent.trim();
-      scanSummaryJson = JSON.stringify({
-        summaryText,
-        newGroupIds: allTouchedGroups.map(g => g.id),
-        newGroupNames: allTouchedGroups.map(g => g.group_name),
-        createdCount: newGroups.length,
-        updatedCount: touchedExistingGroups.length,
+
+      await storage.updateJob(pending.id, {
+        status: "completed",
+        completed_at: new Date(),
+        steps_completed: stepCount,
+        ...(scanSummaryJson ? { scan_summary: scanSummaryJson } : {}),
       });
-    } else if (!isMarketScan && !isLight) {
-      const validationMatch = assistantContent.match(/VALIDATION_JSON:\s*(\{[\s\S]*?\})\s*(?:\n|$)/);
-      let validationValid: boolean | null = null;
-      let issues: string[] = [];
-      let missingEntities: string[] = [];
-      let notes = "";
-      if (validationMatch) {
-        try {
-          const vJson = JSON.parse(validationMatch[1]);
-          validationValid = !!vJson.structure_valid;
-          issues = Array.isArray(vJson.issues) ? vJson.issues : [];
-          missingEntities = Array.isArray(vJson.missing_entities) ? vJson.missing_entities : [];
-          notes = vJson.notes || "";
-        } catch {}
-      }
-      const summaryLines = assistantContent.match(/Entities added[\s\S]*/i);
-      const summaryText = summaryLines ? summaryLines[0].trim() : assistantContent.slice(-500).trim();
-      if (validationValid !== null) {
-        scanSummaryJson = JSON.stringify({
-          summaryText,
-          validationValid,
-          issueCount: issues.length,
-          issues,
-          missingEntities,
-          notes,
-        });
-      } else {
-        scanSummaryJson = JSON.stringify({ summaryText });
-      }
+
+      console.log(`[JobRunner] Completed job ${pending.id} — ${jobLabel} (${stepCount} steps). Cooling down ${JOB_COOLDOWN_MS / 1000}s before next job.`);
     }
-
-    await storage.updateJob(pending.id, {
-      status: "completed",
-      completed_at: new Date(),
-      steps_completed: stepCount,
-      ...(scanSummaryJson ? { scan_summary: scanSummaryJson } : {}),
-    });
-
-    console.log(`[JobRunner] Completed job ${pending.id} — ${jobLabel} (${stepCount} steps). Cooling down ${JOB_COOLDOWN_MS / 1000}s before next job.`);
   } catch (err: any) {
     console.error(`[JobRunner] Job ${pending.id} failed:`, err.message);
     await storage.updateJob(pending.id, {
