@@ -1,11 +1,11 @@
 import { useQuery } from "@tanstack/react-query";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { Building2, Globe, CreditCard, ShieldCheck, BarChart3, Coins, Eye, ArrowRight } from "lucide-react";
+import { Building2, Globe, CreditCard, ShieldCheck, BarChart3, Coins, Eye, ArrowRight, Swords, Briefcase } from "lucide-react";
 import { Link } from "wouter";
 import { BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, PieChart, Pie, Cell } from "recharts";
 import { useState, useMemo, useEffect, useCallback } from "react";
 import CoverageMap from "@/components/market/CoverageMap";
-import type { BankingGroup, LegalEntity, Fmi, CorrespondentService, IntelObservation, Bic } from "@shared/schema";
+import type { BankingGroup, LegalEntity, Fmi, CorrespondentService, IntelObservation, Bic, AgentJob } from "@shared/schema";
 
 const COLORS = ["#3b82f6","#10b981","#f59e0b","#ef4444","#8b5cf6","#ec4899","#06b6d4","#84cc16"];
 
@@ -60,6 +60,7 @@ export default function Dashboard() {
   const { data: services = [], isLoading: loadingServices } = useQuery<CorrespondentService[]>({ queryKey: ["/api/correspondent-services"] });
   const { data: bics = [], isLoading: loadingBics } = useQuery<Bic[]>({ queryKey: ["/api/bics"] });
   const { data: intelObs = [], isLoading: loadingIntel } = useQuery<IntelObservation[]>({ queryKey: ["/api/intel"] });
+  const { data: jobs = [] } = useQuery<AgentJob[]>({ queryKey: ["/api/jobs"] });
 
   const [cbProbFilter, setCbProbFilter] = useState("all");
   const [gsibFilter, setGsibFilter] = useState("all");
@@ -202,6 +203,16 @@ export default function Dashboard() {
   const competitorCount = intelObs.filter(o => o.obs_type === "competitor").length;
   const myCbCount = intelObs.filter(o => o.obs_type === "cb_provider").length;
 
+  const competitorGroupCount = useMemo(() => {
+    const ids = new Set(intelObs.filter(o => o.obs_type === "competitor").map(o => o.banking_group_id).filter(Boolean));
+    return ids.size;
+  }, [intelObs]);
+
+  const recentJobsCount = useMemo(() => {
+    const cutoff = Date.now() - 7 * 24 * 60 * 60 * 1000;
+    return jobs.filter(j => j.created_at && new Date(j.created_at).getTime() > cutoff).length;
+  }, [jobs]);
+
   const filteredIntel = useMemo(() => {
     return intelObs
       .filter(o => o.obs_type === intelType)
@@ -237,6 +248,29 @@ export default function Dashboard() {
       <div>
         <h1 className="text-xl sm:text-2xl font-bold text-slate-900" data-testid="text-dashboard-title">Dashboard</h1>
         <p className="text-slate-500 text-xs sm:text-sm mt-1">Global correspondent banking intelligence overview</p>
+      </div>
+
+      {/* Quick navigation */}
+      <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+        {[
+          { label: "Competition", desc: "Competitor benchmarking", path: "/competition", icon: Swords, color: "text-violet-600 bg-violet-50 border-violet-100" },
+          { label: "Banking Groups", desc: "Provider hierarchy", path: "/banking-groups", icon: Building2, color: "text-blue-600 bg-blue-50 border-blue-100" },
+          { label: "Legal Entities", desc: "Licensed entities & services", path: "/legal-entities", icon: CreditCard, color: "text-emerald-600 bg-emerald-50 border-emerald-100" },
+          { label: "Research", desc: "AI research & jobs", path: "/research", icon: Briefcase, color: "text-amber-600 bg-amber-50 border-amber-100" },
+        ].map(nav => (
+          <Link key={nav.path} href={nav.path} data-testid={`quicknav-${nav.label.toLowerCase().replace(/\s+/g, "-")}`}>
+            <div className={`flex items-center gap-2.5 px-3 py-3 rounded-xl border bg-white hover:shadow-sm transition-shadow cursor-pointer group`}>
+              <div className={`p-1.5 rounded-lg shrink-0 ${nav.color}`}>
+                <nav.icon className="w-4 h-4" />
+              </div>
+              <div className="min-w-0">
+                <div className="text-sm font-semibold text-slate-800 leading-tight">{nav.label}</div>
+                <div className="text-[10px] text-slate-400 truncate">{nav.desc}</div>
+              </div>
+              <ArrowRight className="w-3.5 h-3.5 text-slate-300 group-hover:text-slate-500 ml-auto shrink-0 transition-colors" />
+            </div>
+          </Link>
+        ))}
       </div>
 
       <Card className="border-0 shadow-sm" data-testid="card-toggles">
@@ -312,11 +346,11 @@ export default function Dashboard() {
 
       <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-3 sm:gap-4">
         {[
-          { label: "Banking Groups", value: filteredGroups.length, icon: Building2, color: "text-blue-600 bg-blue-50", link: "/providers" },
+          { label: "Banking Groups", value: filteredGroups.length, icon: Building2, color: "text-blue-600 bg-blue-50", link: "/banking-groups" },
+          { label: "Competition-tagged", value: competitorGroupCount, icon: Swords, color: "text-violet-600 bg-violet-50", link: "/competition" },
           { label: "Legal Entities", value: filteredEntities.length, icon: CreditCard, color: "text-emerald-600 bg-emerald-50", link: "/legal-entities" },
-          { label: "CLS Members", value: filteredClsMembers, icon: Globe, color: "text-teal-600 bg-teal-50", link: "/cls" },
           { label: "G-SIB Providers", value: gsibCount, icon: ShieldCheck, color: "text-purple-600 bg-purple-50" },
-          { label: "Onshore Currencies", value: activeCurrencyData.length, icon: Coins, color: "text-amber-600 bg-amber-50", link: "/currencies" },
+          { label: "Jobs (7 days)", value: recentJobsCount, icon: Briefcase, color: "text-amber-600 bg-amber-50", link: "/research" },
         ].map(stat => (
           <Card key={stat.label} className={`border-0 shadow-sm ${stat.link ? "hover:shadow-md transition-shadow cursor-pointer" : ""}`} data-testid={`card-stat-${stat.label.toLowerCase().replace(/\s+/g, "-")}`}>
             <CardContent className="p-3 sm:p-5">
@@ -529,8 +563,8 @@ export default function Dashboard() {
                   </div>
                 </div>
               ))}
-              <Link href="/legal-entities" className="flex items-center gap-1 text-xs text-blue-600 hover:text-blue-800 font-medium mt-2" data-testid="link-view-all-intel">
-                View all intel <ArrowRight className="w-3 h-3" />
+              <Link href="/competition" className="flex items-center gap-1 text-xs text-blue-600 hover:text-blue-800 font-medium mt-2" data-testid="link-view-all-intel">
+                View competition intel <ArrowRight className="w-3 h-3" />
               </Link>
             </div>
           )}

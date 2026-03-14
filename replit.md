@@ -22,8 +22,9 @@ Uses Express REST API + PostgreSQL backend (Drizzle ORM), React frontend, and Op
 ```
 client/src/
   pages/
-    Dashboard.tsx          – Stats cards, recharts bar/pie, currency coverage grid
-    Providers.tsx          – 3-level expandable tree (Group → Entity → BIC → Services)
+    Dashboard.tsx          – Overview: quick-nav links, summary stats, recharts bar/pie, coverage map, latest intel
+    Competition.tsx        – Competitor benchmarking placeholder; lists competitor-tagged groups from intel observations
+    Providers.tsx          – Banking Groups page (/banking-groups); 3-level tree (Group → Entity → BIC → Services); /providers redirects here
     LegalEntities.tsx      – Expandable entity list with BIC/service inline tables
     Coverage.tsx           – Coverage dashboard (Complete/Partial/Empty per group) + job queue UI
     CLS.tsx                – CLS profiles table, inline create/edit
@@ -34,7 +35,7 @@ client/src/
     Registry.tsx           – Two-panel registry editor: group browser (search/filters) + hierarchical tree editor (entity→BIC→service→FMI), edit drawer with verify-before-save, AlertDialog deletions, mobile-responsive
     DatabaseAdmin.tsx      – Full CRUD for all 5 core entities via tabbed forms
   components/
-    Layout.tsx             – Dark sidebar nav, header with global search
+    Layout.tsx             – Sidebar nav with 5 sections (Main, Entities, Research, Tools); header with global search navigating to /banking-groups
     CbProfile.tsx          – CB Profile section: capability category panels, edit dialog, service feature badges, indirect participation
     cls/CLSProfileForm.tsx – Inline CLS profile create/edit form
     market/CoverageMap.tsx – React-Leaflet world map with circle markers

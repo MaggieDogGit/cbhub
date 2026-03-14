@@ -1,0 +1,80 @@
+Redesign the application UI and information architecture to better support correspondent banking analysis, while preserving current functionality as much as possible.
+
+Core modeling rules:
+1. Banking Group is the summary and comparison unit.
+2. Legal Entity is the actual provider unit.
+3. BICs are attributes of Legal Entity, not a separate hierarchy layer.
+4. CB Services are attributes/capabilities of Legal Entity, not a separate hierarchy layer.
+5. Market coverage is also tied to Legal Entity.
+6. Group-level summaries must be aggregated from underlying legal-entity data.
+7. Do not model CB services directly on Banking Group.
+8. Do not redesign around BIC as a first-class navigation object.
+
+Objective:
+Create a clearer, more intuitive UI structure that reflects the real-world hierarchy and prepares the app for competition benchmarking.
+
+Target navigation:
+- Dashboard
+- Competition
+- Banking Groups
+- Legal Entities
+- Research
+
+Page responsibilities:
+
+1. Dashboard
+- High-level overview of the dataset and recent activity
+- Summary cards such as number of banking groups, number of competition-marked banks, legal entities in scope, recent research jobs, and recent updates
+- Quick links into Competition, Banking Groups, Legal Entities, and Research
+
+2. Competition
+- Placeholder or initial comparison landing page for now
+- This page will become the main benchmarking dashboard in the next step
+- For now, structure it so it is ready for comparison views, filters, and export actions
+
+3. Banking Groups
+- List of banking groups
+- Group detail page should show:
+  - group identity and metadata
+  - competition marker
+  - all legal entities belonging to the group
+  - aggregated CB services summary derived from legal-entity data
+  - aggregated market coverage summary derived from legal-entity data
+  - summary counts and simple visual grouping where helpful
+
+4. Legal Entities
+- List of legal entities
+- Legal entity detail page should show:
+  - legal name
+  - country
+  - entity type
+  - parent banking group
+  - BICs as attributes of the entity
+  - CB services as attributes/capabilities of the entity
+  - market coverage as an attribute of the entity
+  - any existing evidence/confidence/notes fields if already present
+
+5. Research
+- Keep current research and jobs capabilities
+- Improve layout clarity if needed, but do not break existing flows
+
+Design goals:
+- Make the hierarchy visually obvious: Group = summary, Legal Entity = provider
+- Remove or reduce confusing page concepts such as ambiguous “coverage pages” if they duplicate or conflict with the new model
+- Ensure drill-down from Group to Legal Entity is easy and intuitive
+- Make the app feel more like an analyst tool and less like a generic data registry
+- Preserve current data and current behavior where possible
+
+Implementation guidance:
+1. Propose and implement the new navigation and page structure
+2. Refactor current pages/components to align with the new hierarchy
+3. Ensure group pages aggregate from legal-entity data rather than storing separate group-level services
+4. Ensure BICs and CB services are shown only as legal-entity attributes/capabilities
+5. Keep the UI clean, practical, and oriented toward future competitive benchmarking
+
+Constraints:
+- No major backend redesign unless necessary for the UI restructure
+- Preserve existing functionality
+- Do not change the core database schema unless strictly necessary
+- Do not introduce BIC as a separate primary object in the UI
+- Do not attach CB services directly to Banking Group

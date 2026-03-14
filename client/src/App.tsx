@@ -1,10 +1,11 @@
-import { Switch, Route } from "wouter";
+import { Switch, Route, Redirect } from "wouter";
 import { queryClient } from "./lib/queryClient";
 import { QueryClientProvider } from "@tanstack/react-query";
 import { Toaster } from "@/components/ui/toaster";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import Layout from "@/components/Layout";
 import Dashboard from "@/pages/Dashboard";
+import Competition from "@/pages/Competition";
 import Providers from "@/pages/Providers";
 import LegalEntities from "@/pages/LegalEntities";
 import CLS from "@/pages/CLS";
@@ -26,7 +27,12 @@ function Router() {
     <Layout>
       <Switch>
         <Route path="/" component={Dashboard} />
-        <Route path="/providers" component={Providers} />
+        <Route path="/competition" component={Competition} />
+        {/* Banking Groups — canonical route; /providers kept for backward compat */}
+        <Route path="/banking-groups" component={Providers} />
+        <Route path="/providers">
+          <Redirect to="/banking-groups" />
+        </Route>
         <Route path="/legal-entities" component={LegalEntities} />
         <Route path="/fmi" component={FmiManagement} />
         <Route path="/cls" component={CLS} />
