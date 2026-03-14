@@ -639,3 +639,102 @@ export type FmiRelationshipType = typeof fmiRelationshipTypes.$inferSelect;
 export const insertFmiRelationshipSchema = createInsertSchema(fmiRelationships).omit({ id: true });
 export type InsertFmiRelationship = z.infer<typeof insertFmiRelationshipSchema>;
 export type FmiRelationship = typeof fmiRelationships.$inferSelect;
+
+// ── FMI Specifications (structured operational detail per FMI entry) ─────────
+export const fmiSpecifications = pgTable("fmi_specifications", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  fmi_id: varchar("fmi_id").notNull().references(() => fmiEntries.id, { onDelete: "cascade" }).unique(),
+  performs_clearing: boolean("performs_clearing"),
+  performs_settlement: boolean("performs_settlement"),
+  performs_messaging: boolean("performs_messaging"),
+  performs_scheme_governance: boolean("performs_scheme_governance"),
+  settlement_model: text("settlement_model"),
+  settlement_asset_type: text("settlement_asset_type"),
+  settles_in_fmi_id: varchar("settles_in_fmi_id"),
+  finality_model: text("finality_model"),
+  settlement_cycle_description: text("settlement_cycle_description"),
+  operating_model: text("operating_model"),
+  supports_24x7: boolean("supports_24x7"),
+  processing_latency_seconds: integer("processing_latency_seconds"),
+  operating_timezone: text("operating_timezone"),
+  operating_hours_notes: text("operating_hours_notes"),
+  primary_currency_code: varchar("primary_currency_code", { length: 10 }),
+  supported_currency_codes: text("supported_currency_codes"),
+  primary_message_standard: text("primary_message_standard"),
+  supported_message_standards: text("supported_message_standards"),
+  supported_message_formats: text("supported_message_formats"),
+  legacy_formats_supported: text("legacy_formats_supported"),
+  message_transport_network: text("message_transport_network"),
+  direct_participation_allowed: boolean("direct_participation_allowed"),
+  indirect_participation_supported: boolean("indirect_participation_supported"),
+  sponsor_model_supported: boolean("sponsor_model_supported"),
+  eligible_participant_types: text("eligible_participant_types"),
+  supports_cross_border_processing: boolean("supports_cross_border_processing"),
+  supports_one_leg_out_processing: boolean("supports_one_leg_out_processing"),
+  participant_location_requirement: text("participant_location_requirement"),
+  debtor_location_requirement: text("debtor_location_requirement"),
+  creditor_location_requirement: text("creditor_location_requirement"),
+  prefunding_required: boolean("prefunding_required"),
+  intraday_credit_supported: boolean("intraday_credit_supported"),
+  liquidity_management_notes: text("liquidity_management_notes"),
+});
+
+export const insertFmiSpecificationSchema = createInsertSchema(fmiSpecifications).omit({ id: true });
+export type InsertFmiSpecification = z.infer<typeof insertFmiSpecificationSchema>;
+export type FmiSpecification = typeof fmiSpecifications.$inferSelect;
+
+// ── Payment Scheme Specifications (scheme rulebook level) ────────────────────
+export const paymentSchemeSpecifications = pgTable("payment_scheme_specifications", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  fmi_id: varchar("fmi_id").notNull().references(() => fmiEntries.id, { onDelete: "cascade" }).unique(),
+  scheme_currency_code: varchar("scheme_currency_code", { length: 10 }),
+  scheme_region: text("scheme_region"),
+  scheme_cross_border_allowed: boolean("scheme_cross_border_allowed"),
+  scheme_one_leg_out_allowed: boolean("scheme_one_leg_out_allowed"),
+  max_transaction_amount: text("max_transaction_amount"),
+  settlement_deadline_seconds: integer("settlement_deadline_seconds"),
+  primary_message_standard: text("primary_message_standard"),
+  scheme_rulebook_reference: text("scheme_rulebook_reference"),
+  participation_scope_notes: text("participation_scope_notes"),
+});
+
+export const insertPaymentSchemeSpecificationSchema = createInsertSchema(paymentSchemeSpecifications).omit({ id: true });
+export type InsertPaymentSchemeSpecification = z.infer<typeof insertPaymentSchemeSpecificationSchema>;
+export type PaymentSchemeSpecification = typeof paymentSchemeSpecifications.$inferSelect;
+
+// ── Payment Scheme Processing Scenarios ──────────────────────────────────────
+export const paymentSchemeProcessingScenarios = pgTable("payment_scheme_processing_scenarios", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  scheme_fmi_id: varchar("scheme_fmi_id").notNull().references(() => fmiEntries.id, { onDelete: "cascade" }),
+  code: varchar("code", { length: 60 }).notNull().unique(),
+  name: text("name").notNull(),
+  description: text("description"),
+  is_default: boolean("is_default").default(false),
+  supports_cross_border: boolean("supports_cross_border"),
+  supports_one_leg_out: boolean("supports_one_leg_out"),
+  requires_special_format: boolean("requires_special_format"),
+  message_standard: text("message_standard"),
+  message_format: text("message_format"),
+  currency_code: varchar("currency_code", { length: 10 }),
+  geography_scope: text("geography_scope"),
+  notes: text("notes"),
+  is_active: boolean("is_active").default(true),
+});
+
+export const insertPaymentSchemeProcessingScenarioSchema = createInsertSchema(paymentSchemeProcessingScenarios).omit({ id: true });
+export type InsertPaymentSchemeProcessingScenario = z.infer<typeof insertPaymentSchemeProcessingScenarioSchema>;
+export type PaymentSchemeProcessingScenario = typeof paymentSchemeProcessingScenarios.$inferSelect;
+
+// ── Payment Scheme Scenario Relationships ────────────────────────────────────
+export const paymentSchemeScenarioRelationships = pgTable("payment_scheme_scenario_relationships", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  scenario_id: varchar("scenario_id").notNull().references(() => paymentSchemeProcessingScenarios.id, { onDelete: "cascade" }),
+  relationship_type_id: varchar("relationship_type_id").notNull().references(() => fmiRelationshipTypes.id),
+  target_fmi_id: varchar("target_fmi_id").notNull().references(() => fmiEntries.id, { onDelete: "cascade" }),
+  notes: text("notes"),
+  is_active: boolean("is_active").default(true),
+});
+
+export const insertPaymentSchemeScenarioRelationshipSchema = createInsertSchema(paymentSchemeScenarioRelationships).omit({ id: true });
+export type InsertPaymentSchemeScenarioRelationship = z.infer<typeof insertPaymentSchemeScenarioRelationshipSchema>;
+export type PaymentSchemeScenarioRelationship = typeof paymentSchemeScenarioRelationships.$inferSelect;

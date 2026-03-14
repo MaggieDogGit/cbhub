@@ -151,6 +151,30 @@ API routes (all under `/api/`):
 
 UI: `/geo-reference` — 3-tab page (Countries searchable table, Currencies card grid, Regions grouped expandable cards). Accessible from sidebar under Tools → Geo Reference.
 
+## FMI Specifications & Payment Capability Model
+
+Four additional tables extending the FMI taxonomy with structured operational data:
+
+| Table | Purpose |
+|---|---|
+| `fmi_specifications` | Structured operational detail per FMI entry: settlement model, 24×7, cross-border/OLO support, message standards, participation model, liquidity |
+| `payment_scheme_specifications` | Scheme rulebook level: currency, region, OLO/cross-border allowed, max amount, message standard |
+| `payment_scheme_processing_scenarios` | Named scenarios within a scheme (e.g. FPS Domestic, FPS POO, SCT Inst Domestic, OCT Inst Default) |
+| `payment_scheme_scenario_relationships` | Scenario → FMI relationships (uses clearing mechanism, settles in settlement system) |
+
+New relationship types: `SCENARIO_USES_CLEARING_MECHANISM`, `SCENARIO_SETTLES_IN_SETTLEMENT_SYSTEM`
+
+New FMI entries: Bank of England RTGS (BOE-RTGS), FPS Central Infrastructure (FPS-INFRA), Faster Payments Scheme (FPS), OCT Inst (OCT-INST)
+
+API routes (all under `/api/`):
+- `GET /api/fmi-specifications/:fmiId` — structured spec for an FMI entry
+- `GET /api/payment-scheme-specs/:fmiId` — scheme rulebook spec
+- `GET /api/payment-scheme-scenarios/:schemeId` — list scenarios with relationships
+- `GET /api/payment-scheme-processing-scenarios/:id` — single scenario detail
+- `GET /api/fmi-entries/:id/capability?scenario_id=` — derived cross-border + OLO booleans (infra AND scheme/scenario)
+
+Capability derivation: `actual_OLO = infra.supports_one_leg_out_processing AND (scenario.supports_one_leg_out OR scheme.scheme_one_leg_out_allowed)`. Returns null when either side unknown.
+
 ## Background Job System
 
 Two job types (dispatched by `job_type` field):

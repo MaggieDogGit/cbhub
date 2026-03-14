@@ -3,7 +3,7 @@
 
 import { Router } from "express";
 import { storage } from "../storage";
-import { db } from "../db";
+import { db, pool } from "../db";
 import { fmiTaxonomy } from "@shared/schema";
 import {
   listBankingGroups, createBankingGroup, updateBankingGroup, deleteBankingGroup,
@@ -488,6 +488,177 @@ router.get("/regions/:id", async (req, res) => {
     `);
     if (!rows.rows.length) return res.status(404).json({ message: "Region not found" });
     res.json(rows.rows[0]);
+  } catch (err: any) { res.status(500).json({ message: err.message }); }
+});
+
+// ── FMI Specifications & Payment Capability Model ───────────────────────────
+
+router.get("/fmi-specifications/:fmiId", async (req, res) => {
+  try {
+    const { rows } = await pool.query(
+      `SELECT s.*, e.name AS fmi_name, e.code AS fmi_code
+       FROM fmi_specifications s
+       JOIN fmi_entries e ON e.id = s.fmi_id
+       WHERE s.fmi_id = $1`,
+      [req.params.fmiId]
+    );
+    if (!rows.length) return res.status(404).json({ message: "No specification found for this FMI" });
+    res.json(rows[0]);
+  } catch (err: any) { res.status(500).json({ message: err.message }); }
+});
+
+router.get("/payment-scheme-specs/:fmiId", async (req, res) => {
+  try {
+    const { rows } = await pool.query(
+      `SELECT ps.*, e.name AS fmi_name, e.code AS fmi_code
+       FROM payment_scheme_specifications ps
+       JOIN fmi_entries e ON e.id = ps.fmi_id
+       WHERE ps.fmi_id = $1`,
+      [req.params.fmiId]
+    );
+    if (!rows.length) return res.status(404).json({ message: "No scheme specification found for this FMI" });
+    res.json(rows[0]);
+  } catch (err: any) { res.status(500).json({ message: err.message }); }
+});
+
+router.get("/payment-scheme-scenarios/:schemeId", async (req, res) => {
+  try {
+    const { rows: scenarios } = await pool.query(
+      `SELECT s.*
+       FROM payment_scheme_processing_scenarios s
+       WHERE s.scheme_fmi_id = $1 AND s.is_active = true
+       ORDER BY s.is_default DESC, s.name`,
+      [req.params.schemeId]
+    );
+    for (const sc of scenarios) {
+      const { rows: rels } = await pool.query(
+        `SELECT sr.id, sr.notes, sr.is_active,
+           rt.code AS rel_type_code, rt.name AS rel_type_name,
+           tgt.id AS target_id, tgt.name AS target_name, tgt.code AS target_code,
+           tc.name AS target_category_name
+         FROM payment_scheme_scenario_relationships sr
+         JOIN fmi_relationship_types rt ON rt.id = sr.relationship_type_id
+         JOIN fmi_entries tgt ON tgt.id = sr.target_fmi_id
+         JOIN fmi_categories tc ON tc.id = tgt.category_id
+         WHERE sr.scenario_id = $1 AND sr.is_active = true
+         ORDER BY rt.code`,
+        [sc.id]
+      );
+      sc.relationships = rels;
+    }
+    res.json(scenarios);
+  } catch (err: any) { res.status(500).json({ message: err.message }); }
+});
+
+router.get("/payment-scheme-processing-scenarios/:id", async (req, res) => {
+  try {
+    const { rows } = await pool.query(
+      `SELECT s.*, e.name AS scheme_name, e.code AS scheme_code
+       FROM payment_scheme_processing_scenarios s
+       JOIN fmi_entries e ON e.id = s.scheme_fmi_id
+       WHERE s.id = $1`,
+      [req.params.id]
+    );
+    if (!rows.length) return res.status(404).json({ message: "Processing scenario not found" });
+    const scenario = rows[0] as any;
+    const { rows: rels } = await pool.query(
+      `SELECT sr.id, sr.notes, sr.is_active,
+         rt.code AS rel_type_code, rt.name AS rel_type_name,
+         tgt.id AS target_id, tgt.name AS target_name, tgt.code AS target_code,
+         tc.name AS target_category_name
+       FROM payment_scheme_scenario_relationships sr
+       JOIN fmi_relationship_types rt ON rt.id = sr.relationship_type_id
+       JOIN fmi_entries tgt ON tgt.id = sr.target_fmi_id
+       JOIN fmi_categories tc ON tc.id = tgt.category_id
+       WHERE sr.scenario_id = $1 AND sr.is_active = true
+       ORDER BY rt.code`,
+      [req.params.id]
+    );
+    scenario.relationships = rels;
+    res.json(scenario);
+  } catch (err: any) { res.status(500).json({ message: err.message }); }
+});
+
+router.get("/fmi-entries/:id/capability", async (req, res) => {
+  try {
+    const fmiId = req.params.id;
+    const scenarioId = req.query.scenario_id as string | undefined;
+
+    const { rows: entryRows } = await pool.query(
+      `SELECT e.id, e.name, e.code,
+         c.code AS category_code, c.name AS category_name
+       FROM fmi_entries e
+       JOIN fmi_categories c ON c.id = e.category_id
+       WHERE e.id = $1`,
+      [fmiId]
+    );
+    if (!entryRows.length) return res.status(404).json({ message: "FMI not found" });
+    const entry = entryRows[0] as any;
+
+    const { rows: specRows } = await pool.query(
+      `SELECT * FROM fmi_specifications WHERE fmi_id = $1`, [fmiId]
+    );
+    const spec = specRows[0] as any | undefined;
+
+    const { rows: schemeRows } = await pool.query(
+      `SELECT * FROM payment_scheme_specifications WHERE fmi_id = $1`, [fmiId]
+    );
+    const scheme = schemeRows[0] as any | undefined;
+
+    let scenario: any = undefined;
+    if (scenarioId) {
+      const { rows: scRows } = await pool.query(
+        `SELECT * FROM payment_scheme_processing_scenarios WHERE id = $1 AND scheme_fmi_id = $2`,
+        [scenarioId, fmiId]
+      );
+      if (!scRows.length) return res.status(404).json({ message: "Scenario not found or not associated with this FMI" });
+      scenario = scRows[0] as any;
+    }
+
+    const infraCrossBorder = spec?.supports_cross_border_processing ?? null;
+    const infraOlo = spec?.supports_one_leg_out_processing ?? null;
+
+    let schemeCrossBorder: boolean | null = null;
+    let schemeOlo: boolean | null = null;
+
+    if (scenario) {
+      schemeCrossBorder = scenario.supports_cross_border ?? null;
+      schemeOlo = scenario.supports_one_leg_out ?? null;
+    } else if (scheme) {
+      schemeCrossBorder = scheme.scheme_cross_border_allowed ?? null;
+      schemeOlo = scheme.scheme_one_leg_out_allowed ?? null;
+    }
+
+    const deriveBool = (infra: boolean | null, rule: boolean | null): boolean | null => {
+      if (infra === null || rule === null) return null;
+      return infra && rule;
+    };
+
+    const actualCrossBorder = deriveBool(infraCrossBorder, schemeCrossBorder);
+    const actualOlo = deriveBool(infraOlo, schemeOlo);
+
+    res.json({
+      fmi_id: fmiId,
+      fmi_name: entry.name,
+      fmi_code: entry.code,
+      category_code: entry.category_code,
+      category_name: entry.category_name,
+      scenario_id: scenarioId ?? null,
+      scenario_name: scenario?.name ?? null,
+      infrastructure: {
+        supports_cross_border_processing: infraCrossBorder,
+        supports_one_leg_out_processing: infraOlo,
+      },
+      scheme_or_scenario: {
+        cross_border_allowed: schemeCrossBorder,
+        one_leg_out_allowed: schemeOlo,
+        source: scenario ? "scenario" : scheme ? "scheme" : null,
+      },
+      derived: {
+        actual_cross_border: actualCrossBorder,
+        actual_one_leg_out: actualOlo,
+      },
+    });
   } catch (err: any) { res.status(500).json({ message: err.message }); }
 });
 
