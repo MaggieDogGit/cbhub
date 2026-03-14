@@ -1,0 +1,334 @@
+Implement a full Financial Market Infrastructure (FMI) taxonomy model in CBHub.
+
+Objective
+Create a scalable FMI taxonomy that:
+1. Covers payment FMIs and non-payment FMIs
+2. Separates schemes, clearing mechanisms, settlement systems, and networks
+3. Keeps CLS separate
+4. Keeps card schemes separate
+5. Supports securities FMIs such as CREST
+6. Can be extended later with operating hours, currencies, reachability, one-leg-out support, and participation logic
+
+Important modelling principles
+1. Do not mix payment schemes and processing infrastructures in the same subtype
+2. Do not classify CLS under payment systems; keep it as separate FX settlement infrastructure
+3. Do not classify card schemes together with account-to-account payment schemes
+4. Support explicit relationships between:
+   - scheme -> clearing mechanism
+   - clearing mechanism -> settlement system
+5. Support FMI types outside payments, including:
+   - CSD
+   - SSS
+   - CCP
+   - Trade Repository
+6. The taxonomy must be globally usable, not SEPA-only
+
+Target top-level domain
+Financial Market Infrastructures
+
+Target taxonomy
+Financial Market Infrastructures
+├── Payment Systems
+│   ├── Payment Schemes
+│   │   ├── Credit Transfer Scheme
+│   │   ├── Instant Credit Transfer Scheme
+│   │   ├── Direct Debit Scheme
+│   │   ├── Cross-Border Credit Transfer Scheme
+│   │   └── Other Account-to-Account Payment Scheme
+│   │
+│   ├── Payment Clearing Mechanisms
+│   │   ├── ACH Credit Transfer Clearing
+│   │   ├── ACH Instant Credit Transfer Clearing
+│   │   ├── ACH Direct Debit Clearing
+│   │   ├── High-Value Net Clearing
+│   │   ├── Cross-Border Payment Clearing
+│   │   └── Other Payment Clearing Mechanism
+│   │
+│   ├── Payment Settlement Systems
+│   │   ├── RTGS
+│   │   ├── Instant Settlement System
+│   │   ├── Deferred Net Settlement System
+│   │   └── Other Payment Settlement System
+│   │
+│   └── Payment Connectivity / Messaging Networks
+│       ├── Financial Messaging Network
+│       ├── Payment Interoperability Network
+│       ├── Cross-Border Payment Network
+│       └── Other Payment Connectivity Network
+│
+├── FX Settlement Infrastructure
+│   ├── FX Payment-versus-Payment Settlement System
+│   └── Other FX Settlement Infrastructure
+│
+├── Card Payment Infrastructure
+│   ├── Global Card Scheme
+│   ├── Domestic Card Scheme
+│   ├── Card Switching Infrastructure
+│   ├── Card Clearing Infrastructure
+│   └── Other Card Payment Infrastructure
+│
+├── Securities Market Infrastructure
+│   ├── Central Securities Depository
+│   ├── International Central Securities Depository
+│   ├── Securities Settlement System
+│   ├── Securities Clearing System
+│   ├── Securities Matching Platform
+│   └── Other Securities Market Infrastructure
+│
+├── Central Counterparties
+│   ├── Securities CCP
+│   ├── Derivatives CCP
+│   ├── Repo CCP
+│   ├── Multi-Asset CCP
+│   └── Other CCP
+│
+└── Trade Repositories
+    ├── Derivatives Trade Repository
+    ├── Securities Financing Trade Repository
+    └── Other Trade Repository
+
+Required example mappings
+Ensure the taxonomy can correctly classify the following examples:
+
+Payment schemes
+- SEPA Credit Transfer -> Payment Systems / Payment Schemes / Credit Transfer Scheme
+- SEPA Instant Credit Transfer (SCT Inst / OCT Inst) -> Payment Systems / Payment Schemes / Instant Credit Transfer Scheme
+- SEPA Direct Debit -> Payment Systems / Payment Schemes / Direct Debit Scheme
+
+Payment clearing mechanisms
+- STEP2 SCT -> Payment Systems / Payment Clearing Mechanisms / ACH Credit Transfer Clearing
+- RT1 -> Payment Systems / Payment Clearing Mechanisms / ACH Instant Credit Transfer Clearing
+- STEP2 SDD -> Payment Systems / Payment Clearing Mechanisms / ACH Direct Debit Clearing
+- EURO1 -> Payment Systems / Payment Clearing Mechanisms / High-Value Net Clearing
+
+Payment settlement systems
+- T2 -> Payment Systems / Payment Settlement Systems / RTGS
+- TIPS -> Payment Systems / Payment Settlement Systems / Instant Settlement System
+- Fedwire Funds -> Payment Systems / Payment Settlement Systems / RTGS
+
+Payment connectivity / messaging
+- SWIFT -> Payment Systems / Payment Connectivity / Messaging Networks / Financial Messaging Network
+- Nexus-style interoperability arrangements -> Payment Systems / Payment Connectivity / Messaging Networks / Payment Interoperability Network
+
+FX settlement infrastructure
+- CLS -> FX Settlement Infrastructure / FX Payment-versus-Payment Settlement System
+
+Card payment infrastructure
+- Visa -> Card Payment Infrastructure / Global Card Scheme
+- Mastercard -> Card Payment Infrastructure / Global Card Scheme
+- domestic debit card schemes should be supported under Domestic Card Scheme
+
+Securities market infrastructure
+- CREST -> Securities Market Infrastructure / Securities Settlement System
+- Euroclear Bank -> Securities Market Infrastructure / International Central Securities Depository
+- Clearstream -> Securities Market Infrastructure / International Central Securities Depository
+- local CSDs should be supported under Central Securities Depository
+
+CCPs
+- LCH -> Central Counterparties / Derivatives CCP or Multi-Asset CCP depending on implementation granularity
+- Eurex Clearing -> Central Counterparties / Derivatives CCP or Multi-Asset CCP
+
+Trade repositories
+- DTCC trade repository entities -> Trade Repositories / Derivatives Trade Repository
+- UnaVista -> Trade Repositories / Derivatives Trade Repository
+
+Required relationship model
+Add explicit support for FMI relationships. At minimum, support these relationship types:
+
+1. SCHEME_USES_CLEARING_MECHANISM
+   Example:
+   - SCT uses STEP2 SCT
+   - SCT Inst uses RT1
+   - SCT Inst uses TIPS where relevant
+
+2. CLEARING_MECHANISM_SETTLES_IN_SETTLEMENT_SYSTEM
+   Example:
+   - STEP2 SCT settles in T2
+   - STEP2 SDD settles in T2
+   - RT1 settles in TIPS
+   - EURO1 settles in T2
+
+3. FMI_OPERATED_BY_ORGANIZATION
+   Example:
+   - RT1 operated by EBA Clearing
+   - EURO1 operated by EBA Clearing
+   - T2 operated by Eurosystem / ECB
+   - CREST operated by Euroclear UK & International
+   - CLS operated by CLS Group / CLS Bank
+
+4. CARD_SCHEME_HAS_PROCESSING_INFRASTRUCTURE
+   Keep optional for now but model-ready
+
+5. SECURITIES_INFRASTRUCTURE_LINKS_TO_PAYMENT_FMI
+   Keep optional for now but model-ready, for future DvP analysis
+
+Naming conventions
+Use the following naming conventions consistently:
+
+Top-level label
+- Financial Market Infrastructures
+
+Use singular subtype labels in the taxonomy tables if that is the app standard, but keep display names readable.
+Examples:
+- RTGS
+- Instant Settlement System
+- Credit Transfer Scheme
+- ACH Credit Transfer Clearing
+- Financial Messaging Network
+- Central Securities Depository
+
+Avoid overly local acronyms as taxonomy labels unless globally understood.
+Example:
+- prefer “ACH Instant Credit Transfer Clearing” over “CSM”
+- store local acronyms as aliases, not as taxonomy labels
+
+Data model requirements
+Implement this in a way that supports future extension.
+
+Minimum recommended entities
+1. fmi_domains
+   - id
+   - code
+   - name
+   - description
+   - sort_order
+   - is_active
+
+2. fmi_categories
+   - id
+   - domain_id
+   - parent_category_id nullable
+   - code
+   - name
+   - description
+   - level
+   - sort_order
+   - is_active
+
+3. fmis
+   - id
+   - name
+   - short_name
+   - code nullable
+   - category_id
+   - description
+   - market_country_id nullable
+   - region_id nullable
+   - operator_name nullable
+   - status (live / planned / pilot / retired)
+   - notes
+   - is_active
+
+4. fmi_relationship_types
+   - id
+   - code
+   - name
+   - description
+
+5. fmi_relationships
+   - id
+   - source_fmi_id
+   - relationship_type_id
+   - target_fmi_id
+   - notes
+   - is_active
+
+Optional but strongly recommended fields for fmis
+- functional_role_summary
+- settlement_model (gross / net / deferred net / PvP / DvP / hybrid)
+- supports_24x7 boolean nullable
+- supports_cross_border boolean nullable
+- supports_one_leg_out boolean nullable
+- primary_currency_code nullable
+- metadata_json nullable
+
+Seed data requirements
+Seed the full taxonomy structure above.
+Also seed a small set of example FMIs and relationships, at minimum:
+- T2
+- TIPS
+- STEP2 SCT
+- STEP2 SDD
+- RT1
+- EURO1
+- SEPA Credit Transfer
+- SEPA Instant Credit Transfer
+- SEPA Direct Debit
+- SWIFT
+- CLS
+- Visa
+- Mastercard
+- CREST
+- Euroclear Bank
+- Clearstream
+- LCH
+- Eurex Clearing
+- UnaVista
+
+Seed these relationships too:
+- SEPA Credit Transfer -> SCHEME_USES_CLEARING_MECHANISM -> STEP2 SCT
+- SEPA Instant Credit Transfer -> SCHEME_USES_CLEARING_MECHANISM -> RT1
+- SEPA Instant Credit Transfer -> SCHEME_USES_CLEARING_MECHANISM -> TIPS
+- SEPA Direct Debit -> SCHEME_USES_CLEARING_MECHANISM -> STEP2 SDD
+- STEP2 SCT -> CLEARING_MECHANISM_SETTLES_IN_SETTLEMENT_SYSTEM -> T2
+- STEP2 SDD -> CLEARING_MECHANISM_SETTLES_IN_SETTLEMENT_SYSTEM -> T2
+- RT1 -> CLEARING_MECHANISM_SETTLES_IN_SETTLEMENT_SYSTEM -> TIPS
+- EURO1 -> CLEARING_MECHANISM_SETTLES_IN_SETTLEMENT_SYSTEM -> T2
+
+UI / product requirements
+1. In the FMI pages, show:
+   - domain
+   - taxonomy category
+   - operator
+   - market
+   - status
+2. Add a relationship section on the FMI detail page showing:
+   - uses clearing mechanism
+   - settles in
+   - operated by
+3. Ensure taxonomy filters work at:
+   - domain level
+   - category level
+   - parent category level
+4. Make sure users can distinguish clearly between:
+   - scheme
+   - clearing mechanism
+   - settlement system
+   - network
+   - card infrastructure
+   - securities infrastructure
+   - FX settlement infrastructure
+
+Validation rules
+1. A Payment Scheme cannot be directly classified as a Payment Settlement System
+2. CLS cannot be placed under Payment Systems
+3. Visa and Mastercard cannot be placed under Payment Schemes for account-to-account payments
+4. CREST cannot be placed under Payment Systems
+5. EURO1 cannot be classified as ACH
+6. T2 cannot be classified as a clearing mechanism
+7. SCT Inst / OCT Inst must be classifiable as a scheme, not only as infrastructure
+
+Migration / refactor guidance
+1. Preserve existing FMI records where possible
+2. Map current categories into the new taxonomy
+3. If existing categories are too broad or incorrect, migrate them to the closest correct category
+4. Keep aliases / legacy labels where useful for search
+5. Do not break existing references unnecessarily
+
+Expected outcome
+After implementation, CBHub should be able to:
+- distinguish payment schemes from CSMs and settlement systems
+- keep CLS separate
+- keep card schemes separate
+- support securities FMIs such as CREST
+- support CCPs and trade repositories
+- support explicit FMI-to-FMI relationship mapping
+- scale later into operating hours, currencies, participation, and reachability analysis
+
+Please implement:
+1. taxonomy schema changes
+2. seed data
+3. relationship model
+4. migration of existing FMI records
+5. UI updates needed to display the new taxonomy and relationships
+without breaking current app behaviour.

@@ -284,6 +284,106 @@ router.delete("/cb-indirect/:id", async (req, res) => {
   }
 });
 
+// ── FMI Taxonomy v2 ───────────────────────────────────────────────────────────
+
+router.get("/fmi-domains", async (_req, res) => {
+  try {
+    const rows = await db.execute(`
+      SELECT d.id, d.code, d.name, d.description, d.sort_order,
+        count(e.id)::int AS entry_count
+      FROM fmi_domains d
+      LEFT JOIN fmi_categories c ON c.domain_id = d.id
+      LEFT JOIN fmi_entries e ON e.category_id = c.id AND e.is_active = true
+      WHERE d.is_active = true
+      GROUP BY d.id ORDER BY d.sort_order
+    `);
+    res.json(rows.rows);
+  } catch (err: any) { res.status(500).json({ message: err.message }); }
+});
+
+router.get("/fmi-categories", async (_req, res) => {
+  try {
+    const rows = await db.execute(`
+      SELECT c.id, c.code, c.name, c.description, c.level, c.sort_order,
+        c.domain_id, c.parent_category_id,
+        d.name AS domain_name, d.code AS domain_code,
+        p.name AS parent_name, p.code AS parent_code,
+        count(e.id)::int AS entry_count
+      FROM fmi_categories c
+      JOIN fmi_domains d ON d.id = c.domain_id
+      LEFT JOIN fmi_categories p ON p.id = c.parent_category_id
+      LEFT JOIN fmi_entries e ON e.category_id = c.id AND e.is_active = true
+      WHERE c.is_active = true
+      GROUP BY c.id, d.id, p.id ORDER BY d.sort_order, c.level, c.sort_order
+    `);
+    res.json(rows.rows);
+  } catch (err: any) { res.status(500).json({ message: err.message }); }
+});
+
+router.get("/fmi-entries", async (_req, res) => {
+  try {
+    const domainFilter = (_req as any).query?.domain;
+    const catFilter = (_req as any).query?.category;
+    let where = `e.is_active = true`;
+    if (domainFilter) where += ` AND d.code = '${domainFilter}'`;
+    if (catFilter) where += ` AND (c.code = '${catFilter}' OR p.code = '${catFilter}')`;
+
+    const rows = await db.execute(`
+      SELECT e.id, e.name, e.short_name, e.code, e.status,
+        e.operator_name, e.functional_role_summary, e.settlement_model,
+        e.supports_24x7, e.supports_cross_border, e.primary_currency_code,
+        e.description, e.notes,
+        c.id AS category_id, c.code AS category_code, c.name AS category_name, c.level AS category_level,
+        p.id AS parent_category_id, p.code AS parent_category_code, p.name AS parent_category_name,
+        d.id AS domain_id, d.code AS domain_code, d.name AS domain_name
+      FROM fmi_entries e
+      JOIN fmi_categories c ON c.id = e.category_id
+      LEFT JOIN fmi_categories p ON p.id = c.parent_category_id
+      JOIN fmi_domains d ON d.id = c.domain_id
+      WHERE ${where}
+      ORDER BY d.sort_order, c.level, c.sort_order, e.name
+    `);
+    res.json(rows.rows);
+  } catch (err: any) { res.status(500).json({ message: err.message }); }
+});
+
+router.get("/fmi-entries/:id", async (req, res) => {
+  try {
+    const rows = await db.execute(`
+      SELECT e.*,
+        c.code AS category_code, c.name AS category_name, c.level AS category_level,
+        p.code AS parent_category_code, p.name AS parent_category_name,
+        d.code AS domain_code, d.name AS domain_name
+      FROM fmi_entries e
+      JOIN fmi_categories c ON c.id = e.category_id
+      LEFT JOIN fmi_categories p ON p.id = c.parent_category_id
+      JOIN fmi_domains d ON d.id = c.domain_id
+      WHERE e.id = '${req.params.id}'
+    `);
+    if (!rows.rows.length) return res.status(404).json({ message: "FMI not found" });
+    const entry = rows.rows[0] as any;
+
+    // Fetch relationships
+    const rels = await db.execute(`
+      SELECT r.id, r.notes, r.is_active,
+        rt.code AS rel_type_code, rt.name AS rel_type_name,
+        src.id AS source_id, src.name AS source_name, src.code AS source_code,
+        tgt.id AS target_id, tgt.name AS target_name, tgt.code AS target_code,
+        tc.name AS target_category_name
+      FROM fmi_relationships r
+      JOIN fmi_relationship_types rt ON rt.id = r.relationship_type_id
+      JOIN fmi_entries src ON src.id = r.source_fmi_id
+      JOIN fmi_entries tgt ON tgt.id = r.target_fmi_id
+      JOIN fmi_categories tc ON tc.id = tgt.category_id
+      WHERE (r.source_fmi_id = '${req.params.id}' OR r.target_fmi_id = '${req.params.id}')
+        AND r.is_active = true
+      ORDER BY rt.code
+    `);
+    entry.relationships = rels.rows;
+    res.json(entry);
+  } catch (err: any) { res.status(500).json({ message: err.message }); }
+});
+
 // ── Geographic & Currency Reference ──────────────────────────────────────────
 router.get("/countries", async (_req, res) => {
   try {

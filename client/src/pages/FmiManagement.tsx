@@ -13,8 +13,8 @@ import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage } from "
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
-import { insertFmiRegistrySchema, FMI_CATEGORIES, FMI_TAXONOMY_TYPES, FMI_TAXONOMY_SUBTYPES } from "@shared/schema";
-import type { FmiRegistry, Fmi, FmiResearchJob, FmiTaxonomy } from "@shared/schema";
+import { insertFmiRegistrySchema, FMI_CATEGORIES } from "@shared/schema";
+import type { FmiRegistry, Fmi, FmiResearchJob } from "@shared/schema";
 import { useToast } from "@/hooks/use-toast";
 import { 
   Network, Globe, ExternalLink, Trash2, Plus, 
@@ -652,68 +652,92 @@ function JobStatusBadge({ status, error }: { status: string; error?: string | nu
 }
 
 // ── Taxonomy Tab ─────────────────────────────────────────────────────────────
+// ── Taxonomy v2 types ─────────────────────────────────────────────────────────
+interface FmiEntryRow {
+  id: string;
+  name: string;
+  short_name: string | null;
+  code: string | null;
+  status: string;
+  operator_name: string | null;
+  functional_role_summary: string | null;
+  settlement_model: string | null;
+  supports_24x7: boolean | null;
+  supports_cross_border: boolean | null;
+  primary_currency_code: string | null;
+  category_code: string;
+  category_name: string;
+  category_level: number;
+  parent_category_code: string | null;
+  parent_category_name: string | null;
+  domain_code: string;
+  domain_name: string;
+}
 
-const TYPE_COLORS: Record<string, string> = {
-  "Settlement Systems": "bg-blue-50 text-blue-700 border-blue-200",
-  "Clearing Systems": "bg-purple-50 text-purple-700 border-purple-200",
-  "Instant Payment Infrastructures": "bg-emerald-50 text-emerald-700 border-emerald-200",
-  "Reachability and Network Infrastructures": "bg-orange-50 text-orange-700 border-orange-200",
-  "Payment Scheme Infrastructures": "bg-pink-50 text-pink-700 border-pink-200",
-  "Cross-Border and Interoperability Infrastructures": "bg-indigo-50 text-indigo-700 border-indigo-200",
+const DOMAIN_BADGE_COLORS: Record<string, string> = {
+  PS:  "bg-blue-100 text-blue-800 border-blue-200",
+  FXS: "bg-emerald-100 text-emerald-800 border-emerald-200",
+  CPI: "bg-purple-100 text-purple-800 border-purple-200",
+  SMI: "bg-amber-100 text-amber-800 border-amber-200",
+  CCP: "bg-red-100 text-red-800 border-red-200",
+  TR:  "bg-indigo-100 text-indigo-800 border-indigo-200",
 };
 
 function TaxonomyTab() {
-  const [typeFilter, setTypeFilter] = useState<string>("all");
-  const [subtypeFilter, setSubtypeFilter] = useState<string>("all");
+  const [domainFilter, setDomainFilter] = useState<string>("all");
   const [search, setSearch] = useState("");
   const [expandedId, setExpandedId] = useState<string | null>(null);
 
-  const { data: items = [], isLoading } = useQuery<FmiTaxonomy[]>({
-    queryKey: ["/api/fmi-taxonomy"],
+  const { data: items = [], isLoading } = useQuery<FmiEntryRow[]>({
+    queryKey: ["/api/fmi-entries"],
   });
 
-  const availableSubtypes = [...new Set(
-    items.filter(i => typeFilter === "all" || i.type === typeFilter).map(i => i.subtype).filter(Boolean)
-  )].sort() as string[];
+  const domains = Array.from(
+    new Map(items.map(i => [i.domain_code, { code: i.domain_code, name: i.domain_name }])).values()
+  );
 
   const filtered = items.filter(item => {
-    if (typeFilter !== "all" && item.type !== typeFilter) return false;
-    if (subtypeFilter !== "all" && item.subtype !== subtypeFilter) return false;
+    if (domainFilter !== "all" && item.domain_code !== domainFilter) return false;
     if (search) {
       const q = search.toLowerCase();
       return (
         item.name.toLowerCase().includes(q) ||
         (item.short_name ?? "").toLowerCase().includes(q) ||
-        (item.jurisdiction ?? "").toLowerCase().includes(q) ||
-        (item.currency_scope ?? "").toLowerCase().includes(q) ||
-        (item.operator_name ?? "").toLowerCase().includes(q)
+        (item.code ?? "").toLowerCase().includes(q) ||
+        (item.operator_name ?? "").toLowerCase().includes(q) ||
+        (item.category_name ?? "").toLowerCase().includes(q)
       );
     }
     return true;
   });
 
-  const grouped = FMI_TAXONOMY_TYPES.reduce<Record<string, Record<string, FmiTaxonomy[]>>>((acc, t) => {
-    const typeItems = filtered.filter(i => i.type === t);
-    if (!typeItems.length) return acc;
-    acc[t] = typeItems.reduce<Record<string, FmiTaxonomy[]>>((sg, item) => {
-      const sub = item.subtype ?? "—";
-      if (!sg[sub]) sg[sub] = [];
-      sg[sub].push(item);
+  // Group by domain → category group (parent or leaf)
+  const grouped = domains.reduce<Record<string, Record<string, FmiEntryRow[]>>>((acc, d) => {
+    const domainItems = filtered.filter(i => i.domain_code === d.code);
+    if (!domainItems.length) return acc;
+    acc[d.code] = domainItems.reduce<Record<string, FmiEntryRow[]>>((sg, item) => {
+      const groupLabel = item.parent_category_name
+        ? `${item.parent_category_name} › ${item.category_name}`
+        : item.category_name;
+      if (!sg[groupLabel]) sg[groupLabel] = [];
+      sg[groupLabel].push(item);
       return sg;
     }, {});
     return acc;
   }, {});
 
+  const domainNames = Object.fromEntries(items.map(i => [i.domain_code, i.domain_name]));
   const totalShown = filtered.length;
+  const uniqueCategories = new Set(items.map(i => i.category_code)).size;
 
   return (
     <div className="space-y-4">
       {/* Stats row */}
       <div className="grid grid-cols-3 gap-4">
         {[
-          { label: "Total FMIs", value: items.length },
-          { label: "Types", value: 6 },
-          { label: "Subtypes", value: [...new Set(items.map(i => i.subtype))].length },
+          { label: "Total FMI Entries", value: items.length },
+          { label: "Domains", value: domains.length },
+          { label: "Categories", value: uniqueCategories },
         ].map(stat => (
           <Card key={stat.label} className="border border-slate-200">
             <CardContent className="p-4">
@@ -731,37 +755,27 @@ function TaxonomyTab() {
             <div className="relative flex-1 min-w-52">
               <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
               <Input
-                placeholder="Search FMI name, currency, jurisdiction…"
+                placeholder="Search FMI name, code, operator…"
                 value={search}
                 onChange={e => setSearch(e.target.value)}
                 className="pl-9 h-9"
                 data-testid="input-taxonomy-search"
               />
             </div>
-            <Select value={typeFilter} onValueChange={v => { setTypeFilter(v); setSubtypeFilter("all"); }}>
-              <SelectTrigger className="h-9 w-72" data-testid="select-taxonomy-type">
-                <SelectValue placeholder="All Types" />
+            <Select value={domainFilter} onValueChange={setDomainFilter}>
+              <SelectTrigger className="h-9 w-64" data-testid="select-taxonomy-domain">
+                <SelectValue placeholder="All Domains" />
               </SelectTrigger>
               <SelectContent>
-                <SelectItem value="all">All Types</SelectItem>
-                {FMI_TAXONOMY_TYPES.map(t => (
-                  <SelectItem key={t} value={t}>{t}</SelectItem>
+                <SelectItem value="all">All Domains</SelectItem>
+                {domains.map(d => (
+                  <SelectItem key={d.code} value={d.code}>{d.name}</SelectItem>
                 ))}
               </SelectContent>
             </Select>
-            <Select value={subtypeFilter} onValueChange={setSubtypeFilter} disabled={availableSubtypes.length === 0}>
-              <SelectTrigger className="h-9 w-60" data-testid="select-taxonomy-subtype">
-                <SelectValue placeholder="All Subtypes" />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="all">All Subtypes</SelectItem>
-                {availableSubtypes.map(s => (
-                  <SelectItem key={s} value={s}>{s}</SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-            {(typeFilter !== "all" || subtypeFilter !== "all" || search) && (
-              <Button variant="outline" size="sm" onClick={() => { setTypeFilter("all"); setSubtypeFilter("all"); setSearch(""); }}
+            {(domainFilter !== "all" || search) && (
+              <Button variant="outline" size="sm"
+                onClick={() => { setDomainFilter("all"); setSearch(""); }}
                 data-testid="button-taxonomy-clear">
                 Clear filters
               </Button>
@@ -782,103 +796,85 @@ function TaxonomyTab() {
         </div>
       ) : (
         <div className="space-y-5">
-          {Object.entries(grouped).map(([type, subtypeMap]) => (
-            <Card key={type} className="border border-slate-200 overflow-hidden">
+          {Object.entries(grouped).map(([domainCode, categoryMap]) => (
+            <Card key={domainCode} className="border border-slate-200 overflow-hidden">
               <CardHeader className="bg-slate-50 border-b border-slate-200 py-3 px-4">
                 <div className="flex items-center gap-3">
-                  <Badge variant="outline" className={`text-xs font-medium ${TYPE_COLORS[type] ?? ""}`}>
-                    {type}
+                  <Badge variant="outline" className={`text-xs font-medium ${DOMAIN_BADGE_COLORS[domainCode] ?? ""}`}>
+                    {domainNames[domainCode] ?? domainCode}
                   </Badge>
-                  <span className="text-xs text-slate-500">
-                    {Object.values(subtypeMap).flat().length} FMI{Object.values(subtypeMap).flat().length !== 1 ? "s" : ""}
+                  <span className="text-xs text-slate-500 font-mono">{domainCode}</span>
+                  <span className="text-xs text-slate-400 ml-auto">
+                    {Object.values(categoryMap).flat().length} entr{Object.values(categoryMap).flat().length !== 1 ? "ies" : "y"}
                   </span>
                 </div>
               </CardHeader>
               <CardContent className="p-0">
-                {Object.entries(subtypeMap).map(([subtype, fmis]) => (
-                  <div key={subtype}>
+                {Object.entries(categoryMap).map(([categoryLabel, entries]) => (
+                  <div key={categoryLabel}>
                     <div className="px-4 py-2 bg-slate-50/60 border-b border-slate-100 flex items-center gap-2">
                       <ChevronRight className="w-3.5 h-3.5 text-slate-400" />
-                      <span className="text-xs font-semibold text-slate-600 uppercase tracking-wide">{subtype}</span>
-                      <span className="text-xs text-slate-400">{fmis.length}</span>
+                      <span className="text-xs font-semibold text-slate-600">{categoryLabel}</span>
+                      <span className="text-xs text-slate-400">{entries.length}</span>
                     </div>
                     <Table>
                       <TableHeader>
                         <TableRow className="hover:bg-transparent">
-                          <TableHead className="w-8 pl-4"></TableHead>
+                          <TableHead className="w-8 pl-4" />
                           <TableHead className="text-xs font-semibold text-slate-500">Name</TableHead>
-                          <TableHead className="text-xs font-semibold text-slate-500">Short Name</TableHead>
-                          <TableHead className="text-xs font-semibold text-slate-500">Currency Scope</TableHead>
-                          <TableHead className="text-xs font-semibold text-slate-500">Geographic Scope</TableHead>
+                          <TableHead className="text-xs font-semibold text-slate-500">Code</TableHead>
+                          <TableHead className="text-xs font-semibold text-slate-500">Currency</TableHead>
+                          <TableHead className="text-xs font-semibold text-slate-500">Settlement</TableHead>
                           <TableHead className="text-xs font-semibold text-slate-500">Operator</TableHead>
-                          <TableHead className="text-xs font-semibold text-slate-500">Jurisdiction</TableHead>
+                          <TableHead className="text-xs font-semibold text-slate-500">24×7</TableHead>
                         </TableRow>
                       </TableHeader>
                       <TableBody>
-                        {fmis.map(fmi => (
-                          <Fragment key={fmi.id}>
+                        {entries.map(entry => (
+                          <Fragment key={entry.id}>
                             <TableRow
                               className="cursor-pointer hover:bg-blue-50/40"
-                              onClick={() => setExpandedId(expandedId === fmi.id ? null : fmi.id)}
-                              data-testid={`row-taxonomy-${fmi.id}`}
+                              onClick={() => setExpandedId(expandedId === entry.id ? null : entry.id)}
+                              data-testid={`row-taxonomy-${entry.id}`}
                             >
                               <TableCell className="pl-4 py-2">
-                                {expandedId === fmi.id
+                                {expandedId === entry.id
                                   ? <ChevronDown className="w-3.5 h-3.5 text-blue-500" />
                                   : <ChevronRight className="w-3.5 h-3.5 text-slate-400" />}
                               </TableCell>
-                              <TableCell className="py-2 font-medium text-sm text-slate-800">{fmi.name}</TableCell>
-                              <TableCell className="py-2 text-sm text-slate-500">{fmi.short_name ?? "—"}</TableCell>
+                              <TableCell className="py-2 font-medium text-sm text-slate-800">{entry.name}</TableCell>
+                              <TableCell className="py-2 text-xs font-mono text-slate-400">
+                                {entry.code ?? "—"}
+                              </TableCell>
                               <TableCell className="py-2 text-sm">
-                                {fmi.currency_scope ? (
-                                  <div className="flex flex-wrap gap-1">
-                                    {fmi.currency_scope.split(",").map(c => (
-                                      <Badge key={c.trim()} variant="outline" className="text-xs px-1.5 py-0 text-slate-600 border-slate-200">
-                                        {c.trim()}
-                                      </Badge>
-                                    ))}
-                                  </div>
+                                {entry.primary_currency_code
+                                  ? <Badge variant="outline" className="text-xs px-1.5 py-0 text-slate-600 border-slate-200">{entry.primary_currency_code}</Badge>
+                                  : <span className="text-slate-400">—</span>}
+                              </TableCell>
+                              <TableCell className="py-2 text-sm text-slate-500">{entry.settlement_model ?? "—"}</TableCell>
+                              <TableCell className="py-2 text-sm text-slate-500 max-w-48 truncate">{entry.operator_name ?? "—"}</TableCell>
+                              <TableCell className="py-2 text-sm text-slate-500">
+                                {entry.supports_24x7 ? (
+                                  <Badge variant="outline" className="text-xs text-emerald-600 border-emerald-200 bg-emerald-50">Yes</Badge>
                                 ) : "—"}
                               </TableCell>
-                              <TableCell className="py-2 text-sm text-slate-500 max-w-44 truncate">{fmi.geographic_scope ?? "—"}</TableCell>
-                              <TableCell className="py-2 text-sm text-slate-500 max-w-48 truncate">{fmi.operator_name ?? "—"}</TableCell>
-                              <TableCell className="py-2 text-sm text-slate-500">{fmi.jurisdiction ?? "—"}</TableCell>
                             </TableRow>
-                            {expandedId === fmi.id && (
+                            {expandedId === entry.id && (
                               <TableRow className="bg-blue-50/20 hover:bg-blue-50/20">
                                 <TableCell colSpan={7} className="px-8 py-4">
-                                  <div className="grid grid-cols-1 gap-4 text-sm">
-                                    <div className="grid grid-cols-2 gap-4">
-                                      {[
-                                        { label: "Objective", value: fmi.objective },
-                                        { label: "Functional Role", value: fmi.functional_role },
-                                      ].map(f => f.value && (
-                                        <div key={f.label}>
-                                          <p className="text-xs font-semibold text-slate-500 uppercase tracking-wide mb-1 flex items-center gap-1">
-                                            <Info className="w-3 h-3" /> {f.label}
-                                          </p>
-                                          <p className="text-slate-700 leading-relaxed">{f.value}</p>
-                                        </div>
-                                      ))}
-                                    </div>
-                                    {fmi.access_context && (
+                                  <div className="grid grid-cols-1 gap-3 text-sm">
+                                    {entry.functional_role_summary && (
                                       <div>
-                                        <p className="text-xs font-semibold text-slate-500 uppercase tracking-wide mb-1">Access Context</p>
-                                        <p className="text-slate-700 leading-relaxed">{fmi.access_context}</p>
-                                      </div>
-                                    )}
-                                    {fmi.summary && (
-                                      <div className="border-t border-blue-100 pt-3">
-                                        <p className="text-xs font-semibold text-slate-500 uppercase tracking-wide mb-1">Summary</p>
-                                        <p className="text-slate-700 leading-relaxed">{fmi.summary}</p>
+                                        <p className="text-xs font-semibold text-slate-500 uppercase tracking-wide mb-1">Functional Role</p>
+                                        <p className="text-slate-700 leading-relaxed">{entry.functional_role_summary}</p>
                                       </div>
                                     )}
                                     <div className="border-t border-blue-100 pt-3">
-                                      <Link href={`/fmis/${fmi.id}`}>
-                                        <a className="inline-flex items-center gap-1.5 text-xs text-blue-600 hover:text-blue-800 font-medium"
-                                           data-testid={`link-fmi-profile-${fmi.id}`}>
+                                      <Link href={`/fmis/${entry.id}`}>
+                                        <span className="inline-flex items-center gap-1.5 text-xs text-blue-600 hover:text-blue-800 font-medium cursor-pointer"
+                                          data-testid={`link-fmi-profile-${entry.id}`}>
                                           View full FMI profile <ArrowRight className="w-3 h-3" />
-                                        </a>
+                                        </span>
                                       </Link>
                                     </div>
                                   </div>

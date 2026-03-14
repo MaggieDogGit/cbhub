@@ -556,3 +556,86 @@ export type RegionMember = typeof regionMembers.$inferSelect;
 export const insertCurrencyAreaSchema = createInsertSchema(currencyAreas).omit({ id: true });
 export type InsertCurrencyArea = z.infer<typeof insertCurrencyAreaSchema>;
 export type CurrencyArea = typeof currencyAreas.$inferSelect;
+
+// ── FMI Taxonomy v2 ────────────────────────────────────────────────────────────
+
+export const fmiDomains = pgTable("fmi_domains", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  code: varchar("code", { length: 20 }).notNull().unique(),
+  name: text("name").notNull(),
+  description: text("description"),
+  sort_order: integer("sort_order").default(0),
+  is_active: boolean("is_active").default(true),
+});
+
+export const fmiCategories = pgTable("fmi_categories", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  domain_id: varchar("domain_id").notNull().references(() => fmiDomains.id, { onDelete: "cascade" }),
+  parent_category_id: varchar("parent_category_id"), // self-ref — FK added via SQL
+  code: varchar("code", { length: 30 }).notNull().unique(),
+  name: text("name").notNull(),
+  description: text("description"),
+  level: integer("level").notNull().default(1),
+  sort_order: integer("sort_order").default(0),
+  is_active: boolean("is_active").default(true),
+});
+
+export const fmiEntries = pgTable("fmi_entries", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  name: text("name").notNull(),
+  short_name: text("short_name"),
+  code: varchar("code", { length: 30 }).unique(),
+  category_id: varchar("category_id").notNull().references(() => fmiCategories.id),
+  description: text("description"),
+  market_country_id: varchar("market_country_id"),
+  region_id: varchar("region_id"),
+  operator_name: text("operator_name"),
+  status: text("status").default("live"),
+  functional_role_summary: text("functional_role_summary"),
+  settlement_model: text("settlement_model"),
+  supports_24x7: boolean("supports_24x7"),
+  supports_cross_border: boolean("supports_cross_border"),
+  supports_one_leg_out: boolean("supports_one_leg_out"),
+  primary_currency_code: varchar("primary_currency_code", { length: 10 }),
+  notes: text("notes"),
+  metadata_json: text("metadata_json"),
+  is_active: boolean("is_active").default(true),
+  created_at: timestamp("created_at").defaultNow(),
+  updated_at: timestamp("updated_at").defaultNow(),
+});
+
+export const fmiRelationshipTypes = pgTable("fmi_relationship_types", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  code: varchar("code", { length: 60 }).notNull().unique(),
+  name: text("name").notNull(),
+  description: text("description"),
+});
+
+export const fmiRelationships = pgTable("fmi_relationships", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  source_fmi_id: varchar("source_fmi_id").notNull().references(() => fmiEntries.id, { onDelete: "cascade" }),
+  relationship_type_id: varchar("relationship_type_id").notNull().references(() => fmiRelationshipTypes.id),
+  target_fmi_id: varchar("target_fmi_id").notNull().references(() => fmiEntries.id, { onDelete: "cascade" }),
+  notes: text("notes"),
+  is_active: boolean("is_active").default(true),
+});
+
+export const insertFmiDomainSchema = createInsertSchema(fmiDomains).omit({ id: true });
+export type InsertFmiDomain = z.infer<typeof insertFmiDomainSchema>;
+export type FmiDomain = typeof fmiDomains.$inferSelect;
+
+export const insertFmiCategorySchema = createInsertSchema(fmiCategories).omit({ id: true });
+export type InsertFmiCategory = z.infer<typeof insertFmiCategorySchema>;
+export type FmiCategory = typeof fmiCategories.$inferSelect;
+
+export const insertFmiEntrySchema = createInsertSchema(fmiEntries).omit({ id: true, created_at: true, updated_at: true });
+export type InsertFmiEntry = z.infer<typeof insertFmiEntrySchema>;
+export type FmiEntry = typeof fmiEntries.$inferSelect;
+
+export const insertFmiRelationshipTypeSchema = createInsertSchema(fmiRelationshipTypes).omit({ id: true });
+export type InsertFmiRelationshipType = z.infer<typeof insertFmiRelationshipTypeSchema>;
+export type FmiRelationshipType = typeof fmiRelationshipTypes.$inferSelect;
+
+export const insertFmiRelationshipSchema = createInsertSchema(fmiRelationships).omit({ id: true });
+export type InsertFmiRelationship = z.infer<typeof insertFmiRelationshipSchema>;
+export type FmiRelationship = typeof fmiRelationships.$inferSelect;
