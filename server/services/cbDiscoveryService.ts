@@ -51,7 +51,7 @@ export const EUROZONE_COUNTRIES = new Set([
 
 export const CLS_CURRENCIES = new Set(["AUD","CAD","CHF","DKK","EUR","GBP","HKD","JPY","MXN","NOK","NZD","SEK","SGD","USD","ILS","ZAR","KRW","HUF"]);
 
-export async function runMarketScanJob(
+export async function runMarketScan(
   job: AgentJob,
   isDryRun: boolean,
   jobLabel: string,

@@ -5,7 +5,7 @@
 
 import { storage } from "../storage";
 import { buildSystemPrompt, buildJobPrompt, buildLightJobPrompt, buildIntelContext, buildGroupSnapshot, runAgentLoop, getLightTools, getDryRunTools } from "../agent";
-import { COUNTRY_RTGS, COUNTRY_CURRENCY, runMarketScanJob } from "./cbDiscoveryService";
+import { COUNTRY_RTGS, COUNTRY_CURRENCY, runMarketScan } from "./cbDiscoveryService";
 import type { IntelObservation, AgentJob, InsertAgentJob } from "@shared/schema";
 
 export { COUNTRY_CURRENCY, COUNTRY_RTGS };
@@ -28,6 +28,20 @@ export async function updateJobStatus(id: string, data: Partial<AgentJob>) {
 
 export async function deleteJob(id: string) {
   return storage.deleteJob(id);
+}
+
+export async function getJobResults(id: string) {
+  const job = await storage.getJob(id);
+  if (!job) return undefined;
+  return {
+    id: job.id,
+    status: job.status,
+    scan_summary: job.scan_summary,
+    steps_completed: job.steps_completed,
+    error_message: job.error_message,
+    completed_at: job.completed_at,
+    conversation_id: job.conversation_id,
+  };
 }
 
 let isProcessing = false;
@@ -68,7 +82,7 @@ async function processNextJob() {
     const sources = await storage.listDataSources();
 
     if (isMarketScan) {
-      const { stepCount, scanSummaryJson } = await runMarketScanJob(pending, isDryRun, jobLabel, conv.id, sources);
+      const { stepCount, scanSummaryJson } = await runMarketScan(pending, isDryRun, jobLabel, conv.id, sources);
 
       await storage.updateJob(pending.id, {
         status: "completed",

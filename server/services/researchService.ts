@@ -1,9 +1,10 @@
 import OpenAI from "openai";
+import type { ChatCompletionCreateParamsNonStreaming } from "openai/resources/chat/completions";
 
 const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
 
-export async function researchBank(bankName: string): Promise<Record<string, any>> {
-  const searchResponse = await openai.chat.completions.create({
+export async function researchBank(bankName: string): Promise<Record<string, unknown>> {
+  const searchParams: ChatCompletionCreateParamsNonStreaming = {
     model: "gpt-4o-search-preview",
     messages: [
       {
@@ -11,10 +12,11 @@ export async function researchBank(bankName: string): Promise<Record<string, any
         content: `Search for current information about "${bankName}" correspondent banking services, currencies they clear, RTGS memberships, CLS membership, and their role as a correspondent bank. Include their headquarters country and whether they are a G-SIB.`,
       },
     ],
-  } as any);
+  };
+  const searchResponse = await openai.chat.completions.create(searchParams);
   const webContext = searchResponse.choices[0].message.content || "";
 
-  const response = await openai.chat.completions.create({
+  const structureParams: ChatCompletionCreateParamsNonStreaming = {
     model: "gpt-4o",
     response_format: { type: "json_object" },
     messages: [
@@ -54,6 +56,7 @@ Currencies must be from: EUR, USD, GBP, JPY, CHF, CAD, AUD, SGD, HKD, CNH, SEK, 
 Only include currencies and services you found evidence for in the research.`,
       },
     ],
-  });
+  };
+  const response = await openai.chat.completions.create(structureParams);
   return JSON.parse(response.choices[0].message.content || "{}");
 }
