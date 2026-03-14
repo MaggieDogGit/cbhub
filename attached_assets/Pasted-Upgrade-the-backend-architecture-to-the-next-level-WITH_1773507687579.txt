@@ -1,0 +1,247 @@
+Upgrade the backend architecture to the next level WITHOUT changing user-facing behaviour, UI behaviour, API contracts, or database schema unless strictly necessary.
+
+OBJECTIVE
+Turn the current refactor into a clean, scalable architecture for an AI-driven correspondent banking intelligence platform. The current route modularisation and service split are a good foundation. Now complete the architecture so that:
+- routes are thin
+- services own business logic
+- agent code owns AI workflow execution
+- storage access is isolated behind repositories
+- validation and confidence scoring are built in
+- workflows are explicit and reusable
+
+NON-NEGOTIABLE CONSTRAINTS
+- Do not break the UI
+- Do not change current endpoint paths or response shapes unless strictly necessary
+- Do not change existing database tables yet
+- Do not remove working functionality
+- Keep backward compatibility
+- Prefer incremental refactor over risky rewrite
+- If needed, keep compatibility wrappers temporarily
+- Add comments only where they genuinely help maintainability
+
+TARGET OUTCOME
+Refactor the backend into this logical structure:
+
+server/
+  routes/
+    authRoutes.ts
+    registryRoutes.ts
+    researchRoutes.ts
+    jobRoutes.ts
+    chatRoutes.ts
+    dashboardRoutes.ts
+
+  services/
+    bankingGroupService.ts
+    cbDiscoveryService.ts
+    chatAgentService.ts
+    jobService.ts
+    researchService.ts
+
+  repositories/
+    bankingGroupRepository.ts
+    legalEntityRepository.ts
+    bicRepository.ts
+    correspondentServiceRepository.ts
+    jobRepository.ts
+    researchRepository.ts
+
+  models/
+    bankingGroup.ts
+    legalEntity.ts
+    bic.ts
+    correspondentService.ts
+    research.ts
+    common.ts
+
+  agent/
+    executor.ts
+    prompts.ts
+    retry.ts
+    tools.ts
+    validators.ts
+    workflows/
+      marketScanWorkflow.ts
+      cbEntitySetupWorkflow.ts
+      serviceDiscoveryWorkflow.ts
+      fmiResearchWorkflow.ts
+    types.ts
+
+  storage.ts   <-- keep only as compatibility facade if needed
+  db.ts
+  index.ts
+  routes.ts
+
+WHAT TO DO
+
+PHASE 1 — AUDIT AND PREP
+1. Review all current server-side files and identify:
+   - business logic still sitting in routes
+   - direct storage calls from routes
+   - AI prompt / OpenAI logic outside the agent folder
+   - duplicated validation / normalization logic
+   - old files that should become thin wrappers only
+
+2. Produce a short internal execution plan and then implement it directly. Do not stop at analysis.
+
+PHASE 2 — INTRODUCE REPOSITORY LAYER
+3. Create server/repositories/ and move database access responsibilities out of routes and out of business-heavy services where appropriate.
+
+4. Repositories should contain data access only. No AI logic. No HTTP logic. Minimal transformation only.
+
+5. Keep storage.ts temporarily as a compatibility facade if required, but reduce it so it delegates to repositories rather than owning broad application logic.
+
+6. Use repository methods for common operations such as:
+   - list / get / create / update banking groups
+   - list / get / create / update legal entities
+   - list / get / create / update BICs
+   - list / get / create / update correspondent services
+   - create / update / fetch jobs
+   - persist research results if relevant
+
+PHASE 3 — THIN ROUTES
+7. Refactor all route files so they:
+   - validate request basics
+   - call a service
+   - return the response
+   - handle errors consistently
+
+8. Remove business logic from routes, especially:
+   - inline normalization logic
+   - inline discovery logic
+   - inline OpenAI / prompt orchestration
+   - direct storage orchestration across multiple entities
+
+9. Preserve all current endpoint behaviour.
+
+PHASE 4 — STRENGTHEN SERVICE LAYER
+10. Refactor services so they become the true orchestration layer between routes, repositories, and agent workflows.
+
+11. Suggested responsibilities:
+   - bankingGroupService.ts:
+     owns group-level orchestration and enrichment
+   - cbDiscoveryService.ts:
+     owns correspondent banking discovery orchestration
+   - jobService.ts:
+     owns job lifecycle, status transitions, retries, progress updates
+   - chatAgentService.ts:
+     owns conversational interaction with the AI layer
+   - researchService.ts:
+     owns research request orchestration and delegates AI execution to agent workflows
+
+12. Services should not contain raw HTTP concerns and should avoid embedding large prompt text directly if prompts belong in agent/prompts.ts.
+
+PHASE 5 — FORMALISE AGENT LAYER
+13. Keep all AI execution logic inside server/agent/.
+
+14. Introduce server/agent/types.ts for common AI workflow input/output types.
+
+15. Create explicit workflows in server/agent/workflows/:
+   - marketScanWorkflow.ts
+   - cbEntitySetupWorkflow.ts
+   - serviceDiscoveryWorkflow.ts
+   - fmiResearchWorkflow.ts
+
+16. Each workflow should:
+   - accept a typed input
+   - perform deterministic pre-processing
+   - call agent executor / tools / prompts as needed
+   - validate output
+   - return structured output
+   - include confidence and evidence metadata where possible
+
+17. Move any AI prompt assembly currently outside agent/ into agent/prompts.ts or workflow-specific helpers.
+
+18. Move any output validation currently duplicated across files into agent/validators.ts or workflow-specific validator helpers.
+
+PHASE 6 — DOMAIN MODELS
+19. Create server/models/ for shared domain types and mapping helpers.
+
+20. Introduce clear types/interfaces for at least:
+   - BankingGroup
+   - LegalEntity
+   - BIC
+   - CorrespondentService
+   - ResearchJob / JobStatus
+   - ConfidenceLevel
+   - EvidenceItem
+
+21. Use these models to reduce loosely typed object passing across routes/services/agent.
+
+PHASE 7 — VALIDATION + CONFIDENCE
+22. Add structured validation for AI-derived outputs. At minimum:
+   - required fields present
+   - enums normalized
+   - duplicate entities reduced
+   - malformed BIC-like values flagged
+   - unsupported values mapped to known categories or marked unknown
+
+23. Add confidence scoring fields to AI workflow outputs such as:
+   - confidence: high | medium | low
+   - evidenceCount
+   - evidenceSummary
+   - validationWarnings
+
+24. Do not fabricate certainty. If evidence is weak, preserve uncertainty explicitly.
+
+PHASE 8 — JOB ORCHESTRATION
+25. Ensure longer-running AI workflows can be handled cleanly via jobService:
+   - create job
+   - set in_progress
+   - record progress messages
+   - store partial/final result
+   - set completed / failed
+   - capture meaningful error messages
+
+26. Standardize job status transitions and avoid ad hoc job updates scattered across route files.
+
+PHASE 9 — KEEP COMPATIBILITY
+27. If old imports point to legacy files, either:
+   - update them to new modules, or
+   - keep thin compatibility wrappers temporarily
+
+28. Thin wrappers are acceptable only if they contain no real business logic.
+
+29. Do not leave duplicate logic in both old and new locations.
+
+PHASE 10 — QUALITY PASS
+30. After refactor:
+   - run type checks
+   - fix imports
+   - remove dead code
+   - remove duplicate logic
+   - ensure all routes still register properly
+   - ensure app starts successfully
+
+31. Add short high-value comments only where the architecture would otherwise be unclear.
+
+32. Do not introduce new framework complexity unless necessary.
+
+IMPORTANT DESIGN RULES
+- Route -> Service -> Repository is the default path for data-backed operations
+- Route -> Service -> Agent Workflow is the default path for AI-backed operations
+- Repositories do not call routes
+- Agent does not know about HTTP
+- Routes do not embed AI workflow logic
+- Services may orchestrate both repositories and agent workflows
+- Keep modules small and coherent
+- Prefer explicit names over generic helper dumping grounds
+
+CORRESPONDENT BANKING ORIENTATION
+This application is evolving into a correspondent banking intelligence platform. Keep the design extensible for workflows such as:
+- identify whether a banking group offers correspondent banking
+- identify which legal entity likely provides the service
+- identify likely service currencies / markets / rails
+- assess evidence quality and confidence
+- store structured findings that can later be reviewed and challenged by a human
+
+DELIVERABLES
+When done, provide:
+1. A concise summary of what was changed
+2. A list of newly created files
+3. A list of existing files materially updated
+4. Any temporary compatibility wrappers left in place
+5. Any known follow-up recommendations
+
+EXECUTE NOW
+Do the refactor directly. Do not just describe the plan.

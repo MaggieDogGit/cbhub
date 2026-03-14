@@ -3,7 +3,7 @@
 // Tech debt: These prompt strings are very large and could eventually move to a dedicated prompts directory with separate template files.
 
 import type { DataSource, IntelObservation, AgentJob } from "@shared/schema";
-import { COUNTRY_CURRENCY, EUROZONE_COUNTRIES, CLS_CURRENCIES } from "../services/cbDiscoveryService";
+import { COUNTRY_CURRENCY, EUROZONE_COUNTRIES, CLS_CURRENCIES } from "./constants";
 
 type CurrencyScope = "home_only" | "major" | "all";
 

@@ -1,63 +1,104 @@
-# Service-Layer Refactor — Status
+# Backend Refactor Status
 
-## Summary
+## Architecture Pattern in Effect
 
-Completed the service-layer refactor that was started in Task #13. Routes are now thin HTTP adapters (validate → call service → respond). All business logic, data access, and OpenAI orchestration has been moved into dedicated service modules. Legacy re-export barrel files have been deleted.
+```
+Route → Service → Repository          (data-backed operations)
+Route → Service → Agent Workflow      (AI-backed operations)
 
-## Changes Made
+Repositories: DB access only, no AI, no HTTP
+Services: orchestrate repos + workflows
+Agent workflows: typed inputs/outputs, confidence + evidence metadata
+Routes: validate request, call service, return response
+```
 
-### Services — Expanded / Created
+---
+
+## Task 13 — Route Modularisation ✓
+
+- `server/routes/` created with 6 focused routers
+- `server/services/` created with 4 service modules
+- `server/agent/` created with 5 focused modules + barrel
+
+---
+
+## Task 14 — Service-Layer Completion ✓
+
+- `bankingGroupService.ts` expanded with full CRUD + merge ops
+- `researchService.ts` created (OpenAI research extracted from route)
+- `jobService.ts` — listJobs/getJob/createJob/updateJobStatus/deleteJob/getJobResults
+- `cbDiscoveryService.ts` — runMarketScan() market-scan orchestration
+- Dashboard SQL moved to `storage.ts` as dedicated methods
+- `server/agentCore.ts` and `server/jobRunner.ts` deleted (absorbed)
+
+---
+
+## Task 15 — Full Architecture Upgrade ✓
+
+### Repository Layer (server/repositories/)
+
+| File | Responsibility |
+|------|---------------|
+| `bankingGroupRepository.ts` | BankingGroup CRUD + mergeBankingGroups |
+| `legalEntityRepository.ts` | LegalEntity CRUD + mergeLegalEntities |
+| `bicRepository.ts` | BIC CRUD |
+| `correspondentServiceRepository.ts` | CorrespondentService, ClsProfile, Fmi, FmiRegistry CRUD + dashboard analytics |
+| `jobRepository.ts` | AgentJob CRUD + Conversation + ChatMessage |
+| `researchRepository.ts` | DataSource, IntelObservation, FmiResearchJob, CB Taxonomy |
+
+### Domain Models (server/models/)
+
+| File | Contents |
+|------|----------|
+| `common.ts` | ConfidenceLevel, EvidenceItem, WorkflowResult<T>, JobStatus, CurrencyScope |
+| `bankingGroup.ts` | BankingGroupWithEntities, CbProbabilityLevel |
+| `legalEntity.ts` | LegalEntityWithBics |
+| `bic.ts` | BicWithServices |
+| `correspondentService.ts` | SERVICE_TYPES, CLEARING_MODELS, defaultServiceType() |
+| `research.ts` | StructuredResearchResult, StructuredServiceEntry |
+
+### Agent Layer
 
 | File | Change |
 |------|--------|
-| `server/services/bankingGroupService.ts` | Added `listBankingGroups`, `createBankingGroup`, `updateBankingGroup`, `deleteBankingGroup` (previously only had merge ops) |
-| `server/services/researchService.ts` | **New file.** Extracted OpenAI web-search + JSON-structuring logic from `researchRoutes.ts` into `researchBank(bankName)` |
-| `server/services/jobService.ts` | Added `listJobs`, `getJob`, `createJob`, `updateJobStatus`, `deleteJob`, `getJobResults` CRUD wrappers. Market-scan orchestration logic extracted to `cbDiscoveryService.runMarketScan()` |
-| `server/services/cbDiscoveryService.ts` | Added `runMarketScan(...)` — contains market-scan prompt-building, agent loop, and post-scan diff/summary logic. Constants (`COUNTRY_RTGS`, `CURRENCY_COUNTRY`, etc.) retained |
+| `agent/constants.ts` | **New.** Single source of truth for COUNTRY_RTGS, CURRENCY_COUNTRY, COUNTRY_CURRENCY, EUROZONE_COUNTRIES, CLS_CURRENCIES — previously duplicated |
+| `agent/types.ts` | **New.** WorkflowResult, ConfidenceLevel, EvidenceItem, WorkflowInput, StepProgress, AgentMode |
+| `agent/validators.ts` | **Expanded.** isValidBicFormat, normalizeCurrency, normalizeClearingModel, findLikelyDuplicates, validateResearchOutput |
+| `agent/index.ts` | **Updated.** Exports constants, types, all validators |
+| `agent/prompts.ts` | **Fixed.** Constants import changed from cbDiscoveryService → ./constants |
 
-### Routes — Thinned
+### Agent Workflows (server/agent/workflows/)
 
-| File | Change |
-|------|--------|
-| `server/routes/registryRoutes.ts` | Banking group CRUD now calls `bankingGroupService` instead of `storage` directly |
-| `server/routes/jobRoutes.ts` | All `storage.createJob/getJob/listJobs/deleteJob` calls replaced with `jobService` equivalents |
-| `server/routes/researchRoutes.ts` | OpenAI logic removed; calls `researchService.researchBank()` |
-| `server/routes/dashboardRoutes.ts` | Raw SQL removed; calls `storage.getDashboardCurrencyProviders()` and `storage.getDashboardCoverageMap()` |
+| File | Responsibility |
+|------|---------------|
+| `marketScanWorkflow.ts` | Market scan logic; returns WorkflowResult<MarketScanOutput> with confidence + validation warnings |
+| `cbEntitySetupWorkflow.ts` | CB entity setup logic (moved from jobService.processNextJob); returns WorkflowResult<CbEntitySetupOutput> |
+| `serviceDiscoveryWorkflow.ts` | **New.** Deterministic CB provider likelihood assessment (no AI calls) |
+| `fmiResearchWorkflow.ts` | **New.** Typed orchestration wrapper over agentFmiResearch with confidence scoring |
 
-### Storage — Extended
-
-| File | Change |
-|------|--------|
-| `server/storage.ts` | Added `getDashboardCurrencyProviders()` and `getDashboardCoverageMap()` methods to `DatabaseStorage` and `IStorage` interface |
-
-### Legacy Files — Removed
-
-| File | Reason |
-|------|--------|
-| `server/jobRunner.ts` | 6-line re-export barrel with zero remaining importers |
-| `server/agentCore.ts` | 9-line re-export barrel; only used by `agentFmiResearch.ts` which was updated to import from `./agent` directly |
-
-### Import Fixes
+### Updated Existing Files
 
 | File | Change |
 |------|--------|
-| `server/agentFmiResearch.ts` | Changed `import from "./agentCore"` → `import from "./agent"` |
+| `server/storage.ts` | Pure compatibility facade — DatabaseStorage delegates all methods to repositories (one-liner per method). IStorage interface and `storage` export unchanged. |
+| `server/services/cbDiscoveryService.ts` | Slimmed to re-export constants + delegate runMarketScan to marketScanWorkflow |
+| `server/services/jobService.ts` | processNextJob delegates CB setup to cbEntitySetupWorkflow |
+| `server/services/bankingGroupService.ts` | Uses bankingGroupRepository and legalEntityRepository directly |
 
-## Intentionally Preserved
-
-- `server/routes.ts` — Kept as the top-level mount index (registers all sub-routers + auth middleware). This is intentional architecture, not a leftover.
+---
 
 ## No Changes Made To
 
 - **UI / Frontend** — No client-side files touched
 - **Database schema** — No schema changes
-- **API contracts** — All endpoint paths and response shapes are identical
+- **API contracts** — All endpoint paths and response shapes identical
 - **`shared/schema.ts`** — Untouched
+
+---
 
 ## Remaining Known Technical Debt
 
-1. `registryRoutes.ts` still calls `storage` directly for entity types other than banking groups (legal entities, BICs, correspondent services, CLS profiles, FMIs, FMI registry, data sources, intel observations, CB taxonomy). These could be wrapped in services but are simple CRUD pass-throughs with no business logic.
-2. `researchRoutes.ts` still calls `storage` directly for FMI research job CRUD (`/api/fmi-research-jobs`). These are simple pass-throughs.
-3. `jobService.processNextJob()` still contains CB-setup job orchestration logic (prompt building, agent loop, validation parsing). This could be extracted into a dedicated `cbSetupService` in future.
-4. Prompt strings in `server/agent/prompts.ts` are very large (~700 lines) and could be moved to template files.
-5. `fmiResearchJobRunner.ts` still lives at the top level of `server/`; it could be moved into `server/services/` for consistency.
+1. `registryRoutes.ts` still calls storage directly for entity types other than banking groups. Low-risk; simple CRUD pass-throughs with no business logic, but could move to a `registryService`.
+2. `researchService.ts` OpenAI calls could gain confidence/validation wrapping via a dedicated research workflow.
+3. `agent/prompts.ts` is ~700 lines; long-term could split into per-workflow prompt helpers.
+4. `agentFmiResearch.ts` has pre-existing TypeScript errors (withRetry return type, fmi_name nullability) that were present before this refactor and do not affect runtime.
