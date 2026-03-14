@@ -3,6 +3,8 @@
 
 import { Router } from "express";
 import { storage } from "../storage";
+import { db } from "../db";
+import { fmiTaxonomy } from "@shared/schema";
 import {
   listBankingGroups, createBankingGroup, updateBankingGroup, deleteBankingGroup,
   mergeBankingGroups, mergeLegalEntities,
@@ -277,6 +279,16 @@ router.delete("/cb-indirect/:id", async (req, res) => {
   try {
     await storage.deleteCbIndirectParticipation(req.params.id);
     res.json({ ok: true });
+  } catch (err: any) {
+    res.status(500).json({ message: err.message });
+  }
+});
+
+// ── FMI Taxonomy v1 ──────────────────────────────────────────────────────────
+router.get("/fmi-taxonomy", async (_req, res) => {
+  try {
+    const rows = await db.select().from(fmiTaxonomy).orderBy(fmiTaxonomy.type, fmiTaxonomy.subtype, fmiTaxonomy.name);
+    res.json(rows);
   } catch (err: any) {
     res.status(500).json({ message: err.message });
   }

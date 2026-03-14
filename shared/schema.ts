@@ -357,3 +357,64 @@ export type InsertCbIndirectParticipation = z.infer<typeof insertCbIndirectParti
 export const insertUserSchema = z.object({ username: z.string(), password: z.string() });
 export type InsertUser = z.infer<typeof insertUserSchema>;
 export type User = { id: string; username: string; password: string };
+
+// ── FMI Taxonomy v1 ───────────────────────────────────────────────────────────
+
+export const FMI_TAXONOMY_DOMAINS = ["Payments"] as const;
+export type FmiTaxonomyDomain = typeof FMI_TAXONOMY_DOMAINS[number];
+
+export const FMI_TAXONOMY_TYPES = [
+  "Settlement Systems",
+  "Clearing Systems",
+  "Instant Payment Infrastructures",
+  "Reachability and Network Infrastructures",
+  "Payment Scheme Infrastructures",
+  "Cross-Border and Interoperability Infrastructures",
+] as const;
+export type FmiTaxonomyType = typeof FMI_TAXONOMY_TYPES[number];
+
+export const FMI_TAXONOMY_SUBTYPES = [
+  "RTGS",
+  "Deferred Net Settlement",
+  "Hybrid Settlement",
+  "ACH",
+  "Retail Batch Clearing",
+  "High-Value Clearing",
+  "Instant Payment Scheme",
+  "Instant Clearing Infrastructure",
+  "Instant Settlement Infrastructure",
+  "Credit Transfer Scheme",
+  "Direct Debit Scheme",
+  "Messaging Network",
+  "Access Gateway",
+  "Indirect Participation / Sponsorship Infrastructure",
+  "Cross-Border Payment Network",
+  "One-Leg-Out Infrastructure",
+  "Interoperability Linkage",
+  "FX Settlement Infrastructure",
+  "Card Payment Infrastructure",
+] as const;
+export type FmiTaxonomySubtype = typeof FMI_TAXONOMY_SUBTYPES[number];
+
+export const fmiTaxonomy = pgTable("fmi_taxonomy", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  name: text("name").notNull(),
+  short_name: text("short_name"),
+  domain: text("domain").notNull().default("Payments"),
+  type: text("type").notNull(),
+  subtype: text("subtype"),
+  objective: text("objective"),
+  functional_role: text("functional_role"),
+  primary_payment_domain: text("primary_payment_domain").default("Payments"),
+  geographic_scope: text("geographic_scope"),
+  currency_scope: text("currency_scope"),
+  access_context: text("access_context"),
+  operator_name: text("operator_name"),
+  jurisdiction: text("jurisdiction"),
+  summary: text("summary"),
+  created_at: timestamp("created_at").defaultNow(),
+});
+
+export const insertFmiTaxonomySchema = createInsertSchema(fmiTaxonomy).omit({ id: true, created_at: true });
+export type InsertFmiTaxonomy = z.infer<typeof insertFmiTaxonomySchema>;
+export type FmiTaxonomy = typeof fmiTaxonomy.$inferSelect;
