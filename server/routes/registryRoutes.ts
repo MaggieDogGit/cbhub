@@ -640,22 +640,6 @@ router.get("/fmi-entries/:id/capability", async (req, res) => {
     );
     let spec: FmiSpecRow | undefined = directSpecRows[0];
 
-    if (!spec) {
-      const { rows: relatedSpecRows } = await pool.query<FmiSpecRow>(
-        `SELECT fs.*
-         FROM fmi_relationships r
-         JOIN fmi_specifications fs ON fs.fmi_id = r.target_fmi_id
-         JOIN fmi_relationship_types rt ON rt.id = r.relationship_type_id
-         WHERE r.source_fmi_id = $1
-           AND rt.code IN ('SCHEME_USES_CLEARING_MECHANISM','CLEARING_MECHANISM_SETTLES_IN_SETTLEMENT_SYSTEM')
-         ORDER BY
-           CASE WHEN rt.code = 'SCHEME_USES_CLEARING_MECHANISM' THEN 0 ELSE 1 END
-         LIMIT 1`,
-        [fmiId]
-      );
-      spec = relatedSpecRows[0];
-    }
-
     if (!spec && scenarioId) {
       const { rows: scenarioSpecRows } = await pool.query<FmiSpecRow>(
         `SELECT fs.*
@@ -670,6 +654,22 @@ router.get("/fmi-entries/:id/capability", async (req, res) => {
         [scenarioId]
       );
       spec = scenarioSpecRows[0];
+    }
+
+    if (!spec) {
+      const { rows: relatedSpecRows } = await pool.query<FmiSpecRow>(
+        `SELECT fs.*
+         FROM fmi_relationships r
+         JOIN fmi_specifications fs ON fs.fmi_id = r.target_fmi_id
+         JOIN fmi_relationship_types rt ON rt.id = r.relationship_type_id
+         WHERE r.source_fmi_id = $1
+           AND rt.code IN ('SCHEME_USES_CLEARING_MECHANISM','CLEARING_MECHANISM_SETTLES_IN_SETTLEMENT_SYSTEM')
+         ORDER BY
+           CASE WHEN rt.code = 'SCHEME_USES_CLEARING_MECHANISM' THEN 0 ELSE 1 END
+         LIMIT 1`,
+        [fmiId]
+      );
+      spec = relatedSpecRows[0];
     }
 
     const { rows: schemeRows } = await pool.query<SchemeSpecRow>(
