@@ -1,0 +1,420 @@
+Implement an FMI specifications and payment capability model in CBHub that works with the FMI taxonomy already defined.
+
+Objective
+Extend the FMI model so CBHub can record operational and business-relevant specifications for payment systems, while correctly distinguishing:
+- taxonomy classification
+- FMI-level specifications
+- scheme-level rules
+- scheme processing scenarios
+- FMI-to-FMI relationships
+
+This model must support examples such as:
+- T2
+- TIPS
+- STEP2 SCT
+- STEP2 SDD
+- RT1
+- EURO1
+- SWIFT
+- FPS
+- FPS Payment Originated Overseas (POO)
+- SEPA Credit Transfer
+- SCT Inst
+- OCT Inst
+
+Core modelling principles
+1. Taxonomy is for classification only
+   - Example: RTGS, ACH Credit Transfer Clearing, Instant Settlement System
+   - Do not store operational details only in taxonomy categories
+
+2. Most operational specifications belong to the FMI record
+   - Example: operating hours, currencies, message format support, settlement model
+
+3. Scheme rules belong to the payment scheme
+   - Example: whether SCT Inst permits one-leg-out
+
+4. Special usage patterns within a scheme must be modelled as scheme processing scenarios
+   - Example: FPS Payment Originated Overseas (POO) is not a separate scheme
+   - It is a processing scenario within FPS
+
+5. Some capabilities depend on both the infrastructure and the scheme/scenario
+   - Example: RT1 may be technically capable of certain cross-border processing
+   - But SCT Inst scheme rules may still prohibit one-leg-out usage
+
+6. Do not model one-leg-out only once
+   - It may exist at:
+     a. infrastructure capability level
+     b. scheme rule level
+     c. scheme processing scenario level
+   - Actual usable capability should be derived from the combination
+
+Target conceptual hierarchy
+Payment Scheme
+    ↓
+Scheme Processing Scenario (optional)
+    ↓
+Clearing Mechanism
+    ↓
+Settlement System
+
+Examples
+1. SEPA Instant
+- Scheme: SCT Inst
+- Scenario: domestic SEPA usage
+- Clearing: RT1 or TIPS
+- Settlement: TIPS
+- One-leg-out: not allowed at scheme level
+
+2. OCT Inst
+- Scheme: OCT Inst or equivalent cross-border scheme record
+- Scenario: optional default scenario
+- Clearing: RT1 or TIPS where applicable
+- Settlement: TIPS
+- One-leg-out: allowed at scheme level
+
+3. UK Faster Payments
+- Scheme: FPS
+- Scenario A: Domestic FPS
+- Scenario B: FPS POO (Payment Originated Overseas)
+- Clearing: FPS central infrastructure
+- Settlement: Bank of England RTGS
+- One-leg-out: allowed for POO scenario, not for domestic scenario
+
+Required model design
+
+A. FMI-level specifications
+Create a flexible FMI specification model for actual FMI entities such as T2, RT1, TIPS, EURO1, STEP2, SWIFT, FPS infrastructure.
+
+These specifications should support at least the following groups:
+
+1. General
+- status
+- operator
+- market
+- region
+- description
+
+2. Functional role
+- performs_clearing boolean
+- performs_settlement boolean
+- performs_messaging boolean
+- performs_scheme_governance boolean
+
+3. Settlement characteristics
+- settlement_model (gross / net / deferred_net / hybrid / PvP / DvP)
+- settlement_asset_type (central_bank_money / commercial_bank_money / other)
+- settles_in_fmi_id nullable
+- finality_model
+- settlement_cycle_description nullable
+
+4. Operational model
+- operating_model (real_time / batch / hybrid)
+- supports_24x7 boolean nullable
+- processing_latency_seconds nullable
+- operating_timezone nullable
+- operating_hours_notes nullable
+
+5. Currency support
+- primary_currency_code nullable
+- supported_currency_codes nullable JSON or related table
+
+6. Messaging / format capability
+- primary_message_standard nullable
+- supported_message_standards nullable JSON or related table
+- supported_message_formats nullable JSON or related table
+- legacy_formats_supported nullable JSON or related table
+- message_transport_network nullable
+
+7. Participation model
+- direct_participation_allowed boolean nullable
+- indirect_participation_supported boolean nullable
+- sponsor_model_supported boolean nullable
+- eligible_participant_types nullable JSON or related table
+
+8. Reachability / geography capability
+- supports_cross_border_processing boolean nullable
+- supports_one_leg_out_processing boolean nullable
+- participant_location_requirement nullable
+- debtor_location_requirement nullable
+- creditor_location_requirement nullable
+
+9. Liquidity model
+- prefunding_required boolean nullable
+- intraday_credit_supported boolean nullable
+- liquidity_management_notes nullable
+
+Recommended approach
+Use either:
+- a structured specification table with typed fields
+or
+- a flexible key/value specifications table plus a few high-value indexed columns
+Prefer a design that is easy to query in the UI and analytics.
+
+B. Scheme-level specifications
+Create a payment scheme specification model for scheme rulebooks such as:
+- SEPA Credit Transfer
+- SCT Inst
+- OCT Inst
+- SEPA Direct Debit
+- FPS
+
+These fields should include at least:
+- scheme_currency_code nullable
+- scheme_region nullable
+- scheme_cross_border_allowed boolean nullable
+- scheme_one_leg_out_allowed boolean nullable
+- max_transaction_amount nullable
+- settlement_deadline_seconds nullable
+- primary_message_standard nullable
+- scheme_rulebook_reference nullable
+- participation_scope_notes nullable
+
+Important logic
+- SCT Inst: scheme_one_leg_out_allowed = false
+- OCT Inst: scheme_one_leg_out_allowed = true
+- FPS: scheme_one_leg_out_allowed can be null or false at scheme default level, because this depends on scenario
+
+C. Scheme processing scenarios
+Create a new entity to model special processing scenarios within a scheme.
+
+Table name recommendation
+payment_scheme_processing_scenarios
+
+Fields
+- id
+- scheme_fmi_id
+- code
+- name
+- description
+- is_default boolean
+- supports_cross_border boolean nullable
+- supports_one_leg_out boolean nullable
+- requires_special_format boolean nullable
+- message_standard nullable
+- message_format nullable
+- currency_code nullable
+- geography_scope nullable
+- notes
+- is_active
+
+Purpose
+This entity must support cases where a payment capability is not a separate scheme, but a special scenario inside a scheme.
+
+Required examples
+1. FPS Domestic
+- scheme = FPS
+- supports_cross_border = false
+- supports_one_leg_out = false
+
+2. FPS POO
+- scheme = FPS
+- name = Payment Originated Overseas
+- supports_cross_border = true
+- supports_one_leg_out = true
+- requires_special_format = true
+
+3. SCT Inst Domestic
+- scheme = SCT Inst
+- supports_cross_border = intra-SEPA only
+- supports_one_leg_out = false
+
+4. OCT Inst Default
+- scheme = OCT Inst
+- supports_cross_border = true
+- supports_one_leg_out = true
+
+D. Relationship model
+Ensure the relationship model supports:
+1. SCHEME_USES_CLEARING_MECHANISM
+2. CLEARING_MECHANISM_SETTLES_IN_SETTLEMENT_SYSTEM
+3. FMI_OPERATED_BY_ORGANIZATION
+4. SCENARIO_USES_CLEARING_MECHANISM
+5. SCENARIO_SETTLES_IN_SETTLEMENT_SYSTEM
+
+If relationships already exist for FMIs, extend them rather than duplicating logic.
+
+Recommended logic
+- A scheme may use one or more clearing mechanisms
+- A scheme processing scenario may override or narrow which clearing mechanism is used
+- A clearing mechanism may settle in a settlement system
+
+Examples
+- SCT Inst -> SCHEME_USES_CLEARING_MECHANISM -> RT1
+- SCT Inst -> SCHEME_USES_CLEARING_MECHANISM -> TIPS
+- RT1 -> CLEARING_MECHANISM_SETTLES_IN_SETTLEMENT_SYSTEM -> TIPS
+- FPS POO scenario -> SCENARIO_USES_CLEARING_MECHANISM -> FPS central infrastructure
+- FPS central infrastructure -> CLEARING_MECHANISM_SETTLES_IN_SETTLEMENT_SYSTEM -> Bank of England RTGS
+
+Capability evaluation logic
+Implement logic so CBHub can distinguish:
+1. infrastructure capability
+2. scheme rule
+3. scenario rule
+4. actual usable payment capability
+
+Recommended logic for derived output:
+actual_supports_one_leg_out =
+  infrastructure.supports_one_leg_out_processing
+  AND (
+    scenario.supports_one_leg_out if scenario exists
+    else scheme.scheme_one_leg_out_allowed
+  )
+
+Similarly for cross-border support:
+actual_supports_cross_border =
+  infrastructure.supports_cross_border_processing
+  AND (
+    scenario.supports_cross_border if scenario exists
+    else scheme.scheme_cross_border_allowed
+  )
+
+If null values exist, handle them conservatively and visibly in UI as unknown where needed.
+
+Data model recommendation
+
+Create or extend the following entities:
+
+1. fmis
+Store actual infrastructure and scheme records
+
+2. fmi_specifications
+Either:
+- one row per FMI with structured columns
+or
+- key/value rows with data_type and normalized fields
+
+3. payment_scheme_specifications
+One row per payment scheme FMI
+
+4. payment_scheme_processing_scenarios
+One row per scenario
+
+5. fmi_relationships
+Extend existing relationship framework
+
+Optional but useful:
+6. fmi_message_formats
+7. fmi_supported_currencies
+8. fmi_participant_types
+
+Seed data requirements
+Seed at least the following examples:
+
+FMIs
+- T2
+- TIPS
+- STEP2 SCT
+- STEP2 SDD
+- RT1
+- EURO1
+- SWIFT
+- FPS central infrastructure
+- Bank of England RTGS
+- SEPA Credit Transfer
+- SCT Inst
+- OCT Inst
+- SEPA Direct Debit
+- Faster Payments
+
+FMI specification examples
+- T2: settlement_model = gross, primary_currency_code = EUR, supports_24x7 = false
+- TIPS: settlement_model = gross, supports_24x7 = true, primary_currency_code = EUR
+- RT1: operating_model = real_time, supports_24x7 = true, supports_cross_border_processing = true, supports_one_leg_out_processing = true or configurable if evidence model requires it
+- EURO1: settlement_model = deferred_net or net according to chosen taxonomy implementation, supports_24x7 = false
+- STEP2 SCT: operating_model = batch
+- FPS central infrastructure: operating_model = real_time, currency GBP
+
+Scheme specification examples
+- SCT Inst: scheme_one_leg_out_allowed = false
+- OCT Inst: scheme_one_leg_out_allowed = true
+- FPS: default scheme_one_leg_out_allowed = null or false, because actual OLO support is scenario-specific
+- SEPA Credit Transfer: scheme_one_leg_out_allowed = depends on scheme modelling choice
+- SEPA Direct Debit: scheme_one_leg_out_allowed = false unless explicitly modelled otherwise
+
+Scenario examples
+- FPS Domestic
+- FPS Payment Originated Overseas
+- SCT Inst Domestic
+- OCT Inst Default
+
+Relationship seed examples
+- SCT Inst -> SCHEME_USES_CLEARING_MECHANISM -> RT1
+- SCT Inst -> SCHEME_USES_CLEARING_MECHANISM -> TIPS
+- OCT Inst -> SCHEME_USES_CLEARING_MECHANISM -> RT1
+- OCT Inst -> SCHEME_USES_CLEARING_MECHANISM -> TIPS
+- RT1 -> CLEARING_MECHANISM_SETTLES_IN_SETTLEMENT_SYSTEM -> TIPS
+- STEP2 SCT -> CLEARING_MECHANISM_SETTLES_IN_SETTLEMENT_SYSTEM -> T2
+- STEP2 SDD -> CLEARING_MECHANISM_SETTLES_IN_SETTLEMENT_SYSTEM -> T2
+- EURO1 -> CLEARING_MECHANISM_SETTLES_IN_SETTLEMENT_SYSTEM -> T2
+- FPS POO scenario -> SCENARIO_USES_CLEARING_MECHANISM -> FPS central infrastructure
+- FPS central infrastructure -> CLEARING_MECHANISM_SETTLES_IN_SETTLEMENT_SYSTEM -> Bank of England RTGS
+
+UI requirements
+Update FMI pages so users can clearly see:
+1. taxonomy classification
+2. FMI specifications
+3. scheme rules
+4. processing scenarios
+5. related clearing and settlement mechanisms
+6. derived capabilities
+
+On a payment scheme page show:
+- scheme specifications
+- scenarios
+- linked clearing mechanisms
+- linked settlement systems through those clearing mechanisms
+- derived support for:
+  - cross-border payments
+  - one-leg-out payments
+
+On an FMI infrastructure page show:
+- operational specifications
+- message standards and formats
+- supported currencies
+- participation model
+- operating model
+- linked schemes and scenarios
+
+For FPS page specifically, users should be able to see:
+- Faster Payments scheme
+- Domestic scenario
+- Payment Originated Overseas scenario
+- difference in one-leg-out support between those scenarios
+
+Validation rules
+1. Do not store all one-leg-out logic only on FMI taxonomy categories
+2. Do not treat FPS POO as a separate payment scheme
+3. Do not treat SCT Inst and OCT Inst as the same rule set
+4. Do not treat message format as taxonomy-only data
+5. Do not classify T2 as a clearing mechanism
+6. Do not classify EURO1 as ACH
+7. Do not place SEPA schemes directly under settlement systems
+
+Migration guidance
+1. Keep existing FMI taxonomy intact where already implemented
+2. Add the new specification and scenario layers without breaking existing pages
+3. Migrate any existing one-leg-out field into the correct level:
+   - FMI capability
+   - scheme rule
+   - scenario rule
+4. Preserve legacy fields where needed, but make the new model the primary source of truth
+5. Add aliases and notes so search still works
+
+Expected outcome
+After implementation, CBHub should be able to:
+- distinguish classification from specifications
+- record operational details such as message standards and formats
+- record one-leg-out correctly
+- model both:
+  - separate cross-border schemes like OCT Inst
+  - scenario-based capabilities like FPS Payment Originated Overseas
+- derive actual payment capability from scheme + scenario + infrastructure
+- support later expansion into operating hours, limits, participation, and reachability analysis
+
+Please implement:
+1. schema changes
+2. seed data
+3. migration logic
+4. UI updates
+5. derived capability logic
+without breaking current app behaviour.
