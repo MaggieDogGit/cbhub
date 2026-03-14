@@ -396,22 +396,64 @@ export const FMI_TAXONOMY_SUBTYPES = [
 ] as const;
 export type FmiTaxonomySubtype = typeof FMI_TAXONOMY_SUBTYPES[number];
 
+export const FMI_OPERATOR_TYPES = ["Central Bank", "Government Agency", "Industry Cooperative", "Private Company", "Public-Private Partnership", "International Organisation"] as const;
+export type FmiOperatorType = typeof FMI_OPERATOR_TYPES[number];
+
+export const FMI_STATUSES = ["Active", "Decommissioned", "Pilot", "In Development"] as const;
+export type FmiStatus = typeof FMI_STATUSES[number];
+
+export const FMI_SYSTEMIC_IMPORTANCE = ["Systemically Important", "Systemically Relevant", "Supporting Infrastructure", "Supplementary"] as const;
+export type FmiSystemicImportance = typeof FMI_SYSTEMIC_IMPORTANCE[number];
+
 export const fmiTaxonomy = pgTable("fmi_taxonomy", {
   id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+
+  // ── Identity ────────────────────────────────────────────────────────────────
   name: text("name").notNull(),
   short_name: text("short_name"),
   domain: text("domain").notNull().default("Payments"),
   type: text("type").notNull(),
   subtype: text("subtype"),
+
+  // ── Purpose ─────────────────────────────────────────────────────────────────
   objective: text("objective"),
-  functional_role: text("functional_role"),
+  economic_purpose: text("economic_purpose"),
+  primary_functional_role: text("primary_functional_role"),
+  secondary_functional_roles: text("secondary_functional_roles").array(),
+
+  // ── Scope ───────────────────────────────────────────────────────────────────
   primary_payment_domain: text("primary_payment_domain").default("Payments"),
   geographic_scope: text("geographic_scope"),
+  region: text("region"),
   currency_scope: text("currency_scope"),
+  primary_currency: varchar("primary_currency", { length: 3 }),
+  cross_border_relevance: text("cross_border_relevance"),
+
+  // ── Participation ────────────────────────────────────────────────────────────
+  participation_model: text("participation_model"),
+  eligible_participants: text("eligible_participants"),
   access_context: text("access_context"),
+  central_bank_account_required: boolean("central_bank_account_required"),
+
+  // ── Operator / Oversight ─────────────────────────────────────────────────────
   operator_name: text("operator_name"),
+  operator_type: text("operator_type"),
+  oversight_authority: text("oversight_authority"),
   jurisdiction: text("jurisdiction"),
+
+  // ── Classification ───────────────────────────────────────────────────────────
+  status: text("status").default("Active"),
+  systemic_importance: text("systemic_importance"),
+  market_relevance_notes: text("market_relevance_notes"),
+
+  // ── Content ──────────────────────────────────────────────────────────────────
   summary: text("summary"),
+
+  // ── Sources ──────────────────────────────────────────────────────────────────
+  primary_source: text("primary_source"),
+  supporting_sources: text("supporting_sources").array(),
+  last_verified_date: date("last_verified_date"),
+
   created_at: timestamp("created_at").defaultNow(),
 });
 

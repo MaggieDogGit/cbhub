@@ -294,4 +294,15 @@ router.get("/fmi-taxonomy", async (_req, res) => {
   }
 });
 
+router.get("/fmi-taxonomy/:id", async (req, res) => {
+  try {
+    const { eq } = await import("drizzle-orm");
+    const rows = await db.select().from(fmiTaxonomy).where(eq(fmiTaxonomy.id, req.params.id)).limit(1);
+    if (!rows.length) return res.status(404).json({ message: "FMI not found" });
+    res.json(rows[0]);
+  } catch (err: any) {
+    res.status(500).json({ message: err.message });
+  }
+});
+
 export default router;

@@ -26,6 +26,8 @@ client/src/
     Competition.tsx        – Competitor benchmarking placeholder; lists competitor-tagged groups from intel observations
     Providers.tsx          – Banking Groups page (/banking-groups); 3-level tree (Group → Entity → BIC → Services); /providers redirects here
     LegalEntities.tsx      – Expandable entity list with BIC/service inline tables
+    FmiProfiles.tsx        – FMI list page (/fmis): 49 FMIs, faceted type sidebar, subtype/search filters, card grid
+    FmiProfileDetail.tsx   – FMI detail page (/fmis/:id): 6 sections (objective, role, scope, access, operator, importance); sources
     Coverage.tsx           – Coverage dashboard (Complete/Partial/Empty per group) + job queue UI
     CLS.tsx                – CLS profiles table, inline create/edit
     Currencies.tsx         – Per-currency competitor view table

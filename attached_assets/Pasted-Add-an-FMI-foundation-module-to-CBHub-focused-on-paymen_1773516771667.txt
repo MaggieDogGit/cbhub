@@ -1,0 +1,144 @@
+Add an FMI foundation module to CBHub focused on payments FMIs.
+
+Objective
+Create the first structured FMI layer in CBHub so the app can classify and describe payment infrastructures consistently before adding technical characteristics, participation data, market developments, APIs, or MCP integration.
+
+Scope
+1. Add a payments FMI taxonomy
+2. Add a standard FMI profile model
+3. Add basic FMI pages in the UI
+4. Keep the design extensible for later additions such as characteristics, participation, developments, and source evidence
+5. Do not build technical characteristics yet
+
+Required taxonomy
+Use hierarchy:
+Domain -> Type -> Subtype -> Individual FMI
+
+Domain:
+- Payments
+
+Types:
+- Settlement Systems
+- Clearing Systems
+- Instant Payment Infrastructures
+- Reachability and Network Infrastructures
+- Payment Scheme Infrastructures
+- Cross-Border and Interoperability Infrastructures
+
+Subtypes:
+- RTGS
+- Deferred Net Settlement
+- Hybrid Settlement
+- ACH
+- Retail Batch Clearing
+- High-Value Clearing
+- Instant Payment Scheme
+- Instant Clearing Infrastructure
+- Instant Settlement Infrastructure
+- Credit Transfer Scheme
+- Direct Debit Scheme
+- Messaging Network
+- Access Gateway
+- Indirect Participation / Sponsorship Infrastructure
+- Cross-Border Payment Network
+- One-Leg-Out Infrastructure
+- Interoperability Linkage
+- FX Settlement Infrastructure
+- Card Payment Infrastructure
+
+FMI profile fields
+Each FMI record should contain:
+- name
+- short_name
+- domain
+- type
+- subtype
+- objective
+- economic_purpose
+- primary_payment_domain
+- primary_functional_role
+- secondary_functional_roles
+- geographic_scope
+- currency_scope
+- cross_border_relevance
+- participation_model
+- eligible_participants
+- central_bank_account_required
+- operator_name
+- operator_type
+- oversight_authority
+- jurisdiction
+- region
+- primary_currency
+- status
+- systemic_importance
+- market_relevance_notes
+- summary
+- primary_source
+- supporting_sources
+- last_verified_date
+
+Design principles
+- Separate identity/purpose from technical characteristics
+- Classify each FMI by primary purpose
+- Build the model so characteristics, participation, developments, and source evidence can be added later without redesign
+- Keep naming consistent and machine-readable
+- Avoid overengineering in v1
+
+Database / model requirements
+Create the minimum model needed for v1. This can be done either with lookup tables plus an FMI table, or with enums where appropriate, but the structure must support:
+- types
+- subtypes
+- FMI records
+- future linked tables for characteristics, participation, developments, and sources
+
+UI requirements
+Add an FMI section to the app with:
+- FMI list page
+- filter by type
+- filter by subtype
+- FMI detail page
+
+The FMI detail page should display:
+- what it is
+- what it is for
+- what role it plays
+- where it operates
+- who can access it
+- who runs it
+- why it matters
+
+Seed data
+Seed a small initial set of FMI records to prove the model works, for example:
+- T2
+- EURO1
+- STEP2
+- SCT
+- SCT Inst
+- RT1
+- TIPS
+- CHAPS
+- Fedwire Funds
+- SIC
+- CLS
+- SWIFT
+
+Non-goals
+- Do not add opening hours yet
+- Do not add formats yet
+- Do not add operational rules yet
+- Do not add developments/news yet
+- Do not add API endpoints yet
+- Do not add MCP integration yet
+
+Deliverables
+1. Working FMI taxonomy in the app
+2. FMI profile model implemented
+3. FMI list and detail pages
+4. Seeded sample FMI dataset
+5. Short note explaining how the design can later be extended with:
+   - characteristics
+   - participation
+   - developments
+   - source evidence
+   - API layer

@@ -1,6 +1,6 @@
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { useState, useEffect, Fragment } from "react";
-import { useLocation } from "wouter";
+import { useLocation, Link } from "wouter";
 import { queryClient, apiRequest } from "@/lib/queryClient";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
@@ -20,7 +20,7 @@ import {
   Network, Globe, ExternalLink, Trash2, Plus, 
   Search, Bot, Play, StopCircle, Loader2, 
   CheckCircle2, XCircle, Clock, ChevronRight, ChevronDown, RefreshCw,
-  LayoutList, Info
+  LayoutList, Info, ArrowRight
 } from "lucide-react";
 
 export default function FmiManagement() {
@@ -873,6 +873,14 @@ function TaxonomyTab() {
                                         <p className="text-slate-700 leading-relaxed">{fmi.summary}</p>
                                       </div>
                                     )}
+                                    <div className="border-t border-blue-100 pt-3">
+                                      <Link href={`/fmis/${fmi.id}`}>
+                                        <a className="inline-flex items-center gap-1.5 text-xs text-blue-600 hover:text-blue-800 font-medium"
+                                           data-testid={`link-fmi-profile-${fmi.id}`}>
+                                          View full FMI profile <ArrowRight className="w-3 h-3" />
+                                        </a>
+                                      </Link>
+                                    </div>
                                   </div>
                                 </TableCell>
                               </TableRow>

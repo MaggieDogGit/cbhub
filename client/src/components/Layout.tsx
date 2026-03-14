@@ -17,6 +17,7 @@ const MAIN_NAV: NavItem[] = [
 const ENTITY_NAV: NavItem[] = [
   { name: "Banking Groups",  path: "/banking-groups", icon: Building2 },
   { name: "Legal Entities",  path: "/legal-entities", icon: Users },
+  { name: "FMIs",            path: "/fmis",           icon: Network },
 ];
 
 const RESEARCH_NAV: NavItem[] = [
@@ -46,7 +47,7 @@ function NavSection({ label, items, location, onNavigate }: {
       )}
       {items.map((item) => {
         const Icon = item.icon;
-        const isActive = item.path === "/" ? location === "/" : location.startsWith(item.path);
+        const isActive = item.path === "/" ? location === "/" : (location === item.path || location.startsWith(item.path + "/"));
         return (
           <Link
             key={item.path}

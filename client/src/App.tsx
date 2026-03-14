@@ -17,6 +17,8 @@ import DatabaseAdmin from "@/pages/DatabaseAdmin";
 import Sources from "@/pages/Sources";
 import Coverage from "@/pages/Coverage";
 import FmiManagement from "@/pages/FmiManagement";
+import FmiProfiles from "@/pages/FmiProfiles";
+import FmiProfileDetail from "@/pages/FmiProfileDetail";
 import Registry from "@/pages/Registry";
 import Login from "@/pages/Login";
 import NotFound from "@/pages/not-found";
@@ -34,6 +36,8 @@ function Router() {
           <Redirect to="/banking-groups" />
         </Route>
         <Route path="/legal-entities" component={LegalEntities} />
+        <Route path="/fmis" component={FmiProfiles} />
+        <Route path="/fmis/:id" component={FmiProfileDetail} />
         <Route path="/fmi" component={FmiManagement} />
         <Route path="/cls" component={CLS} />
         <Route path="/currencies" component={Currencies} />
