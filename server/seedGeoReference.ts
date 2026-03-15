@@ -6,11 +6,6 @@ export async function seedGeoReference(pool: Pool) {
     await client.query("BEGIN");
 
     await client.query(`
-      CREATE UNIQUE INDEX IF NOT EXISTS uq_country_currency
-        ON country_currencies (country_id, currency_id)
-    `);
-
-    const cRes = await client.query(`
       INSERT INTO countries (name, iso2, iso3, numeric_code, official_name, capital, region_hint)
       VALUES
         ('Afghanistan','AF','AFG',4,'Islamic Republic of Afghanistan','Kabul','Asia-Pacific'),
@@ -22,14 +17,14 @@ export async function seedGeoReference(pool: Pool) {
         ('Argentina','AR','ARG',32,'Argentine Republic','Buenos Aires','Americas'),
         ('Armenia','AM','ARM',51,'Republic of Armenia','Yerevan','CEE'),
         ('Australia','AU','AUS',36,'Commonwealth of Australia','Canberra','Asia-Pacific'),
-        ('Austria','AT','AUT',40,'Republic of Austria','Vienna','Europe'),
+        ('Austria','AT','AUT',40,'Republic of Austria','Vienna','EU'),
         ('Azerbaijan','AZ','AZE',31,'Republic of Azerbaijan','Baku','CEE'),
         ('Bahamas','BS','BHS',44,'Commonwealth of The Bahamas','Nassau','Americas'),
         ('Bahrain','BH','BHR',48,'Kingdom of Bahrain','Manama','MENA'),
         ('Bangladesh','BD','BGD',50,'People''s Republic of Bangladesh','Dhaka','Asia-Pacific'),
         ('Barbados','BB','BRB',52,'Barbados','Bridgetown','Americas'),
         ('Belarus','BY','BLR',112,'Republic of Belarus','Minsk','CEE'),
-        ('Belgium','BE','BEL',56,'Kingdom of Belgium','Brussels','Europe'),
+        ('Belgium','BE','BEL',56,'Kingdom of Belgium','Brussels','EU'),
         ('Belize','BZ','BLZ',84,'Belize','Belmopan','Americas'),
         ('Benin','BJ','BEN',204,'Republic of Benin','Porto-Novo','Sub-Saharan Africa'),
         ('Bhutan','BT','BTN',64,'Kingdom of Bhutan','Thimphu','Asia-Pacific'),
@@ -38,7 +33,7 @@ export async function seedGeoReference(pool: Pool) {
         ('Botswana','BW','BWA',72,'Republic of Botswana','Gaborone','Sub-Saharan Africa'),
         ('Brazil','BR','BRA',76,'Federative Republic of Brazil','Brasilia','Americas'),
         ('Brunei','BN','BRN',96,'Brunei Darussalam','Bandar Seri Begawan','Asia-Pacific'),
-        ('Bulgaria','BG','BGR',100,'Republic of Bulgaria','Sofia','CEE'),
+        ('Bulgaria','BG','BGR',100,'Republic of Bulgaria','Sofia','EU'),
         ('Burkina Faso','BF','BFA',854,'Burkina Faso','Ouagadougou','Sub-Saharan Africa'),
         ('Burundi','BI','BDI',108,'Republic of Burundi','Gitega','Sub-Saharan Africa'),
         ('Cabo Verde','CV','CPV',132,'Republic of Cabo Verde','Praia','Sub-Saharan Africa'),
@@ -54,11 +49,11 @@ export async function seedGeoReference(pool: Pool) {
         ('Congo (Republic)','CG','COG',178,'Republic of the Congo','Brazzaville','Sub-Saharan Africa'),
         ('Congo (DRC)','CD','COD',180,'Democratic Republic of the Congo','Kinshasa','Sub-Saharan Africa'),
         ('Costa Rica','CR','CRI',188,'Republic of Costa Rica','San Jose','Americas'),
-        ('Croatia','HR','HRV',191,'Republic of Croatia','Zagreb','Europe'),
+        ('Croatia','HR','HRV',191,'Republic of Croatia','Zagreb','EU'),
         ('Cuba','CU','CUB',192,'Republic of Cuba','Havana','Americas'),
-        ('Cyprus','CY','CYP',196,'Republic of Cyprus','Nicosia','Europe'),
-        ('Czech Republic','CZ','CZE',203,'Czech Republic','Prague','CEE'),
-        ('Denmark','DK','DNK',208,'Kingdom of Denmark','Copenhagen','Nordics'),
+        ('Cyprus','CY','CYP',196,'Republic of Cyprus','Nicosia','EU'),
+        ('Czech Republic','CZ','CZE',203,'Czech Republic','Prague','EU'),
+        ('Denmark','DK','DNK',208,'Kingdom of Denmark','Copenhagen','EU'),
         ('Djibouti','DJ','DJI',262,'Republic of Djibouti','Djibouti','Sub-Saharan Africa'),
         ('Dominica','DM','DMA',212,'Commonwealth of Dominica','Roseau','Americas'),
         ('Dominican Republic','DO','DOM',214,'Dominican Republic','Santo Domingo','Americas'),
@@ -67,18 +62,19 @@ export async function seedGeoReference(pool: Pool) {
         ('El Salvador','SV','SLV',222,'Republic of El Salvador','San Salvador','Americas'),
         ('Equatorial Guinea','GQ','GNQ',226,'Republic of Equatorial Guinea','Malabo','Sub-Saharan Africa'),
         ('Eritrea','ER','ERI',232,'State of Eritrea','Asmara','Sub-Saharan Africa'),
-        ('Estonia','EE','EST',233,'Republic of Estonia','Tallinn','Europe'),
+        ('Estonia','EE','EST',233,'Republic of Estonia','Tallinn','EU'),
         ('Eswatini','SZ','SWZ',748,'Kingdom of Eswatini','Mbabane','Sub-Saharan Africa'),
         ('Ethiopia','ET','ETH',231,'Federal Democratic Republic of Ethiopia','Addis Ababa','Sub-Saharan Africa'),
         ('Fiji','FJ','FJI',242,'Republic of Fiji','Suva','Asia-Pacific'),
-        ('Finland','FI','FIN',246,'Republic of Finland','Helsinki','Nordics'),
-        ('France','FR','FRA',250,'French Republic','Paris','Europe'),
+        ('Finland','FI','FIN',246,'Republic of Finland','Helsinki','EU'),
+        ('France','FR','FRA',250,'French Republic','Paris','EU'),
+        ('French Polynesia','PF','PYF',258,'French Polynesia','Papeete','Asia-Pacific'),
         ('Gabon','GA','GAB',266,'Gabonese Republic','Libreville','Sub-Saharan Africa'),
         ('Gambia','GM','GMB',270,'Republic of The Gambia','Banjul','Sub-Saharan Africa'),
         ('Georgia','GE','GEO',268,'Georgia','Tbilisi','CEE'),
-        ('Germany','DE','DEU',276,'Federal Republic of Germany','Berlin','Europe'),
+        ('Germany','DE','DEU',276,'Federal Republic of Germany','Berlin','EU'),
         ('Ghana','GH','GHA',288,'Republic of Ghana','Accra','Sub-Saharan Africa'),
-        ('Greece','GR','GRC',300,'Hellenic Republic','Athens','Europe'),
+        ('Greece','GR','GRC',300,'Hellenic Republic','Athens','EU'),
         ('Grenada','GD','GRD',308,'Grenada','Saint George''s','Americas'),
         ('Guatemala','GT','GTM',320,'Republic of Guatemala','Guatemala City','Americas'),
         ('Guinea','GN','GIN',324,'Republic of Guinea','Conakry','Sub-Saharan Africa'),
@@ -86,15 +82,15 @@ export async function seedGeoReference(pool: Pool) {
         ('Guyana','GY','GUY',328,'Co-operative Republic of Guyana','Georgetown','Americas'),
         ('Haiti','HT','HTI',332,'Republic of Haiti','Port-au-Prince','Americas'),
         ('Honduras','HN','HND',340,'Republic of Honduras','Tegucigalpa','Americas'),
-        ('Hungary','HU','HUN',348,'Hungary','Budapest','CEE'),
-        ('Iceland','IS','ISL',352,'Iceland','Reykjavik','Nordics'),
+        ('Hungary','HU','HUN',348,'Hungary','Budapest','EU'),
+        ('Iceland','IS','ISL',352,'Iceland','Reykjavik','EEA'),
         ('India','IN','IND',356,'Republic of India','New Delhi','Asia-Pacific'),
         ('Indonesia','ID','IDN',360,'Republic of Indonesia','Jakarta','Asia-Pacific'),
         ('Iran','IR','IRN',364,'Islamic Republic of Iran','Tehran','MENA'),
         ('Iraq','IQ','IRQ',368,'Republic of Iraq','Baghdad','MENA'),
-        ('Ireland','IE','IRL',372,'Ireland','Dublin','Europe'),
+        ('Ireland','IE','IRL',372,'Ireland','Dublin','EU'),
         ('Israel','IL','ISR',376,'State of Israel','Jerusalem','MENA'),
-        ('Italy','IT','ITA',380,'Italian Republic','Rome','Europe'),
+        ('Italy','IT','ITA',380,'Italian Republic','Rome','EU'),
         ('Ivory Coast','CI','CIV',384,'Republic of Cote d''Ivoire','Yamoussoukro','Sub-Saharan Africa'),
         ('Jamaica','JM','JAM',388,'Jamaica','Kingston','Americas'),
         ('Japan','JP','JPN',392,'Japan','Tokyo','Asia-Pacific'),
@@ -106,20 +102,20 @@ export async function seedGeoReference(pool: Pool) {
         ('Kuwait','KW','KWT',414,'State of Kuwait','Kuwait City','MENA'),
         ('Kyrgyzstan','KG','KGZ',417,'Kyrgyz Republic','Bishkek','Asia-Pacific'),
         ('Laos','LA','LAO',418,'Lao People''s Democratic Republic','Vientiane','Asia-Pacific'),
-        ('Latvia','LV','LVA',428,'Republic of Latvia','Riga','Europe'),
+        ('Latvia','LV','LVA',428,'Republic of Latvia','Riga','EU'),
         ('Lebanon','LB','LBN',422,'Lebanese Republic','Beirut','MENA'),
         ('Lesotho','LS','LSO',426,'Kingdom of Lesotho','Maseru','Sub-Saharan Africa'),
         ('Liberia','LR','LBR',430,'Republic of Liberia','Monrovia','Sub-Saharan Africa'),
         ('Libya','LY','LBY',434,'State of Libya','Tripoli','MENA'),
-        ('Liechtenstein','LI','LIE',438,'Principality of Liechtenstein','Vaduz','Europe'),
-        ('Lithuania','LT','LTU',440,'Republic of Lithuania','Vilnius','Europe'),
-        ('Luxembourg','LU','LUX',442,'Grand Duchy of Luxembourg','Luxembourg','Europe'),
+        ('Liechtenstein','LI','LIE',438,'Principality of Liechtenstein','Vaduz','EEA'),
+        ('Lithuania','LT','LTU',440,'Republic of Lithuania','Vilnius','EU'),
+        ('Luxembourg','LU','LUX',442,'Grand Duchy of Luxembourg','Luxembourg','EU'),
         ('Madagascar','MG','MDG',450,'Republic of Madagascar','Antananarivo','Sub-Saharan Africa'),
         ('Malawi','MW','MWI',454,'Republic of Malawi','Lilongwe','Sub-Saharan Africa'),
         ('Malaysia','MY','MYS',458,'Malaysia','Kuala Lumpur','Asia-Pacific'),
         ('Maldives','MV','MDV',462,'Republic of Maldives','Male','Asia-Pacific'),
         ('Mali','ML','MLI',466,'Republic of Mali','Bamako','Sub-Saharan Africa'),
-        ('Malta','MT','MLT',470,'Republic of Malta','Valletta','Europe'),
+        ('Malta','MT','MLT',470,'Republic of Malta','Valletta','EU'),
         ('Marshall Islands','MH','MHL',584,'Republic of the Marshall Islands','Majuro','Asia-Pacific'),
         ('Mauritania','MR','MRT',478,'Islamic Republic of Mauritania','Nouakchott','Sub-Saharan Africa'),
         ('Mauritius','MU','MUS',480,'Republic of Mauritius','Port Louis','Sub-Saharan Africa'),
@@ -135,14 +131,15 @@ export async function seedGeoReference(pool: Pool) {
         ('Namibia','NA','NAM',516,'Republic of Namibia','Windhoek','Sub-Saharan Africa'),
         ('Nauru','NR','NRU',520,'Republic of Nauru','Yaren','Asia-Pacific'),
         ('Nepal','NP','NPL',524,'Federal Democratic Republic of Nepal','Kathmandu','Asia-Pacific'),
-        ('Netherlands','NL','NLD',528,'Kingdom of the Netherlands','Amsterdam','Europe'),
+        ('Netherlands','NL','NLD',528,'Kingdom of the Netherlands','Amsterdam','EU'),
+        ('New Caledonia','NC','NCL',540,'New Caledonia','Noumea','Asia-Pacific'),
         ('New Zealand','NZ','NZL',554,'New Zealand','Wellington','Asia-Pacific'),
         ('Nicaragua','NI','NIC',558,'Republic of Nicaragua','Managua','Americas'),
         ('Niger','NE','NER',562,'Republic of Niger','Niamey','Sub-Saharan Africa'),
         ('Nigeria','NG','NGA',566,'Federal Republic of Nigeria','Abuja','Sub-Saharan Africa'),
         ('North Korea','KP','PRK',408,'Democratic People''s Republic of Korea','Pyongyang','Asia-Pacific'),
         ('North Macedonia','MK','MKD',807,'Republic of North Macedonia','Skopje','CEE'),
-        ('Norway','NO','NOR',578,'Kingdom of Norway','Oslo','Nordics'),
+        ('Norway','NO','NOR',578,'Kingdom of Norway','Oslo','EEA'),
         ('Oman','OM','OMN',512,'Sultanate of Oman','Muscat','MENA'),
         ('Pakistan','PK','PAK',586,'Islamic Republic of Pakistan','Islamabad','Asia-Pacific'),
         ('Palau','PW','PLW',585,'Republic of Palau','Ngerulmud','Asia-Pacific'),
@@ -152,10 +149,10 @@ export async function seedGeoReference(pool: Pool) {
         ('Paraguay','PY','PRY',600,'Republic of Paraguay','Asuncion','Americas'),
         ('Peru','PE','PER',604,'Republic of Peru','Lima','Americas'),
         ('Philippines','PH','PHL',608,'Republic of the Philippines','Manila','Asia-Pacific'),
-        ('Poland','PL','POL',616,'Republic of Poland','Warsaw','CEE'),
-        ('Portugal','PT','PRT',620,'Portuguese Republic','Lisbon','Europe'),
+        ('Poland','PL','POL',616,'Republic of Poland','Warsaw','EU'),
+        ('Portugal','PT','PRT',620,'Portuguese Republic','Lisbon','EU'),
         ('Qatar','QA','QAT',634,'State of Qatar','Doha','MENA'),
-        ('Romania','RO','ROU',642,'Romania','Bucharest','CEE'),
+        ('Romania','RO','ROU',642,'Romania','Bucharest','EU'),
         ('Russia','RU','RUS',643,'Russian Federation','Moscow','CEE'),
         ('Rwanda','RW','RWA',646,'Republic of Rwanda','Kigali','Sub-Saharan Africa'),
         ('Saint Kitts and Nevis','KN','KNA',659,'Federation of Saint Christopher and Nevis','Basseterre','Americas'),
@@ -170,19 +167,19 @@ export async function seedGeoReference(pool: Pool) {
         ('Seychelles','SC','SYC',690,'Republic of Seychelles','Victoria','Sub-Saharan Africa'),
         ('Sierra Leone','SL','SLE',694,'Republic of Sierra Leone','Freetown','Sub-Saharan Africa'),
         ('Singapore','SG','SGP',702,'Republic of Singapore','Singapore','Asia-Pacific'),
-        ('Slovakia','SK','SVK',703,'Slovak Republic','Bratislava','Europe'),
-        ('Slovenia','SI','SVN',705,'Republic of Slovenia','Ljubljana','Europe'),
+        ('Slovakia','SK','SVK',703,'Slovak Republic','Bratislava','EU'),
+        ('Slovenia','SI','SVN',705,'Republic of Slovenia','Ljubljana','EU'),
         ('Solomon Islands','SB','SLB',90,'Solomon Islands','Honiara','Asia-Pacific'),
         ('Somalia','SO','SOM',706,'Federal Republic of Somalia','Mogadishu','Sub-Saharan Africa'),
         ('South Africa','ZA','ZAF',710,'Republic of South Africa','Pretoria','Sub-Saharan Africa'),
         ('South Korea','KR','KOR',410,'Republic of Korea','Seoul','Asia-Pacific'),
         ('South Sudan','SS','SSD',728,'Republic of South Sudan','Juba','Sub-Saharan Africa'),
-        ('Spain','ES','ESP',724,'Kingdom of Spain','Madrid','Europe'),
+        ('Spain','ES','ESP',724,'Kingdom of Spain','Madrid','EU'),
         ('Sri Lanka','LK','LKA',144,'Democratic Socialist Republic of Sri Lanka','Colombo','Asia-Pacific'),
         ('Sudan','SD','SDN',729,'Republic of the Sudan','Khartoum','Sub-Saharan Africa'),
         ('Suriname','SR','SUR',740,'Republic of Suriname','Paramaribo','Americas'),
-        ('Sweden','SE','SWE',752,'Kingdom of Sweden','Stockholm','Nordics'),
-        ('Switzerland','CH','CHE',756,'Swiss Confederation','Bern','Europe'),
+        ('Sweden','SE','SWE',752,'Kingdom of Sweden','Stockholm','EU'),
+        ('Switzerland','CH','CHE',756,'Swiss Confederation','Bern','SEPA'),
         ('Syria','SY','SYR',760,'Syrian Arab Republic','Damascus','MENA'),
         ('Taiwan','TW','TWN',158,'Taiwan','Taipei','Asia-Pacific'),
         ('Tajikistan','TJ','TJK',762,'Republic of Tajikistan','Dushanbe','Asia-Pacific'),
@@ -199,7 +196,7 @@ export async function seedGeoReference(pool: Pool) {
         ('Uganda','UG','UGA',800,'Republic of Uganda','Kampala','Sub-Saharan Africa'),
         ('Ukraine','UA','UKR',804,'Ukraine','Kyiv','CEE'),
         ('United Arab Emirates','AE','ARE',784,'United Arab Emirates','Abu Dhabi','MENA'),
-        ('United Kingdom','GB','GBR',826,'United Kingdom of Great Britain and Northern Ireland','London','Europe'),
+        ('United Kingdom','GB','GBR',826,'United Kingdom of Great Britain and Northern Ireland','London','EEA'),
         ('United States','US','USA',840,'United States of America','Washington D.C.','Americas'),
         ('Uruguay','UY','URY',858,'Oriental Republic of Uruguay','Montevideo','Americas'),
         ('Uzbekistan','UZ','UZB',860,'Republic of Uzbekistan','Tashkent','Asia-Pacific'),
@@ -207,13 +204,14 @@ export async function seedGeoReference(pool: Pool) {
         ('Vatican City','VA','VAT',336,'Vatican City State','Vatican City','Europe'),
         ('Venezuela','VE','VEN',862,'Bolivarian Republic of Venezuela','Caracas','Americas'),
         ('Vietnam','VN','VNM',704,'Socialist Republic of Vietnam','Hanoi','Asia-Pacific'),
+        ('Wallis and Futuna','WF','WLF',876,'Wallis and Futuna','Mata-Utu','Asia-Pacific'),
         ('Yemen','YE','YEM',887,'Republic of Yemen','Sanaa','MENA'),
         ('Zambia','ZM','ZMB',894,'Republic of Zambia','Lusaka','Sub-Saharan Africa'),
         ('Zimbabwe','ZW','ZWE',716,'Republic of Zimbabwe','Harare','Sub-Saharan Africa')
       ON CONFLICT (iso2) DO NOTHING
     `);
 
-    const curRes = await client.query(`
+    await client.query(`
       INSERT INTO geo_currencies (code, name, symbol, minor_units)
       VALUES
         ('AED','United Arab Emirates Dirham','د.إ',2),
@@ -374,7 +372,7 @@ export async function seedGeoReference(pool: Pool) {
       ON CONFLICT (code) DO NOTHING
     `);
 
-    const linkMap: [string, string][] = [
+    const primaryLinks: [string, string][] = [
       ['AF','AFN'],['AL','ALL'],['DZ','DZD'],['AD','EUR'],['AO','AOA'],
       ['AG','XCD'],['AR','ARS'],['AM','AMD'],['AU','AUD'],['AT','EUR'],
       ['AZ','AZN'],['BS','BSD'],['BH','BHD'],['BD','BDT'],['BB','BBD'],
@@ -387,6 +385,7 @@ export async function seedGeoReference(pool: Pool) {
       ['DK','DKK'],['DJ','DJF'],['DM','XCD'],['DO','DOP'],['EC','USD'],
       ['EG','EGP'],['SV','USD'],['GQ','XAF'],['ER','ERN'],['EE','EUR'],
       ['SZ','SZL'],['ET','ETB'],['FJ','FJD'],['FI','EUR'],['FR','EUR'],
+      ['PF','XPF'],
       ['GA','XAF'],['GM','GMD'],['GE','GEL'],['DE','EUR'],['GH','GHS'],
       ['GR','EUR'],['GD','XCD'],['GT','GTQ'],['GN','GNF'],['GW','XOF'],
       ['GY','GYD'],['HT','HTG'],['HN','HNL'],['HU','HUF'],['IS','ISK'],
@@ -399,7 +398,9 @@ export async function seedGeoReference(pool: Pool) {
       ['ML','XOF'],['MT','EUR'],['MH','USD'],['MR','MRU'],['MU','MUR'],
       ['MX','MXN'],['FM','USD'],['MD','MDL'],['MC','EUR'],['MN','MNT'],
       ['ME','EUR'],['MA','MAD'],['MZ','MZN'],['MM','MMK'],['NA','NAD'],
-      ['NR','AUD'],['NP','NPR'],['NL','EUR'],['NZ','NZD'],['NI','NIO'],
+      ['NR','AUD'],['NP','NPR'],['NL','EUR'],
+      ['NC','XPF'],
+      ['NZ','NZD'],['NI','NIO'],
       ['NE','XOF'],['NG','NGN'],['KP','KPW'],['MK','MKD'],['NO','NOK'],
       ['OM','OMR'],['PK','PKR'],['PW','USD'],['PS','ILS'],['PA','PAB'],
       ['PG','PGK'],['PY','PYG'],['PE','PEN'],['PH','PHP'],['PL','PLN'],
@@ -413,35 +414,37 @@ export async function seedGeoReference(pool: Pool) {
       ['TL','USD'],['TG','XOF'],['TO','TOP'],['TT','TTD'],['TN','TND'],
       ['TR','TRY'],['TM','TMT'],['TV','AUD'],['UG','UGX'],['UA','UAH'],
       ['AE','AED'],['GB','GBP'],['US','USD'],['UY','UYU'],['UZ','UZS'],
-      ['VU','VUV'],['VA','EUR'],['VE','VES'],['VN','VND'],['YE','YER'],
-      ['ZM','ZMW'],['ZW','ZWL'],
-      ['BT','INR'],['LS','ZAR'],['NA','ZAR'],['PA','USD'],['SZ','ZAR']
+      ['VU','VUV'],['VA','EUR'],['VE','VES'],['VN','VND'],
+      ['WF','XPF'],
+      ['YE','YER'],
+      ['ZM','ZMW'],['ZW','ZWL']
     ];
 
-    let linksInserted = 0;
-    for (const [iso2, currCode] of linkMap) {
-      const res = await client.query(`
+    for (const [iso2, currCode] of primaryLinks) {
+      await client.query(`
         INSERT INTO country_currencies (country_id, currency_id, is_primary)
-        SELECT c.id, cur.id, $3
+        SELECT c.id, cur.id, true
         FROM countries c, geo_currencies cur
         WHERE c.iso2 = $1 AND cur.code = $2
-        ON CONFLICT (country_id, currency_id) DO NOTHING
-      `, [iso2, currCode, true]);
-      if (res.rowCount && res.rowCount > 0) linksInserted++;
+          AND NOT EXISTS (
+            SELECT 1 FROM country_currencies cc
+            WHERE cc.country_id = c.id AND cc.currency_id = cur.id
+          )
+      `, [iso2, currCode]);
     }
 
-    const secondaryCurrencyLinks: [string, string][] = [
+    const secondaryLinks: [string, string][] = [
       ['BT','INR'],['LS','ZAR'],['NA','ZAR'],['PA','USD'],['SZ','ZAR']
     ];
-    for (const [iso2, currCode] of secondaryCurrencyLinks) {
+    for (const [iso2, currCode] of secondaryLinks) {
       await client.query(`
-        UPDATE country_currencies cc
-        SET is_primary = false
-        WHERE cc.country_id = (SELECT id FROM countries WHERE iso2 = $1)
-          AND cc.currency_id = (SELECT id FROM geo_currencies WHERE code = $2)
-          AND EXISTS (
-            SELECT 1 FROM country_currencies cc2
-            WHERE cc2.country_id = cc.country_id AND cc2.currency_id != cc.currency_id
+        INSERT INTO country_currencies (country_id, currency_id, is_primary)
+        SELECT c.id, cur.id, false
+        FROM countries c, geo_currencies cur
+        WHERE c.iso2 = $1 AND cur.code = $2
+          AND NOT EXISTS (
+            SELECT 1 FROM country_currencies cc
+            WHERE cc.country_id = c.id AND cc.currency_id = cur.id
           )
       `, [iso2, currCode]);
     }
