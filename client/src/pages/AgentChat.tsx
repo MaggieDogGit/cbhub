@@ -24,6 +24,7 @@ export default function AgentChat() {
   const [statusText, setStatusText] = useState("");
   const [confirmingClear, setConfirmingClear] = useState(false);
   const [deepThink, setDeepThink] = useState(false);
+  const [deepThinkInFlight, setDeepThinkInFlight] = useState(false);
   const bottomRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLTextAreaElement>(null);
 
@@ -74,6 +75,7 @@ export default function AgentChat() {
 
   const sendMutation = useMutation({
     mutationFn: async ({ conversationId, message, useDeepThink }: { conversationId: string; message: string; useDeepThink: boolean }) => {
+      setDeepThinkInFlight(useDeepThink);
       await apiRequest("POST", `/api/conversations/${conversationId}/messages`, { role: "user", content: message });
       queryClient.invalidateQueries({ queryKey: ["/api/conversations", conversationId, "messages"] });
 
@@ -115,9 +117,10 @@ export default function AgentChat() {
     },
     onSuccess: () => {
       setStatusText("");
+      setDeepThinkInFlight(false);
       queryClient.invalidateQueries({ queryKey: ["/api/conversations", conversation?.id, "messages"] });
     },
-    onError: () => setStatusText(""),
+    onError: () => { setStatusText(""); setDeepThinkInFlight(false); },
   });
 
   const sendMessage = async () => {
@@ -257,9 +260,9 @@ export default function AgentChat() {
       <div className="shrink-0 border-t border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-950 px-3 py-3 pb-[env(safe-area-inset-bottom,12px)]">
         {sendMutation.isPending && (
           <div className="flex items-center gap-2 px-1 pb-2" data-testid="text-agent-status">
-            <div className="w-1.5 h-1.5 bg-blue-500 rounded-full animate-pulse shrink-0" />
-            <span className="text-xs text-slate-500 dark:text-slate-400 truncate">
-              {statusText || "Thinking..."}
+            <div className={`w-1.5 h-1.5 rounded-full animate-pulse shrink-0 ${deepThinkInFlight ? "bg-violet-500" : "bg-blue-500"}`} />
+            <span className={`text-xs truncate ${deepThinkInFlight ? "text-violet-600 dark:text-violet-400" : "text-slate-500 dark:text-slate-400"}`}>
+              {deepThinkInFlight ? `Deep Think (gpt-5) — ${statusText || "reasoning..."}` : statusText || "Thinking..."}
             </span>
           </div>
         )}
