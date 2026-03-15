@@ -11,7 +11,8 @@
 
 export { withRetry, sleep } from "./retry";
 export { getTools, getDryRunTools, getLightTools, leanGroup, leanEntity, leanBic, leanService, leanFmi } from "./tools";
-export { executeTool, runAgentLoop, getStatusText } from "./executor";
+export { executeTool, runAgentLoop, getStatusText, AGENT_MODEL, AGENT_MODEL_LIGHT } from "./executor";
+export { getAppKnowledge, getAppKnowledgeSummary } from "./appKnowledge";
 export { buildSystemPrompt, buildJobPrompt, buildLightJobPrompt, buildMarketScanPrompt, buildDryRunSuffix, buildIntelContext, buildCurrencyInstruction, buildGroupSnapshot } from "./prompts";
 export { isValidUUID, isValidBicFormat, normalizeCurrency, normalizeClearingModel, findLikelyDuplicates, validateResearchOutput } from "./validators";
 export type { StepCallback, ClearingModel, ValidationResult } from "./validators";

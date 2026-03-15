@@ -6,7 +6,7 @@ import { storage } from "../../storage";
 import {
   buildSystemPrompt, buildJobPrompt, buildLightJobPrompt,
   buildIntelContext, buildGroupSnapshot, runAgentLoop,
-  getLightTools,
+  getLightTools, AGENT_MODEL, AGENT_MODEL_LIGHT,
 } from "../index";
 import type { IntelObservation, AgentJob, DataSource } from "@shared/schema";
 import type { WorkflowResult } from "../types";
@@ -101,7 +101,7 @@ export async function executeCbEntitySetup(input: CbEntitySetupInput): Promise<W
   ];
 
   const maxIter = isLight ? 3 : 15;
-  const model = isLight ? "gpt-4o-mini" : "gpt-4o";
+  const model = isLight ? AGENT_MODEL_LIGHT : AGENT_MODEL;
   const tools = isLight ? getLightTools() : undefined;
 
   let stepCount = 0;

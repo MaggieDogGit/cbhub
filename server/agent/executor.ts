@@ -7,6 +7,9 @@ import { getTools, leanGroup, leanEntity, leanBic, leanService, leanFmi } from "
 import { isValidUUID } from "./validators";
 import type { StepCallback } from "./validators";
 
+export const AGENT_MODEL = "gpt-4.1";
+export const AGENT_MODEL_LIGHT = "gpt-4.1-mini";
+
 const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
 
 export function getStatusText(name: string, args: any): string {
@@ -180,7 +183,7 @@ RESPOND WITH ONLY THIS JSON (no markdown fences, no extra text):
 If everything looks correct, set structure_valid=true with an empty issues array and empty missing_entities array.`;
 
         const validationResponse = await withRetry(() => openai.chat.completions.create({
-          model: "gpt-4o",
+          model: AGENT_MODEL,
           messages: [{ role: "user", content: validationPrompt }],
         }), 5, `validate_cb_structure: ${bankName}`);
 
@@ -209,7 +212,7 @@ export async function runAgentLoop(
   onStep?: StepCallback,
   maxIterations = 12,
   firstIterToolChoice: "auto" | "required" | "none" = "auto",
-  model = "gpt-4o",
+  model = AGENT_MODEL,
   tools?: any[]
 ): Promise<string> {
   const messages = [...openaiMessages];

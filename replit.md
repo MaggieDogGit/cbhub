@@ -33,7 +33,7 @@ The platform is built with a React frontend, an Express.js and TypeScript backen
 - **Backend**: Express.js with `tsx` for TypeScript execution, structured with modular routers for different API domains (auth, registry, research, jobs, chat, dashboard).
 - **Database**: PostgreSQL with Drizzle ORM for type-safe database interactions and schema management.
 - **API Design**: RESTful API endpoints, all prefixed with `/api/`, covering CRUD operations for core entities and specific functionalities like AI research and chat streaming.
-- **AI Agent Core**: Modular agent architecture located in `server/agent/`, handling prompt generation, tool definitions, execution, retry mechanisms, and validation. The agent supports a tool confirmation pattern for immediate action.
+- **AI Agent Core**: Modular agent architecture located in `server/agent/`, handling prompt generation, tool definitions, execution, retry mechanisms, and validation. The agent supports a tool confirmation pattern for immediate action. Model references are centralised via `AGENT_MODEL` / `AGENT_MODEL_LIGHT` constants in `server/agent/executor.ts` (currently `gpt-4.1` / `gpt-4.1-mini`). The App Brain document (`server/agent/appKnowledge.ts`) provides domain routing knowledge across all 12 data domains and is injected into every system prompt.
 - **Background Job System**: A robust job runner (`server/services/jobService.ts`) handles two main job types: "CB Setup" for detailed banking group analysis (with an AI validation step) and "Market Coverage Scan" for breadth-first market discovery, both supporting dry-run modes. The job runner polls for new jobs automatically.
 - **Geographic & Currency Reference Model**: Six interconnected tables (`countries`, `geo_currencies`, `country_currencies`, `regions`, `region_members`, `currency_areas`) provide a comprehensive reference for CB analysis, exposed via dedicated API routes and a UI page (`/geo-reference`).
 - **FMI Specifications & Payment Capability Model**: Four additional tables (`fmi_specifications`, `payment_scheme_specifications`, `payment_scheme_processing_scenarios`, `payment_scheme_scenario_relationships`) extend the FMI taxonomy with structured operational data, allowing for derived payment capabilities (e.g., cross-border, OLO support).
@@ -44,7 +44,8 @@ The platform is built with a React frontend, an Express.js and TypeScript backen
 
 - **PostgreSQL**: Primary database for all application data.
 - **OpenAI API**: Utilized for AI functionalities including:
-    - GPT-4o for chat completions and tool calling in the AI Research Assistant and Agent Chat.
-    - GPT-4o for autonomous background job processing (CB Setup and Market Coverage Scans).
+    - GPT-4.1 (`AGENT_MODEL`) for chat completions and tool calling in the AI Research Assistant and Agent Chat.
+    - GPT-4.1-mini (`AGENT_MODEL_LIGHT`) for lightweight background job processing (light-mode CB Setup).
+    - GPT-4o-search-preview for web search tool calls (unchanged — does not accept temperature param).
 - **React-Leaflet / Leaflet**: For interactive geographical maps displaying coverage and other geo-referenced data.
 - **Recharts**: For rendering data visualizations such as bar and pie charts.

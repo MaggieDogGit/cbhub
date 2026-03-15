@@ -1,4 +1,4 @@
-import { executeTool, withRetry, getTools } from "./agent";
+import { executeTool, withRetry, getTools, AGENT_MODEL } from "./agent";
 import { storage } from "./storage";
 import OpenAI from "openai";
 
@@ -246,7 +246,7 @@ Combine all unique names found. Return ONLY a JSON array. No commentary.`,
 
   while (steps < 12) {
     const response = await withRetry(() => openai.chat.completions.create({
-      model: "gpt-4o",
+      model: AGENT_MODEL,
       messages,
       tools: discoveryTools,
       tool_choice: "auto",
@@ -397,7 +397,7 @@ Steps:
   let steps = 0;
   while (steps < 10) {
     const response = await withRetry(() => openai.chat.completions.create({
-      model: "gpt-4o",
+      model: AGENT_MODEL,
       messages,
       tools: processingTools,
       tool_choice: "auto",

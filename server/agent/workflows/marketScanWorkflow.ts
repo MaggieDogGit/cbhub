@@ -3,7 +3,7 @@
 // Called by: cbDiscoveryService.runMarketScan()
 
 import { storage } from "../../storage";
-import { buildSystemPrompt, buildMarketScanPrompt, buildDryRunSuffix, runAgentLoop, getDryRunTools } from "../index";
+import { buildSystemPrompt, buildMarketScanPrompt, buildDryRunSuffix, runAgentLoop, getDryRunTools, AGENT_MODEL } from "../index";
 import { COUNTRY_RTGS } from "../constants";
 import type { AgentJob, DataSource } from "@shared/schema";
 import type { WorkflowResult } from "../types";
@@ -78,7 +78,7 @@ export async function executeMarketScan(input: MarketScanInput): Promise<Workflo
     },
     50,
     "auto",
-    "gpt-4o",
+    AGENT_MODEL,
     tools,
   );
 

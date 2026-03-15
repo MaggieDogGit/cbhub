@@ -1,5 +1,6 @@
 import OpenAI from "openai";
 import type { ChatCompletionCreateParamsNonStreaming } from "openai/resources/chat/completions";
+import { AGENT_MODEL } from "../agent";
 
 const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
 
@@ -17,7 +18,7 @@ export async function researchBank(bankName: string): Promise<Record<string, unk
   const webContext = searchResponse.choices[0].message.content || "";
 
   const structureParams: ChatCompletionCreateParamsNonStreaming = {
-    model: "gpt-4o",
+    model: AGENT_MODEL,
     response_format: { type: "json_object" },
     messages: [
       {
