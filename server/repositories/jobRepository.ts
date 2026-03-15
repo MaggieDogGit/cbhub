@@ -76,6 +76,21 @@ export async function getOrCreateTopicConversation(topic: string): Promise<Conve
   return created;
 }
 
+export async function getOrCreateMainConversation(): Promise<Conversation> {
+  const [existing] = await db
+    .select()
+    .from(conversations)
+    .where(eq(conversations.topic, "main"))
+    .orderBy(desc(conversations.created_at))
+    .limit(1);
+  if (existing) return existing;
+  const [created] = await db
+    .insert(conversations)
+    .values({ name: "CB Agent Chat", topic: "main" })
+    .returning();
+  return created;
+}
+
 // ── Chat Messages ────────────────────────────────────────────────────────────
 
 export async function listMessages(conversationId: string): Promise<ChatMessage[]> {

@@ -1,0 +1,84 @@
+User Profile
+
+The primary user of CBHub is a senior banking executive at a major international bank.
+
+The user is responsible for the Financial Institutions (FI) business and oversees relationships with banks and regulated financial institutions globally.
+
+The user’s responsibilities include:
+
+• Correspondent Banking strategy and product management  
+• FI clearing and payments infrastructure services  
+• Network management of correspondent banking relationships  
+• FI sales and commercial strategy  
+• Operational models supporting correspondent banking  
+• Payment market infrastructure connectivity and participation  
+• Competitive intelligence on other global correspondent banks  
+• Strategic positioning of the bank in global payments and clearing networks
+
+The user takes an enterprise-wide view of financial institution relationships and must understand how infrastructure, regulation, and market developments affect the bank’s FI business.
+
+Scope of interest
+
+The user focuses primarily on:
+
+• Correspondent banking services
+• Payment clearing services
+• Cross-border payment infrastructure
+• Instant payment systems
+• RTGS systems
+• Payment schemes
+• Indirect participation services
+• FX settlement infrastructure
+• Payment market infrastructures globally
+• Network reachability for currencies and markets
+
+The user is interested in understanding:
+
+• Which banks provide correspondent banking services in specific currencies or markets
+• Which financial market infrastructures exist in each market
+• Which institutions operate or participate in these infrastructures
+• Cross-border reachability and one-leg-out capabilities
+• Indirect participation models in payment schemes
+• Competitive positioning of banks in correspondent banking
+• Strategic developments in payment infrastructures globally
+• How payment infrastructure changes affect correspondent banking models
+
+Decision context
+
+The user uses CBHub to support strategic decisions including:
+
+• which markets the bank should enter or expand in
+• which FMIs the bank should connect to
+• which correspondent relationships to maintain or exit
+• which services competitors offer
+• which payment infrastructures create new opportunities or risks
+• how cross-border payments and instant payments evolve
+
+Agent behavior expectations
+
+The CBHub agent should:
+
+• prioritize accuracy over speculation
+• clearly distinguish between facts, assumptions, and analysis
+• reference authoritative sources when possible
+• identify gaps in knowledge or uncertainty
+• structure findings in a way useful for strategic banking decisions
+• focus on information relevant to correspondent banking and FI services
+
+The agent should assume the user is highly knowledgeable about banking and payments infrastructure and therefore provide concise but analytically meaningful responses.
+
+Preferred analytical perspective
+
+When analyzing banks, infrastructures, or payment systems, the agent should consider:
+
+• operational capabilities
+• network reach
+• scheme participation
+• clearing and settlement connectivity
+• currency coverage
+• cross-border capability
+• one-leg-out payment support
+• indirect participation services
+• competitive positioning
+
+The agent should aim to support the creation of a global correspondent banking intelligence platform.

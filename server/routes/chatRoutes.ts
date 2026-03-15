@@ -19,8 +19,11 @@ router.delete("/conversations/:id", async (req, res) => {
   await storage.deleteConversation(req.params.id);
   res.json({ ok: true });
 });
+router.get("/conversations/main", async (_req, res) => {
+  res.json(await storage.getOrCreateMainConversation());
+});
 router.get("/conversations/topic/:topic", async (req, res) => {
-  res.json(await storage.getOrCreateTopicConversation(req.params.topic));
+  res.json(await storage.getOrCreateMainConversation());
 });
 
 router.get("/conversations/:id/messages", async (req, res) => {
@@ -34,7 +37,7 @@ router.post("/conversations/:id/messages", async (req, res) => {
 });
 
 router.post("/chat", async (req, res) => {
-  const { conversationId, message, topic } = req.body;
+  const { conversationId, message } = req.body;
   if (!conversationId || !message) return res.status(400).json({ message: "conversationId and message required" });
 
   res.setHeader("Content-Type", "text/event-stream");
@@ -45,7 +48,7 @@ router.post("/chat", async (req, res) => {
   const emit = (data: object) => res.write(`data: ${JSON.stringify(data)}\n\n`);
 
   try {
-    await runChat(conversationId, message, topic ?? undefined, emit);
+    await runChat(conversationId, message, emit);
     res.end();
   } catch (err: any) {
     emit({ type: "error", message: err.message });

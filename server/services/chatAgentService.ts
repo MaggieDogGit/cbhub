@@ -4,7 +4,6 @@ import { buildSystemPrompt, runAgentLoop, getToolsForTopic } from "../agent";
 export async function runChat(
   conversationId: string,
   message: string,
-  topic: string | undefined,
   emit: (data: object) => void,
 ): Promise<void> {
   const [history, storedSources] = await Promise.all([
@@ -12,11 +11,11 @@ export async function runChat(
     storage.listDataSources(),
   ]);
 
-  const systemPrompt = buildSystemPrompt(storedSources, topic ?? undefined);
+  const systemPrompt = buildSystemPrompt(storedSources, undefined);
   const confirmationPattern = /^(yes|y|confirmed?|correct|go ahead|proceed|store(?: and move)?|update|ok|sure|done|do it|move on|next|continue|approved?|accept)\b/i;
   const isConfirmation = confirmationPattern.test(message.trim());
 
-  const tools = getToolsForTopic(topic);
+  const tools = getToolsForTopic(undefined);
 
   const openaiMessages: any[] = [
     { role: "system", content: systemPrompt },

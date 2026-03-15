@@ -105,6 +105,7 @@ export interface IStorage extends IDashboardQueries {
   createConversation(data: InsertConversation): Promise<Conversation>;
   deleteConversation(id: string): Promise<void>;
   getOrCreateTopicConversation(topic: string): Promise<Conversation>;
+  getOrCreateMainConversation(): Promise<Conversation>;
 
   listMessages(conversationId: string): Promise<ChatMessage[]>;
   createMessage(data: InsertMessage): Promise<ChatMessage>;
@@ -214,6 +215,7 @@ export class DatabaseStorage implements IStorage {
   createConversation(data: InsertConversation)                           { return jobRepo.createConversation(data); }
   deleteConversation(id: string)                                         { return jobRepo.deleteConversation(id); }
   getOrCreateTopicConversation(topic: string)                            { return jobRepo.getOrCreateTopicConversation(topic); }
+  getOrCreateMainConversation()                                          { return jobRepo.getOrCreateMainConversation(); }
 
   // Chat Messages
   listMessages(conversationId: string)                                   { return jobRepo.listMessages(conversationId); }
