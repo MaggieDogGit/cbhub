@@ -3,7 +3,7 @@
 import OpenAI from "openai";
 import { storage } from "../storage";
 import { withRetry } from "./retry";
-import { getTools, leanGroup, leanEntity, leanBic, leanService, leanFmi } from "./tools";
+import { getTools, leanGroup, leanEntity, leanBic, leanService, leanFmi, leanFmiEntry, leanIntel } from "./tools";
 import { isValidUUID } from "./validators";
 import type { StepCallback } from "./validators";
 
@@ -26,6 +26,7 @@ export function getStatusText(name: string, args: any): string {
     case "merge_legal_entities":        return "Merging legal entities — re-linking BICs and FMI memberships…";
     case "merge_banking_groups":        return "Merging banking groups — re-linking all legal entities…";
     case "list_bics":                   return "Reviewing BIC codes…";
+    case "find_bics_by_entity":         return "Looking up BICs for entity…";
     case "create_bic":                  return `Adding BIC: ${q(args.bic_code)}`;
     case "update_bic":                  return "Updating BIC record…";
     case "delete_bic":                  return "Removing BIC record…";
@@ -36,6 +37,17 @@ export function getStatusText(name: string, args: any): string {
     case "list_fmis":                   return "Checking FMI memberships…";
     case "create_fmi":                  return `Adding FMI membership: ${q(args.fmi_type || args.fmi_name)}`;
     case "delete_fmi":                  return "Removing FMI membership…";
+    case "find_fmi_entries":            return `Searching FMI catalogue: ${q(args.name_contains || args.category_code || args.domain_code || "")}`;
+    case "update_fmi_entry":            return "Updating FMI catalogue entry…";
+    case "get_fmi_specification":       return "Fetching FMI specification…";
+    case "update_fmi_specification":    return "Updating FMI specification…";
+    case "list_fmi_categories":         return "Listing FMI taxonomy categories…";
+    case "find_cb_taxonomy_items":      return `Searching CB taxonomy: ${q(args.category || args.name_contains || "")}`;
+    case "update_cb_capability_value":  return "Updating CB capability score…";
+    case "list_intel_observations":     return "Reviewing intel observations…";
+    case "create_intel_observation":    return `Adding intel: ${q(args.title)}`;
+    case "find_country":                return `Looking up country: ${q(args.name_or_code)}`;
+    case "find_currency":               return `Looking up currency: ${q(args.code)}`;
     case "web_search":                  return `Searching: ${q(args.query)}`;
     case "validate_cb_structure":       return `Validating CB structure for ${q(args.bank_name || "group")}`;
     case "list_data_sources":           return "Checking data sources library…";
@@ -91,7 +103,19 @@ export async function executeTool(name: string, args: any): Promise<string> {
       case "delete_legal_entity": await storage.deleteLegalEntity(args.id); return JSON.stringify({ ok: true, id: args.id });
       case "merge_legal_entities": return JSON.stringify(await storage.mergeLegalEntities(args.keep_id, args.delete_id));
       case "merge_banking_groups": return JSON.stringify(await storage.mergeBankingGroups(args.keep_id, args.delete_id));
-      case "list_bics": return JSON.stringify((await storage.listBics()).map(leanBic));
+      case "list_bics": {
+        const allBics = await storage.listBics();
+        const capped = allBics.slice(0, 50).map(leanBic);
+        if (allBics.length > 50) {
+          return JSON.stringify({ results: capped, truncated: true, total: allBics.length, message: `Showing 50 of ${allBics.length} BICs. Use find_bics_by_entity(legal_entity_id) for targeted lookups.` });
+        }
+        return JSON.stringify(capped);
+      }
+      case "find_bics_by_entity": {
+        const allBics = await storage.listBics();
+        const filtered = allBics.filter(b => b.legal_entity_id === args.legal_entity_id);
+        return JSON.stringify(filtered.length ? filtered.map(leanBic) : { not_found: true, message: `No BICs found for legal_entity_id "${args.legal_entity_id}"` });
+      }
       case "create_bic": {
         const allEntities = await storage.listLegalEntities();
         const entityExists = allEntities.find(e => e.id === args.legal_entity_id);
@@ -133,6 +157,82 @@ export async function executeTool(name: string, args: any): Promise<string> {
         return JSON.stringify({ ok: true, id: created.id, fmi_name: created.fmi_name, legal_entity_id: created.legal_entity_id });
       }
       case "delete_fmi": await storage.deleteFmi(args.id); return JSON.stringify({ ok: true, id: args.id });
+      case "find_fmi_entries": {
+        const filter: any = {};
+        if (args.category_code) filter.category_code = args.category_code;
+        if (args.domain_code) filter.domain_code = args.domain_code;
+        if (args.name_contains) filter.name_contains = args.name_contains;
+        if (args.status) filter.status = args.status;
+        const entries = await storage.findFmiEntries(filter);
+        return JSON.stringify(entries.length ? entries.map(leanFmiEntry) : { not_found: true, message: "No FMI entries matched the filter" });
+      }
+      case "update_fmi_entry": {
+        const { id, ...data } = args;
+        const updated = await storage.updateFmiEntry(id, data);
+        return JSON.stringify({ ok: true, id: updated.id, name: updated.name });
+      }
+      case "get_fmi_specification": {
+        const spec = await storage.getFmiSpecification(args.fmi_id);
+        return JSON.stringify(spec || { not_found: true, message: `No specification exists for fmi_id "${args.fmi_id}". Use update_fmi_specification to create one.` });
+      }
+      case "update_fmi_specification": {
+        const { fmi_id, ...specData } = args;
+        const spec = await storage.updateFmiSpecification(fmi_id, specData);
+        return JSON.stringify({ ok: true, id: spec.id, fmi_id: spec.fmi_id });
+      }
+      case "list_fmi_categories": {
+        const cats = await storage.listFmiCategories();
+        return JSON.stringify(cats);
+      }
+      case "find_cb_taxonomy_items": {
+        const items = await storage.getCbTaxonomy();
+        let filtered = items;
+        if (args.category) filtered = filtered.filter(i => i.category === args.category);
+        if (args.name_contains) {
+          const needle = args.name_contains.toLowerCase();
+          filtered = filtered.filter(i => i.name.toLowerCase().includes(needle));
+        }
+        return JSON.stringify(filtered.length ? filtered : { not_found: true, message: "No CB taxonomy items matched the filter" });
+      }
+      case "update_cb_capability_value": {
+        const result = await storage.upsertCbCapability({
+          banking_group_id: args.banking_group_id,
+          taxonomy_item_id: args.taxonomy_item_id,
+          value: args.value,
+          legal_entity_id: args.legal_entity_id || null,
+          correspondent_service_id: args.correspondent_service_id || null,
+        });
+        return JSON.stringify({ ok: true, id: result.id });
+      }
+      case "list_intel_observations": {
+        const filters: any = {};
+        if (args.obs_type) filters.obs_type = args.obs_type;
+        if (args.banking_group_id) filters.banking_group_id = args.banking_group_id;
+        const observations = await storage.listIntelObservations(filters);
+        return JSON.stringify(observations.length ? observations.map(leanIntel) : { not_found: true, message: "No intel observations found" });
+      }
+      case "create_intel_observation": {
+        if (!args.banking_group_id || !isValidUUID(args.banking_group_id)) {
+          return JSON.stringify({ error: `banking_group_id must be a valid UUID. Received: "${args.banking_group_id}"` });
+        }
+        const obs = await storage.createIntelObservation({
+          banking_group_id: args.banking_group_id,
+          obs_type: args.obs_type,
+          title: args.title,
+          content: args.content,
+          source_type: args.source_type || "ai",
+          source_detail: args.source_detail || "agent",
+        });
+        return JSON.stringify({ ok: true, id: obs.id, title: obs.title });
+      }
+      case "find_country": {
+        const result = await storage.findCountry(args.name_or_code);
+        return JSON.stringify(result || { not_found: true, message: `No country found for "${args.name_or_code}"` });
+      }
+      case "find_currency": {
+        const result = await storage.findCurrency(args.code);
+        return JSON.stringify(result || { not_found: true, message: `No currency found for code "${args.code}"` });
+      }
       case "web_search": {
         const searchResponse = await withRetry(() => openai.chat.completions.create({
           model: "gpt-4o-search-preview",

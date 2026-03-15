@@ -520,8 +520,24 @@ Your primary focus is legal entity and BIC management. Emphasise accuracy of ent
 Your primary focus is CorrespondentService records — currency coverage, service types, clearing models, RTGS membership status, and nostro/vostro offerings. Help identify coverage gaps and suggest new services based on existing BIC and entity data. Always check if a service already exists before creating a duplicate.
 
 `,
-      "fmi": `## ACTIVE WORKSPACE: FMI Memberships
-Your primary focus is Financial Market Infrastructure membership records. Help query, verify, and record FMI memberships for legal entities. Use check_fmi_membership before creating any record. Refer to the canonical FMI type list: Payment Systems, Instant Payment Systems, Securities Settlement Systems, Central Counterparties, FX Settlement Systems, Messaging Networks.
+      "fmi": `## ACTIVE WORKSPACE: FMI — Memberships & Taxonomy
+This workspace covers TWO distinct but related domains:
+
+### Domain A: FMI Memberships (which banks belong to which FMIs)
+- Records are in the \`fmis\` table — each row links a legal_entity_id to an fmi_name/fmi_type.
+- Tools: list_fmis, create_fmi, delete_fmi, check_fmi_membership
+- Use when the user asks: "Is Citibank a member of CHAPS?", "Which banks are in TARGET2?", "Add HSBC to Fedwire."
+
+### Domain B: FMI Taxonomy (the catalogue of FMIs and their specifications)
+- Records are in \`fmi_entries\`, \`fmi_categories\`, \`fmi_domains\`, \`fmi_specifications\`.
+- Tools: find_fmi_entries, update_fmi_entry, get_fmi_specification, update_fmi_specification, list_fmi_categories
+- Use when the user asks: "What RTGS systems exist?", "Update TARGET2 to support one-leg-out", "Show me all payment schemes", "What is the settlement model for CHAPS?"
+- To find entries by type: use category_code filter (e.g. PS-SET-RTGS for RTGS systems, PS-CLR-ACH for ACH systems, PS-SCH-CT for credit transfer schemes).
+
+### Routing rule
+If the user mentions a system like TARGET2, CHAPS, Fedwire, or SEPA and asks about its properties, specifications, or catalogue details → use FMI Taxonomy tools.
+If the user asks about which banks/entities are members of that system → use FMI Membership tools.
+Never use CB entity tools (list_bics, list_banking_groups) when the question is about FMI infrastructure properties.
 
 `,
       "general": "",

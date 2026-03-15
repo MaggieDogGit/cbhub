@@ -8,6 +8,8 @@ import * as bicRepo from "./repositories/bicRepository";
 import * as csRepo from "./repositories/correspondentServiceRepository";
 import * as jobRepo from "./repositories/jobRepository";
 import * as resRepo from "./repositories/researchRepository";
+import * as fmiTaxRepo from "./repositories/fmiTaxonomyRepository";
+import type { FmiEntryFilter, FmiEntryWithCategory } from "./repositories/fmiTaxonomyRepository";
 import type {
   BankingGroup, InsertBankingGroup,
   LegalEntity, InsertLegalEntity,
@@ -17,6 +19,8 @@ import type {
   Fmi, InsertFmi,
   FmiRegistry, InsertFmiRegistry,
   FmiResearchJob, InsertFmiResearchJob,
+  FmiEntry, InsertFmiEntry,
+  FmiSpecification, InsertFmiSpecification,
   DataSource, InsertDataSource,
   Conversation, InsertConversation,
   ChatMessage, InsertMessage,
@@ -119,6 +123,14 @@ export interface IStorage extends IDashboardQueries {
   getCbIndirectParticipation(groupId: string): Promise<CbIndirectParticipation[]>;
   upsertCbIndirectParticipation(data: InsertCbIndirectParticipation): Promise<CbIndirectParticipation>;
   deleteCbIndirectParticipation(id: string): Promise<void>;
+
+  findFmiEntries(filter: FmiEntryFilter): Promise<FmiEntryWithCategory[]>;
+  updateFmiEntry(id: string, data: Partial<InsertFmiEntry>): Promise<FmiEntry>;
+  listFmiCategories(): Promise<any[]>;
+  getFmiSpecification(fmiId: string): Promise<FmiSpecification | undefined>;
+  updateFmiSpecification(fmiId: string, data: Partial<InsertFmiSpecification>): Promise<FmiSpecification>;
+  findCountry(nameOrCode: string): Promise<any>;
+  findCurrency(code: string): Promise<any>;
 }
 
 export class DatabaseStorage implements IStorage {
@@ -221,6 +233,17 @@ export class DatabaseStorage implements IStorage {
   getCbIndirectParticipation(groupId: string)                            { return resRepo.getCbIndirectParticipation(groupId); }
   upsertCbIndirectParticipation(data: InsertCbIndirectParticipation)     { return resRepo.upsertCbIndirectParticipation(data); }
   deleteCbIndirectParticipation(id: string)                              { return resRepo.deleteCbIndirectParticipation(id); }
+
+  // FMI Taxonomy v2
+  findFmiEntries(filter: FmiEntryFilter)                                 { return fmiTaxRepo.findFmiEntries(filter); }
+  updateFmiEntry(id: string, data: Partial<InsertFmiEntry>)              { return fmiTaxRepo.updateFmiEntry(id, data); }
+  listFmiCategories()                                                    { return fmiTaxRepo.listFmiCategories(); }
+  getFmiSpecification(fmiId: string)                                     { return fmiTaxRepo.getFmiSpecification(fmiId); }
+  updateFmiSpecification(fmiId: string, data: Partial<InsertFmiSpecification>) { return fmiTaxRepo.updateFmiSpecification(fmiId, data); }
+
+  // Geographic & Currency Reference
+  findCountry(nameOrCode: string)                                        { return fmiTaxRepo.findCountry(nameOrCode); }
+  findCurrency(code: string)                                             { return fmiTaxRepo.findCurrency(code); }
 
   // Dashboard analytics
   getDashboardCurrencyProviders()                                        { return csRepo.getDashboardCurrencyProviders(); }

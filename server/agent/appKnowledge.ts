@@ -33,7 +33,7 @@ This is the authoritative reference for the entire CBHub application. The agent 
 ### DOMAIN 3: FMI Taxonomy v2 (Infrastructure Catalogue)
 **Purpose:** The structured reference catalogue of payment systems, clearing systems, and other financial market infrastructures. This describes the FMIs themselves — not bank memberships. Organised hierarchically: Domain → Category → Entry. Each entry represents a specific infrastructure (e.g. TARGET2, CHAPS, Fedwire, SEPA CT).
 **Tables:** fmi_domains, fmi_categories, fmi_entries, fmi_relationship_types, fmi_relationships
-**Tools (planned — Task #18):** find_fmi_entries, update_fmi_entry, list_fmi_categories, get_fmi_specification, update_fmi_specification
+**Tools (available):** find_fmi_entries, update_fmi_entry, list_fmi_categories, get_fmi_specification, update_fmi_specification
 **Key rules:**
 - fmi_entries have a category_id linking to fmi_categories (e.g. PS-SET-RTGS = Payment Systems > Settlement > RTGS).
 - fmi_relationships link entries to each other (e.g. SCHEME_USES_CLEARING_MECHANISM links a payment scheme to its clearing/settlement infrastructure).
@@ -45,7 +45,7 @@ This is the authoritative reference for the entire CBHub application. The agent 
 ### DOMAIN 4: FMI Specifications & Payment Capabilities
 **Purpose:** Structured operational specifications attached to FMI Taxonomy entries. Describes what each FMI does: settlement model, clearing capabilities, operating hours, message formats, etc. Also includes payment scheme specifications, processing scenarios, and scenario relationships.
 **Tables:** fmi_specifications (1:1 with fmi_entries), payment_scheme_specifications (1:1 with fmi_entries for scheme-type FMIs), payment_scheme_processing_scenarios, payment_scheme_scenario_relationships
-**Tools (planned — Task #18):** get_fmi_specification, update_fmi_specification
+**Tools (available):** get_fmi_specification, update_fmi_specification
 **Key rules:**
 - Capability derivation for scheme FMIs resolves through relationships: scenario-specific first (SCENARIO_USES_CLEARING_MECHANISM), then scheme→infra chain (SCHEME_USES_CLEARING_MECHANISM).
 - supports_one_leg_out, supports_24x7, supports_cross_border are boolean flags on both fmi_entries and fmi_specifications.
@@ -70,7 +70,7 @@ This is the authoritative reference for the entire CBHub application. The agent 
 ### DOMAIN 7: CB Services Taxonomy
 **Purpose:** A structured taxonomy of correspondent banking service capabilities. Items are capability dimensions (e.g. "Multi-currency pooling", "Instant payment access"). Values score each banking group against these dimensions. Also tracks payment scheme indirect participation.
 **Tables:** cb_taxonomy_items, cb_capability_values, cb_scheme_master, cb_indirect_participation
-**Tools (planned — Task #18):** find_cb_taxonomy_items, update_cb_capability_value
+**Tools (available):** find_cb_taxonomy_items, update_cb_capability_value
 **Key rules:**
 - Categories: feature_commercial, feature_treasury, value_added, connectivity, fi_score, thought_leadership, target_market, ancillary.
 - Value types: boolean_unknown, enum_high_med_low, score_1_10, count, text.
@@ -81,7 +81,7 @@ This is the authoritative reference for the entire CBHub application. The agent 
 ### DOMAIN 8: Geographic & Currency Reference
 **Purpose:** Normalised reference data for countries, currencies, regions, and their relationships. Used across all other domains for consistent geographic and currency coding.
 **Tables:** countries, geo_currencies, country_currencies, regions, region_members, currency_areas
-**Tools (planned — Task #18):** find_country, find_currency (read-only reference lookups)
+**Tools (available):** find_country, find_currency (read-only reference lookups)
 **Key rules:**
 - countries use ISO 3166-1 (iso2, iso3).
 - geo_currencies use ISO 4217 currency codes.
@@ -93,7 +93,7 @@ This is the authoritative reference for the entire CBHub application. The agent 
 ### DOMAIN 9: Intel Observations
 **Purpose:** User and AI-generated competitive intelligence notes attached to banking groups. Types: competitor intel or CB provider intel.
 **Tables:** intel_observations
-**Tools (planned — Task #18):** list_intel_observations, create_intel_observation
+**Tools (available):** list_intel_observations, create_intel_observation
 **Key rules:**
 - obs_type: "competitor" or "cb_provider".
 - source_type: "user" or "ai".

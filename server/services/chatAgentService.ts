@@ -1,5 +1,5 @@
 import { storage } from "../storage";
-import { buildSystemPrompt, runAgentLoop } from "../agent";
+import { buildSystemPrompt, runAgentLoop, getToolsForTopic } from "../agent";
 
 export async function runChat(
   conversationId: string,
@@ -16,6 +16,8 @@ export async function runChat(
   const confirmationPattern = /^(yes|y|confirmed?|correct|go ahead|proceed|store(?: and move)?|update|ok|sure|done|do it|move on|next|continue|approved?|accept)\b/i;
   const isConfirmation = confirmationPattern.test(message.trim());
 
+  const tools = getToolsForTopic(topic);
+
   const openaiMessages: any[] = [
     { role: "system", content: systemPrompt },
     ...history.map(m => ({ role: m.role, content: m.content ?? "" })),
@@ -26,7 +28,9 @@ export async function runChat(
     openaiMessages,
     (_name, _args, text) => { emit({ type: "status", text }); },
     12,
-    isConfirmation ? "required" : "auto"
+    isConfirmation ? "required" : "auto",
+    undefined,
+    tools,
   );
 
   const assistantMsg = await storage.createMessage({

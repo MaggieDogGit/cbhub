@@ -10,7 +10,7 @@
 //   workflows/     — explicit typed workflow modules
 
 export { withRetry, sleep } from "./retry";
-export { getTools, getDryRunTools, getLightTools, leanGroup, leanEntity, leanBic, leanService, leanFmi } from "./tools";
+export { getTools, getDryRunTools, getLightTools, getToolsForTopic, getCbEntityTools, getFmiMembershipTools, getFmiTaxonomyTools, getCbTaxonomyTools, getIntelTools, getGeoReferenceTools, getUtilityTools, leanGroup, leanEntity, leanBic, leanService, leanFmi, leanFmiEntry, leanIntel } from "./tools";
 export { executeTool, runAgentLoop, getStatusText, AGENT_MODEL, AGENT_MODEL_LIGHT } from "./executor";
 export { getAppKnowledge, getAppKnowledgeSummary } from "./appKnowledge";
 export { buildSystemPrompt, buildJobPrompt, buildLightJobPrompt, buildMarketScanPrompt, buildDryRunSuffix, buildIntelContext, buildCurrencyInstruction, buildGroupSnapshot } from "./prompts";
