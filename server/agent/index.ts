@@ -11,7 +11,7 @@
 
 export { withRetry, sleep } from "./retry";
 export { getTools, getDryRunTools, getLightTools, getToolsForTopic, getCbEntityTools, getFmiMembershipTools, getFmiTaxonomyTools, getCbTaxonomyTools, getIntelTools, getGeoReferenceTools, getUtilityTools, leanGroup, leanEntity, leanBic, leanService, leanFmi, leanFmiEntry, leanIntel } from "./tools";
-export { executeTool, runAgentLoop, getStatusText, AGENT_MODEL, AGENT_MODEL_LIGHT } from "./executor";
+export { executeTool, runAgentLoop, getStatusText, AGENT_MODEL, AGENT_MODEL_LIGHT, AGENT_MODEL_DEEP } from "./executor";
 export { getAppKnowledge, getAppKnowledgeSummary } from "./appKnowledge";
 export { buildSystemPrompt, buildJobPrompt, buildLightJobPrompt, buildMarketScanPrompt, buildDryRunSuffix, buildIntelContext, buildCurrencyInstruction, buildGroupSnapshot } from "./prompts";
 export { isValidUUID, isValidBicFormat, normalizeCurrency, normalizeClearingModel, findLikelyDuplicates, validateResearchOutput } from "./validators";

@@ -1,10 +1,11 @@
 import { storage } from "../storage";
-import { buildSystemPrompt, runAgentLoop, getToolsForTopic } from "../agent";
+import { buildSystemPrompt, runAgentLoop, getToolsForTopic, AGENT_MODEL_DEEP } from "../agent";
 
 export async function runChat(
   conversationId: string,
   message: string,
   emit: (data: object) => void,
+  deepThink = false,
 ): Promise<void> {
   const [history, storedSources] = await Promise.all([
     storage.listMessages(conversationId),
@@ -16,6 +17,7 @@ export async function runChat(
   const isConfirmation = confirmationPattern.test(message.trim());
 
   const tools = getToolsForTopic(undefined);
+  const model = deepThink ? AGENT_MODEL_DEEP : undefined;
 
   const openaiMessages: any[] = [
     { role: "system", content: systemPrompt },
@@ -28,7 +30,7 @@ export async function runChat(
     (_name, _args, text) => { emit({ type: "status", text }); },
     12,
     isConfirmation ? "required" : "auto",
-    undefined,
+    model,
     tools,
   );
 

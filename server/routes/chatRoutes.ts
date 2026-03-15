@@ -39,7 +39,7 @@ router.post("/conversations/:id/messages", async (req, res) => {
 });
 
 router.post("/chat", async (req, res) => {
-  const { conversationId, message } = req.body;
+  const { conversationId, message, deepThink } = req.body;
   if (!conversationId || !message) return res.status(400).json({ message: "conversationId and message required" });
 
   res.setHeader("Content-Type", "text/event-stream");
@@ -50,7 +50,7 @@ router.post("/chat", async (req, res) => {
   const emit = (data: object) => res.write(`data: ${JSON.stringify(data)}\n\n`);
 
   try {
-    await runChat(conversationId, message, emit);
+    await runChat(conversationId, message, emit, !!deepThink);
     res.end();
   } catch (err: any) {
     emit({ type: "error", message: err.message });

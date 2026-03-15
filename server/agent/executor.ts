@@ -9,6 +9,7 @@ import type { StepCallback } from "./validators";
 
 export const AGENT_MODEL = "gpt-4.1";
 export const AGENT_MODEL_LIGHT = "gpt-4.1-mini";
+export const AGENT_MODEL_DEEP = "gpt-5";
 
 const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
 

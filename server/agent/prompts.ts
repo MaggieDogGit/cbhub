@@ -5,6 +5,7 @@
 import type { DataSource, IntelObservation, AgentJob } from "@shared/schema";
 import { COUNTRY_CURRENCY, EUROZONE_COUNTRIES, CLS_CURRENCIES } from "./constants";
 import { getAppKnowledge, getAppKnowledgeSummary } from "./appKnowledge";
+import { getUserProfile } from "./userProfile";
 
 type CurrencyScope = "home_only" | "major" | "all";
 
@@ -663,8 +664,11 @@ Do NOT skip the database update step even if the user has not explicitly asked y
 `;
 
   const appBrain = getAppKnowledge();
+  const userProfile = getUserProfile();
 
   return `You are the CB Provider Intelligence Agent, an expert in correspondent banking with full database access and live web search capability.
+
+${userProfile}
 
 ${appBrain}
 

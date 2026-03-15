@@ -2,7 +2,7 @@ import { useState, useEffect, useRef } from "react";
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { queryClient, apiRequest, getAuthToken } from "@/lib/queryClient";
 import { Button } from "@/components/ui/button";
-import { Send, Bot, RotateCcw, Sparkles } from "lucide-react";
+import { Send, Bot, RotateCcw, Sparkles, Brain } from "lucide-react";
 import MessageBubble from "@/components/agent/MessageBubble";
 import type { Conversation, ChatMessage } from "@shared/schema";
 
@@ -23,6 +23,7 @@ export default function AgentChat() {
   const [input, setInput] = useState("");
   const [statusText, setStatusText] = useState("");
   const [confirmingClear, setConfirmingClear] = useState(false);
+  const [deepThink, setDeepThink] = useState(false);
   const bottomRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLTextAreaElement>(null);
 
@@ -72,7 +73,7 @@ export default function AgentChat() {
   });
 
   const sendMutation = useMutation({
-    mutationFn: async ({ conversationId, message }: { conversationId: string; message: string }) => {
+    mutationFn: async ({ conversationId, message, useDeepThink }: { conversationId: string; message: string; useDeepThink: boolean }) => {
       await apiRequest("POST", `/api/conversations/${conversationId}/messages`, { role: "user", content: message });
       queryClient.invalidateQueries({ queryKey: ["/api/conversations", conversationId, "messages"] });
 
@@ -83,7 +84,7 @@ export default function AgentChat() {
           "Content-Type": "application/json",
           ...(token ? { "x-auth-token": token } : {}),
         },
-        body: JSON.stringify({ conversationId, message }),
+        body: JSON.stringify({ conversationId, message, ...(useDeepThink ? { deepThink: true } : {}) }),
       });
 
       if (!response.ok || !response.body) throw new Error(`${response.status}: request failed`);
@@ -122,9 +123,11 @@ export default function AgentChat() {
   const sendMessage = async () => {
     if (!input.trim() || sendMutation.isPending || !conversation) return;
     const msg = input.trim();
+    const useDeepThink = deepThink;
     setInput("");
+    setDeepThink(false);
     if (inputRef.current) inputRef.current.style.height = "auto";
-    sendMutation.mutate({ conversationId: conversation.id, message: msg });
+    sendMutation.mutate({ conversationId: conversation.id, message: msg, useDeepThink });
   };
 
   const handleKeyDown = (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
@@ -157,7 +160,20 @@ export default function AgentChat() {
             <p className="text-xs text-slate-500 dark:text-slate-400">Correspondent Banking Assistant</p>
           </div>
         </div>
-        <div className="flex items-center gap-2 shrink-0">
+        <div className="flex items-center gap-1.5 shrink-0">
+          <button
+            onClick={() => setDeepThink(d => !d)}
+            className={`flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg text-xs font-medium transition-all ${
+              deepThink
+                ? "bg-violet-100 dark:bg-violet-900/50 text-violet-700 dark:text-violet-300 ring-1 ring-violet-300 dark:ring-violet-700"
+                : "text-slate-400 hover:text-slate-600 dark:hover:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800"
+            }`}
+            title={deepThink ? "Deep Think enabled — next message uses gpt-5" : "Enable Deep Think (gpt-5)"}
+            data-testid="button-deep-think"
+          >
+            <Brain className="w-3.5 h-3.5" />
+            <span className="hidden sm:inline">{deepThink ? "Deep Think On" : "Deep Think"}</span>
+          </button>
           {confirmingClear ? (
             <>
               <span className="text-xs text-slate-500 hidden sm:inline">Clear chat?</span>
@@ -244,6 +260,14 @@ export default function AgentChat() {
             <div className="w-1.5 h-1.5 bg-blue-500 rounded-full animate-pulse shrink-0" />
             <span className="text-xs text-slate-500 dark:text-slate-400 truncate">
               {statusText || "Thinking..."}
+            </span>
+          </div>
+        )}
+        {deepThink && !sendMutation.isPending && (
+          <div className="flex items-center gap-2 px-1 pb-2" data-testid="text-deep-think-indicator">
+            <Brain className="w-3.5 h-3.5 text-violet-500 shrink-0" />
+            <span className="text-xs text-violet-600 dark:text-violet-400">
+              Deep Think enabled — next message will use gpt-5
             </span>
           </div>
         )}
