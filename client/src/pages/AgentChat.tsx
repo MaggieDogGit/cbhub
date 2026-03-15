@@ -235,35 +235,16 @@ export default function AgentChat() {
           <MessageBubble key={msg.id || i} message={msg} />
         ))}
 
-        {sendMutation.isPending && (
-          <div className="flex items-start gap-2.5 max-w-[85%]">
-            <div className="h-7 w-7 rounded-lg bg-blue-600 flex items-center justify-center mt-0.5 shrink-0">
-              <Bot className="w-3.5 h-3.5 text-white" />
-            </div>
-            <div className="bg-slate-100 dark:bg-slate-800 rounded-2xl rounded-bl-sm px-4 py-2.5">
-              {statusText ? (
-                <div className="flex items-center gap-2">
-                  <div className="w-1.5 h-1.5 bg-blue-500 rounded-full animate-pulse shrink-0" />
-                  <span className="text-xs text-slate-600 dark:text-slate-300 leading-relaxed">{statusText}</span>
-                </div>
-              ) : (
-                <div className="flex gap-1 items-center h-5">
-                  <div className="w-1.5 h-1.5 bg-slate-400 rounded-full animate-bounce" style={{ animationDelay: "0ms" }} />
-                  <div className="w-1.5 h-1.5 bg-slate-400 rounded-full animate-bounce" style={{ animationDelay: "150ms" }} />
-                  <div className="w-1.5 h-1.5 bg-slate-400 rounded-full animate-bounce" style={{ animationDelay: "300ms" }} />
-                </div>
-              )}
-            </div>
-          </div>
-        )}
         <div ref={bottomRef} />
       </div>
 
       <div className="shrink-0 border-t border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-950 px-3 py-3 pb-[env(safe-area-inset-bottom,12px)]">
-        {sendMutation.isPending && statusText && (
+        {sendMutation.isPending && (
           <div className="flex items-center gap-2 px-1 pb-2" data-testid="text-agent-status">
             <div className="w-1.5 h-1.5 bg-blue-500 rounded-full animate-pulse shrink-0" />
-            <span className="text-xs text-slate-500 dark:text-slate-400 truncate">{statusText}</span>
+            <span className="text-xs text-slate-500 dark:text-slate-400 truncate">
+              {statusText || "Thinking..."}
+            </span>
           </div>
         )}
         <div className="flex items-end gap-2">

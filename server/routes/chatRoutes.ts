@@ -19,11 +19,13 @@ router.delete("/conversations/:id", async (req, res) => {
   await storage.deleteConversation(req.params.id);
   res.json({ ok: true });
 });
-router.get("/conversations/main", async (_req, res) => {
-  res.json(await storage.getOrCreateMainConversation());
+router.get("/conversations/main", async (req, res) => {
+  const sessionId = (req.headers["x-auth-token"] as string) || req.session?.id || "default";
+  res.json(await storage.getOrCreateMainConversation(sessionId));
 });
 router.get("/conversations/topic/:topic", async (req, res) => {
-  res.json(await storage.getOrCreateMainConversation());
+  const sessionId = (req.headers["x-auth-token"] as string) || req.session?.id || "default";
+  res.json(await storage.getOrCreateMainConversation(sessionId));
 });
 
 router.get("/conversations/:id/messages", async (req, res) => {

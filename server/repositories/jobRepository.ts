@@ -76,17 +76,19 @@ export async function getOrCreateTopicConversation(topic: string): Promise<Conve
   return created;
 }
 
-export async function getOrCreateMainConversation(): Promise<Conversation> {
+export async function getOrCreateMainConversation(sessionId?: string): Promise<Conversation> {
+  const ownerKey = sessionId || "default";
+  const topicKey = `main:${ownerKey}`;
   const [existing] = await db
     .select()
     .from(conversations)
-    .where(eq(conversations.topic, "main"))
+    .where(eq(conversations.topic, topicKey))
     .orderBy(desc(conversations.created_at))
     .limit(1);
   if (existing) return existing;
   const [created] = await db
     .insert(conversations)
-    .values({ name: "CB Agent Chat", topic: "main" })
+    .values({ name: "CB Agent Chat", topic: topicKey })
     .returning();
   return created;
 }
