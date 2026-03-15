@@ -100,6 +100,31 @@ export async function getCbTaxonomy(): Promise<CbTaxonomyItem[]> {
     .orderBy(cbTaxonomyItems.category, cbTaxonomyItems.display_order);
 }
 
+export async function findCbTaxonomyItems(
+  filter: { category?: string; name_contains?: string },
+): Promise<CbTaxonomyItem[]> {
+  const conditions: any[] = [eq(cbTaxonomyItems.active, true)];
+  if (filter.category) conditions.push(eq(cbTaxonomyItems.category, filter.category));
+  if (filter.name_contains) conditions.push(sql`${cbTaxonomyItems.name} ILIKE ${'%' + filter.name_contains + '%'}`);
+  return db
+    .select()
+    .from(cbTaxonomyItems)
+    .where(and(...conditions))
+    .orderBy(cbTaxonomyItems.category, cbTaxonomyItems.display_order);
+}
+
+export async function updateCbCapabilityValue(
+  id: string,
+  data: Partial<InsertCbCapabilityValue>,
+): Promise<CbCapabilityValue> {
+  const [r] = await db
+    .update(cbCapabilityValues)
+    .set({ ...data, updated_at: new Date() } as Partial<CbCapabilityValue>)
+    .where(eq(cbCapabilityValues.id, id))
+    .returning();
+  return r;
+}
+
 export async function getCbCapabilities(groupId: string): Promise<CbCapabilityValue[]> {
   return db.select().from(cbCapabilityValues).where(eq(cbCapabilityValues.banking_group_id, groupId));
 }

@@ -116,8 +116,10 @@ export interface IStorage extends IDashboardQueries {
   deleteJob(id: string): Promise<void>;
 
   getCbTaxonomy(): Promise<CbTaxonomyItem[]>;
+  findCbTaxonomyItems(filter: { category?: string; name_contains?: string }): Promise<CbTaxonomyItem[]>;
   getCbCapabilities(groupId: string): Promise<CbCapabilityValue[]>;
   upsertCbCapability(data: InsertCbCapabilityValue): Promise<CbCapabilityValue>;
+  updateCbCapabilityValue(id: string, data: Partial<InsertCbCapabilityValue>): Promise<CbCapabilityValue>;
   deleteCbCapability(id: string): Promise<void>;
   getCbSchemes(): Promise<CbSchemeMaster[]>;
   getCbIndirectParticipation(groupId: string): Promise<CbIndirectParticipation[]>;
@@ -226,8 +228,10 @@ export class DatabaseStorage implements IStorage {
 
   // CB Taxonomy
   getCbTaxonomy()                                                        { return resRepo.getCbTaxonomy(); }
+  findCbTaxonomyItems(filter: { category?: string; name_contains?: string }) { return resRepo.findCbTaxonomyItems(filter); }
   getCbCapabilities(groupId: string)                                     { return resRepo.getCbCapabilities(groupId); }
   upsertCbCapability(data: InsertCbCapabilityValue)                      { return resRepo.upsertCbCapability(data); }
+  updateCbCapabilityValue(id: string, data: Partial<InsertCbCapabilityValue>) { return resRepo.updateCbCapabilityValue(id, data); }
   deleteCbCapability(id: string)                                         { return resRepo.deleteCbCapability(id); }
   getCbSchemes()                                                         { return resRepo.getCbSchemes(); }
   getCbIndirectParticipation(groupId: string)                            { return resRepo.getCbIndirectParticipation(groupId); }

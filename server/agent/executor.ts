@@ -185,22 +185,19 @@ export async function executeTool(name: string, args: any): Promise<string> {
         return JSON.stringify(cats);
       }
       case "find_cb_taxonomy_items": {
-        const items = await storage.getCbTaxonomy();
-        let filtered = items;
-        if (args.category) filtered = filtered.filter(i => i.category === args.category);
-        if (args.name_contains) {
-          const needle = args.name_contains.toLowerCase();
-          filtered = filtered.filter(i => i.name.toLowerCase().includes(needle));
-        }
-        return JSON.stringify(filtered.length ? filtered : { not_found: true, message: "No CB taxonomy items matched the filter" });
+        const filter: { category?: string; name_contains?: string } = {};
+        if (args.category) filter.category = args.category;
+        if (args.name_contains) filter.name_contains = args.name_contains;
+        const items = await storage.findCbTaxonomyItems(filter);
+        return JSON.stringify(items.length ? items : { not_found: true, message: "No CB taxonomy items matched the filter" });
       }
       case "update_cb_capability_value": {
-        const result = await storage.upsertCbCapability({
-          banking_group_id: args.banking_group_id,
-          taxonomy_item_id: args.taxonomy_item_id,
-          value: args.value,
-          legal_entity_id: args.legal_entity_id || null,
-          correspondent_service_id: args.correspondent_service_id || null,
+        const result = await storage.updateCbCapabilityValue(args.id, {
+          ...(args.value !== undefined && { value: args.value }),
+          ...(args.banking_group_id && { banking_group_id: args.banking_group_id }),
+          ...(args.taxonomy_item_id && { taxonomy_item_id: args.taxonomy_item_id }),
+          ...(args.legal_entity_id !== undefined && { legal_entity_id: args.legal_entity_id || null }),
+          ...(args.correspondent_service_id !== undefined && { correspondent_service_id: args.correspondent_service_id || null }),
         });
         return JSON.stringify({ ok: true, id: result.id });
       }
