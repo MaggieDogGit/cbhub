@@ -84,7 +84,7 @@ export function getFmiTaxonomyTools(): any[] {
 
 export function getCbTaxonomyTools(): any[] {
   return [
-    { type: "function", function: { name: "find_cb_taxonomy_items", description: "Search CB Services Taxonomy items by category and/or name. Returns capability dimensions that can be scored per banking group.", parameters: { type: "object", properties: { category: { type: "string", description: "Category filter: feature_commercial, feature_treasury, value_added, connectivity, fi_score, thought_leadership, target_market, ancillary" }, name_contains: { type: "string", description: "Partial name search" } } } } },
+    { type: "function", function: { name: "find_cb_taxonomy_items", description: "Search CB Services Taxonomy items by category and/or name. Returns capability dimensions that can be scored per banking group.", parameters: { type: "object", properties: { category: { type: "string", description: "Category filter: feature_commercial, feature_treasury, value_added, connectivity, fi_score, thought_leadership, target_market, ancillary" }, name: { type: "string", description: "Partial name search (case-insensitive contains)" } } } } },
     { type: "function", function: { name: "update_cb_capability_value", description: "Update an existing CB capability value record by its ID. Patch any combination of fields.", parameters: { type: "object", required: ["id"], properties: { id: { type: "string", description: "The cb_capability_values record ID to update" }, value: { type: "string", description: "The new capability value (format depends on taxonomy item's value_type)" }, banking_group_id: { type: "string" }, taxonomy_item_id: { type: "string" }, legal_entity_id: { type: "string" }, correspondent_service_id: { type: "string" } } } } },
   ];
 }

@@ -42,9 +42,16 @@ export async function deleteDataSource(id: string): Promise<void> {
 export async function listIntelObservations(
   filters?: { banking_group_id?: string; obs_type?: string },
 ): Promise<IntelObservation[]> {
-  let query = db.select().from(intelObservations).$dynamic();
+  const conditions: any[] = [];
   if (filters?.banking_group_id) {
-    query = query.where(eq(intelObservations.banking_group_id, filters.banking_group_id));
+    conditions.push(eq(intelObservations.banking_group_id, filters.banking_group_id));
+  }
+  if (filters?.obs_type) {
+    conditions.push(eq(intelObservations.obs_type, filters.obs_type));
+  }
+  let query = db.select().from(intelObservations).$dynamic();
+  if (conditions.length) {
+    query = query.where(conditions.length === 1 ? conditions[0] : and(...conditions));
   }
   return query.orderBy(desc(intelObservations.created_at));
 }

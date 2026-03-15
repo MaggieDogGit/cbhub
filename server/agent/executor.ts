@@ -42,7 +42,7 @@ export function getStatusText(name: string, args: any): string {
     case "get_fmi_specification":       return "Fetching FMI specification…";
     case "update_fmi_specification":    return "Updating FMI specification…";
     case "list_fmi_categories":         return "Listing FMI taxonomy categories…";
-    case "find_cb_taxonomy_items":      return `Searching CB taxonomy: ${q(args.category || args.name_contains || "")}`;
+    case "find_cb_taxonomy_items":      return `Searching CB taxonomy: ${q(args.category || args.name || "")}`;
     case "update_cb_capability_value":  return "Updating CB capability score…";
     case "list_intel_observations":     return "Reviewing intel observations…";
     case "create_intel_observation":    return `Adding intel: ${q(args.title)}`;
@@ -187,7 +187,7 @@ export async function executeTool(name: string, args: any): Promise<string> {
       case "find_cb_taxonomy_items": {
         const filter: { category?: string; name_contains?: string } = {};
         if (args.category) filter.category = args.category;
-        if (args.name_contains) filter.name_contains = args.name_contains;
+        if (args.name) filter.name_contains = args.name;
         const items = await storage.findCbTaxonomyItems(filter);
         return JSON.stringify(items.length ? items : { not_found: true, message: "No CB taxonomy items matched the filter" });
       }
