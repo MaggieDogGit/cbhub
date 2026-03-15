@@ -93,7 +93,7 @@ app.use((req, res, next) => {
 
 (async () => {
   await bootstrapFmiSpecsTables();
-  await seedGeoReference(pool);
+  seedGeoReference(pool).catch((err) => console.error("[GeoSeed] non-fatal error:", err));
   await registerRoutes(httpServer, app);
 
   app.use((err: any, _req: Request, res: Response, next: NextFunction) => {
