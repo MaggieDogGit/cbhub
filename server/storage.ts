@@ -128,6 +128,7 @@ export interface IStorage extends IDashboardQueries {
   deleteCbIndirectParticipation(id: string): Promise<void>;
 
   findFmiEntries(filter: FmiEntryFilter): Promise<FmiEntryWithCategory[]>;
+  createFmiEntry(data: InsertFmiEntry): Promise<FmiEntry>;
   updateFmiEntry(id: string, data: Partial<InsertFmiEntry>): Promise<FmiEntry>;
   listFmiCategories(): Promise<any[]>;
   getFmiSpecification(fmiId: string): Promise<FmiSpecification | undefined>;
@@ -242,6 +243,7 @@ export class DatabaseStorage implements IStorage {
 
   // FMI Taxonomy v2
   findFmiEntries(filter: FmiEntryFilter)                                 { return fmiTaxRepo.findFmiEntries(filter); }
+  createFmiEntry(data: InsertFmiEntry)                                   { return fmiTaxRepo.createFmiEntry(data); }
   updateFmiEntry(id: string, data: Partial<InsertFmiEntry>)              { return fmiTaxRepo.updateFmiEntry(id, data); }
   listFmiCategories()                                                    { return fmiTaxRepo.listFmiCategories(); }
   getFmiSpecification(fmiId: string)                                     { return fmiTaxRepo.getFmiSpecification(fmiId); }

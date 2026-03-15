@@ -78,6 +78,11 @@ export async function getFmiEntry(id: string): Promise<FmiEntryWithCategory | un
   return rows[0] as FmiEntryWithCategory | undefined;
 }
 
+export async function createFmiEntry(data: InsertFmiEntry): Promise<FmiEntry> {
+  const [r] = await db.insert(fmiEntries).values({ ...data, is_active: true }).returning();
+  return r;
+}
+
 export async function updateFmiEntry(id: string, data: Partial<InsertFmiEntry>): Promise<FmiEntry> {
   const [r] = await db.update(fmiEntries).set({ ...data, updated_at: new Date() }).where(eq(fmiEntries.id, id)).returning();
   return r;

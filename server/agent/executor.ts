@@ -39,6 +39,7 @@ export function getStatusText(name: string, args: any): string {
     case "create_fmi":                  return `Adding FMI membership: ${q(args.fmi_type || args.fmi_name)}`;
     case "delete_fmi":                  return "Removing FMI membership…";
     case "find_fmi_entries":            return `Searching FMI catalogue: ${q(args.name_contains || args.category_code || args.domain_code || "")}`;
+    case "create_fmi_entry":            return `Adding FMI catalogue entry: ${q(args.name || args.code)}`;
     case "update_fmi_entry":            return "Updating FMI catalogue entry…";
     case "get_fmi_specification":       return "Fetching FMI specification…";
     case "update_fmi_specification":    return "Updating FMI specification…";
@@ -166,6 +167,22 @@ export async function executeTool(name: string, args: any): Promise<string> {
         if (args.status) filter.status = args.status;
         const entries = await storage.findFmiEntries(filter);
         return JSON.stringify(entries.length ? entries.map(leanFmiEntry) : { not_found: true, message: "No FMI entries matched the filter" });
+      }
+      case "create_fmi_entry": {
+        if (!args.category_id || !isValidUUID(args.category_id))
+          return JSON.stringify({ error: `category_id must be a valid UUID. Call list_fmi_categories first to get the correct ID. Received: "${args.category_id}"` });
+        const existing = await storage.findFmiEntries({ name_contains: args.name });
+        const duplicate = existing.find((e: any) =>
+          e.name.toLowerCase() === (args.name || "").toLowerCase() ||
+          (args.code && e.code?.toLowerCase() === args.code.toLowerCase())
+        );
+        if (duplicate) return JSON.stringify({ duplicate: true, existing_id: duplicate.id, message: `FMI entry "${duplicate.name}" already exists (id=${duplicate.id}). Use update_fmi_entry instead.` });
+        const created = await storage.createFmiEntry({
+          ...args,
+          status: args.status || "live",
+          is_active: true,
+        });
+        return JSON.stringify({ ok: true, id: created.id, name: created.name, code: created.code });
       }
       case "update_fmi_entry": {
         const { id, ...data } = args;
