@@ -5,6 +5,8 @@ import { registerRoutes } from "./routes";
 import { serveStatic } from "./static";
 import { createServer } from "http";
 import { bootstrapFmiSpecsTables } from "./bootstrapFmiSpecs";
+import { seedGeoReference } from "./seedGeoReference";
+import { pool } from "./db";
 
 const app = express();
 app.set("trust proxy", 1);
@@ -91,6 +93,7 @@ app.use((req, res, next) => {
 
 (async () => {
   await bootstrapFmiSpecsTables();
+  await seedGeoReference(pool);
   await registerRoutes(httpServer, app);
 
   app.use((err: any, _req: Request, res: Response, next: NextFunction) => {
