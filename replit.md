@@ -2,225 +2,49 @@
 
 ## Overview
 
-A full-stack correspondent banking intelligence dashboard for mapping global correspondent banking providers. Built with a hierarchical data model: BankingGroup → LegalEntity → BIC → CorrespondentService.
+The CB Provider Intelligence Platform is a full-stack correspondent banking intelligence dashboard designed to map global correspondent banking providers. Its core purpose is to provide a comprehensive view of the correspondent banking landscape, structured around a hierarchical data model: BankingGroup → LegalEntity → BIC → CorrespondentService. The platform integrates AI capabilities for research, chat, and autonomous background job processing, aiming to enhance data discovery, validation, and analysis for financial institutions. The project's ambition is to become the leading intelligence tool for correspondent banking, enabling users to gain insights into market coverage, competitor benchmarking, and regulatory compliance.
 
-Uses Express REST API + PostgreSQL backend (Drizzle ORM), React frontend, and OpenAI for AI Research Assistant, Agent Chat (tool calling + web search), and autonomous background job processing.
+## User Preferences
 
-## Tech Stack
+I prefer iterative development, with a focus on delivering functional components that can be tested and refined.
+I value clear and concise communication. Please explain technical concepts in an understandable way, avoiding excessive jargon where possible.
+I prefer to be asked before major architectural changes or significant feature implementations are made.
+I like to see progress regularly and prefer updates on completed tasks or significant milestones.
+When suggesting code changes, please provide a brief explanation of the rationale behind them.
+I prefer detailed explanations when issues arise or when complex solutions are proposed.
+I want the agent to use a methodical approach to problem-solving, breaking down tasks into manageable steps.
+Do not make changes to the `server/agent/prompts.ts` file without explicit approval.
+Do not make changes to the `shared/schema.ts` file without explicit approval.
 
-- **Frontend**: React 18, TypeScript, Vite, TailwindCSS, shadcn/ui
-- **Backend**: Express.js + TypeScript (tsx)
-- **Database**: PostgreSQL via Drizzle ORM (pg driver)
-- **State management**: TanStack Query v5
-- **Routing**: Wouter
-- **Charts**: Recharts (bar, pie)
-- **Maps**: React-Leaflet v4 + Leaflet
-- **AI**: OpenAI gpt-4o (chat completions + tool calling)
+## System Architecture
 
-## Project Structure
+The platform is built with a React frontend, an Express.js and TypeScript backend, and a PostgreSQL database utilizing Drizzle ORM. OpenAI's GPT-4o powers AI functionalities for research assistance, an agent chat with tool calling and web search, and autonomous background job processing.
 
-```
-client/src/
-  pages/
-    Dashboard.tsx          – Overview: quick-nav links, summary stats, recharts bar/pie, coverage map, latest intel
-    Competition.tsx        – Competitor benchmarking placeholder; lists competitor-tagged groups from intel observations
-    Providers.tsx          – Banking Groups page (/banking-groups); 3-level tree (Group → Entity → BIC → Services); /providers redirects here
-    LegalEntities.tsx      – Expandable entity list with BIC/service inline tables
-    FmiProfiles.tsx        – FMI list page (/fmis): 49 FMIs, faceted type sidebar, subtype/search filters, card grid
-    FmiProfileDetail.tsx   – FMI detail page (/fmis/:id): 6 sections (objective, role, scope, access, operator, importance); sources
-    GeoReference.tsx       – Geographic & Currency Reference (/geo-reference): Countries/Currencies/Regions tabs; 66 countries, 47 currencies, 14 regions
-    Coverage.tsx           – Coverage dashboard (Complete/Partial/Empty per group) + job queue UI
-    CLS.tsx                – CLS profiles table, inline create/edit
-    Currencies.tsx         – Per-currency competitor view table
-    MarketCoverage.tsx     – Multi-currency selection + react-leaflet map + results table
-    ResearchAssistant.tsx  – AI bank research → approval review → bulk DB save
-    AgentChat.tsx          – Multi-conversation AI chat with sidebar; ?conv= param auto-creates named conversations
-    Registry.tsx           – Two-panel registry editor: group browser (search/filters) + hierarchical tree editor (entity→BIC→service→FMI), edit drawer with verify-before-save, AlertDialog deletions, mobile-responsive
-    DatabaseAdmin.tsx      – Full CRUD for all 5 core entities via tabbed forms
-  components/
-    Layout.tsx             – Sidebar nav with 5 sections (Main, Entities, Research, Tools); header with global search navigating to /banking-groups
-    CbProfile.tsx          – CB Profile section: capability category panels, edit dialog, service feature badges, indirect participation
-    cls/CLSProfileForm.tsx – Inline CLS profile create/edit form
-    market/CoverageMap.tsx – React-Leaflet world map with circle markers
-    agent/MessageBubble.tsx – Chat message bubble (user right-aligned, AI left)
+**UI/UX Decisions:**
+- **Frontend Framework**: React 18 with TypeScript for robust and scalable UI development.
+- **Styling**: TailwindCSS and shadcn/ui for a modern, utility-first approach to styling and pre-built accessible components.
+- **State Management**: TanStack Query v5 for efficient data fetching, caching, and state synchronization.
+- **Routing**: Wouter for lightweight and declarative routing.
+- **Data Visualization**: Recharts for interactive bar and pie charts, and React-Leaflet v4 with Leaflet for geographical data representation on maps.
+- **Navigation**: A sidebar navigation with five main sections (Main, Entities, Research, Tools) and a header with global search functionality directing to `/banking-groups`.
+- **Forms**: Inline create/edit forms and tabbed forms for full CRUD operations across core entities, with verification steps before saving changes and `AlertDialog` for deletions.
 
-server/
-  index.ts      – Express app entry point
-  routes.ts     – Thin index: mounts auth (unprotected), requireAuth middleware, then all protected routers
-  agentCore.ts  – Backward-compat barrel → re-exports from server/agent/
-  jobRunner.ts  – Backward-compat barrel → re-exports from server/services/
-  storage.ts    – DatabaseStorage class implementing IStorage
-  db.ts         – Drizzle ORM + pg pool setup
+**Technical Implementations:**
+- **Backend**: Express.js with `tsx` for TypeScript execution, structured with modular routers for different API domains (auth, registry, research, jobs, chat, dashboard).
+- **Database**: PostgreSQL with Drizzle ORM for type-safe database interactions and schema management.
+- **API Design**: RESTful API endpoints, all prefixed with `/api/`, covering CRUD operations for core entities and specific functionalities like AI research and chat streaming.
+- **AI Agent Core**: Modular agent architecture located in `server/agent/`, handling prompt generation, tool definitions, execution, retry mechanisms, and validation. The agent supports a tool confirmation pattern for immediate action.
+- **Background Job System**: A robust job runner (`server/services/jobService.ts`) handles two main job types: "CB Setup" for detailed banking group analysis (with an AI validation step) and "Market Coverage Scan" for breadth-first market discovery, both supporting dry-run modes. The job runner polls for new jobs automatically.
+- **Geographic & Currency Reference Model**: Six interconnected tables (`countries`, `geo_currencies`, `country_currencies`, `regions`, `region_members`, `currency_areas`) provide a comprehensive reference for CB analysis, exposed via dedicated API routes and a UI page (`/geo-reference`).
+- **FMI Specifications & Payment Capability Model**: Four additional tables (`fmi_specifications`, `payment_scheme_specifications`, `payment_scheme_processing_scenarios`, `payment_scheme_scenario_relationships`) extend the FMI taxonomy with structured operational data, allowing for derived payment capabilities (e.g., cross-border, OLO support).
+- **Data Quality**: Enforced through server-side foreign key validation, canonical naming conventions for RTGS systems, and regular cleanup of orphaned records.
+- **Authentication**: Token-based authentication using environment variables for credentials, with tokens stored in `localStorage` and sent via `X-Auth-Token` header.
 
-  routes/
-    authRoutes.ts       – Login/logout/me endpoints (unprotected)
-    registryRoutes.ts   – CRUD for banking-groups, legal-entities, BICs, services, CLS, FMIs, taxonomy, capabilities, schemes, indirect
-    researchRoutes.ts   – POST /research AI research endpoint
-    jobRoutes.ts        – Job CRUD, queue-all, stop-queue, market-scan
-    chatRoutes.ts       – Conversations CRUD + POST /chat SSE streaming
-    dashboardRoutes.ts  – Dashboard analytics: currency-providers, data-sources, intel
+## External Dependencies
 
-  agent/
-    prompts.ts     – buildSystemPrompt, getStatusText
-    tools.ts       – getTools, getDryRunTools, getLightTools definitions
-    executor.ts    – executeTool, runAgentLoop
-    retry.ts       – withRetry, sleep utilities
-    validators.ts  – StepCallback type
-    index.ts       – Barrel re-exporting all agent modules
-
-  services/
-    cbDiscoveryService.ts   – COUNTRY_CURRENCY, COUNTRY_RTGS, EUROZONE_COUNTRIES, CLS_CURRENCIES lookup maps
-    jobService.ts           – processNextJob, startJobRunner (polls every 30s)
-    chatAgentService.ts     – runChat (SSE streaming agent loop)
-    bankingGroupService.ts  – mergeBankingGroups helper
-
-shared/
-  schema.ts     – All Drizzle entities + Zod insert schemas + TypeScript types
-```
-
-## Data Model
-
-| Entity | Key Fields |
-|---|---|
-| BankingGroup | group_name, headquarters_country, primary_currency, gsib_status |
-| LegalEntity | group_id, legal_name, country, entity_type |
-| BIC | legal_entity_id, bic_code, country, city, is_headquarters |
-| CorrespondentService | bic_id, currency, service_type, clearing_model, rtgs/instant/nostro/vostro/cls booleans |
-| CLSProfile | group_id, cls_third_party, cls_nostro_payments, cls_nostro_currencies[] |
-| FMI | legal_entity_id, fmi_type (CLS_Settlement_Member), member_since |
-| Conversation | name, created_at |
-| ChatMessage | conversation_id, role (user/assistant), content |
-| AgentJob | banking_group_id (nullable for market scans), banking_group_name (nullable), status, job_type (cb_setup/market_scan), market_country, market_currency, conversation_id, steps_completed, dry_run (boolean) |
-| CbTaxonomyItem | code (unique), name, category (feature_commercial/feature_treasury/value_added/connectivity/fi_score/thought_leadership/target_market/ancillary), value_type (boolean_unknown/enum_high_med_low/score_1_10/count/text), display_order, active |
-| CbCapabilityValue | banking_group_id, legal_entity_id (opt), correspondent_service_id (opt), taxonomy_item_id, value_enum, value_numeric, value_text, supported_fmis[], notes, source, confidence, ai_generated, reviewer |
-| CbSchemeMaster | code (unique), name, market, region, scheme_currency, scheme_type, operator_name, display_order, active |
-| CbIndirectParticipation | legal_entity_id, banking_group_id, scheme_id, indirect_participation_offered (yes/no/unknown), sponsor_is_direct_participant, notes, source, confidence, ai_generated |
-
-## API Endpoints
-
-All prefixed with `/api`:
-
-- `GET|POST /banking-groups`, `PATCH|DELETE /banking-groups/:id`
-- `GET|POST /legal-entities`, `PATCH|DELETE /legal-entities/:id`
-- `GET|POST /bics`, `PATCH|DELETE /bics/:id`
-- `GET|POST /correspondent-services?currency=X`, `PATCH|DELETE /correspondent-services/:id`
-- `GET|POST /cls-profiles`, `PATCH|DELETE /cls-profiles/:id`
-- `GET|POST /fmis`, `PATCH|DELETE /fmis/:id`
-- `GET|POST /conversations`, `DELETE /conversations/:id`
-- `GET|POST /conversations/:id/messages`
-- `GET|POST /jobs`, `DELETE /jobs/:id`, `POST /jobs/queue-all`, `POST /jobs/stop-queue`, `POST /jobs/market-scan`
-- `GET /cb-taxonomy` – All taxonomy items grouped by category
-- `GET|PUT|DELETE /cb-capabilities/:groupId` – Capability values per banking group (PUT upserts)
-- `GET /cb-schemes` – Payment scheme master data
-- `GET|PUT|DELETE /cb-indirect/:groupId` – Indirect participation records per group (PUT upserts)
-- `POST /research` – AI bank research (OpenAI structured JSON output)
-- `POST /chat` – Streaming SSE AI agent (calls agentCore.runAgentLoop)
-
-## Agent Architecture
-
-- `server/agent/` is the modular agent core (barrel-exported via `server/agent/index.ts` and backward-compat via `server/agentCore.ts`):
-  - `prompts.ts`: `buildSystemPrompt(sources)`, `getStatusText()`
-  - `tools.ts`: `getTools()`, `getDryRunTools()`, `getLightTools()` – OpenAI tool definitions
-  - `executor.ts`: `executeTool(name, args)`, `runAgentLoop(messages, onStep?, maxIterations, firstIterToolChoice)`
-  - `retry.ts`: `withRetry()`, `sleep()` utilities
-  - `validators.ts`: `StepCallback` type
-- `server/services/chatAgentService.ts` handles `/api/chat` SSE streaming via `runChat()`
-- `server/services/jobService.ts` handles background job processing via `processNextJob()` / `startJobRunner()`
-- Tool confirmation pattern: if user message matches `yes|confirmed|proceed|...`, passes `firstIterToolChoice: "required"` to immediately act without re-asking
-
-## Geographic & Currency Reference Model
-
-Six interconnected tables forming a complete geographic and currency reference for CB analysis:
-
-| Table | Rows | Purpose |
-|---|---|---|
-| `countries` | 66 | ISO 3166 country reference (EU-27, SEPA non-EU, Americas, APAC, MENA, SSA) |
-| `geo_currencies` | 47 | ISO 4217 currencies with symbol and minor units |
-| `country_currencies` | 67 | Country ↔ currency links (primary flag) |
-| `regions` | 14 | Named groupings: EU, Euro Area, SEPA, EEA, Nordics, CEE, GCC, Americas, APAC, MENA, SSA, G10, G20, CLS Eligible |
-| `region_members` | 348 | Country ↔ region memberships |
-| `currency_areas` | 72 | Currency ↔ region links (official flag, e.g. EUR → Euro Area) |
-
-API routes (all under `/api/`):
-- `GET /api/countries` — all countries with primary currency
-- `GET /api/countries/:iso2` — country detail with currencies + regions
-- `GET /api/currencies` — all currencies with country count + area flag
-- `GET /api/currencies/:code` — currency detail with countries + regions
-- `GET /api/regions` — all regions with member count
-- `GET /api/regions/:id` — region detail with member countries + currencies
-
-UI: `/geo-reference` — 3-tab page (Countries searchable table, Currencies card grid, Regions grouped expandable cards). Accessible from sidebar under Tools → Geo Reference.
-
-## FMI Specifications & Payment Capability Model
-
-Four additional tables extending the FMI taxonomy with structured operational data:
-
-| Table | Purpose |
-|---|---|
-| `fmi_specifications` | Structured operational detail per FMI entry: settlement model, 24×7, cross-border/OLO support, message standards, participation model, liquidity |
-| `payment_scheme_specifications` | Scheme rulebook level: currency, region, OLO/cross-border allowed, max amount, message standard |
-| `payment_scheme_processing_scenarios` | Named scenarios within a scheme (e.g. FPS Domestic, FPS POO, SCT Inst Domestic, OCT Inst Default) |
-| `payment_scheme_scenario_relationships` | Scenario → FMI relationships (uses clearing mechanism, settles in settlement system) |
-
-New relationship types: `SCENARIO_USES_CLEARING_MECHANISM`, `SCENARIO_SETTLES_IN_SETTLEMENT_SYSTEM`
-
-New FMI entries: Bank of England RTGS (BOE-RTGS), FPS Central Infrastructure (FPS-INFRA), Faster Payments Scheme (FPS), OCT Inst (OCT-INST)
-
-API routes (all under `/api/`):
-- `GET /api/fmi-specifications/:fmiId` — structured spec for an FMI entry
-- `GET /api/payment-scheme-specs/:fmiId` — scheme rulebook spec
-- `GET /api/payment-scheme-scenarios/:schemeId` — list scenarios with relationships
-- `GET /api/payment-scheme-processing-scenarios/:id` — single scenario detail
-- `GET /api/fmi-entries/:id/capability?scenario_id=` — derived cross-border + OLO booleans (infra AND scheme/scenario)
-
-Capability derivation: `actual_OLO = infra.supports_one_leg_out_processing AND (scenario.supports_one_leg_out OR scheme.scheme_one_leg_out_allowed)`. Returns null when either side unknown.
-
-## Background Job System
-
-Two job types (dispatched by `job_type` field):
-
-### CB Setup (`job_type = "cb_setup"`)
-- Queue workflows for banking groups via the Coverage page or Providers page multi-select
-- Normal mode: gpt-4o, up to 15 iterations, full tool set; Light mode: gpt-4o-mini, 3 iterations, 13 subset tools
-- Jobs table tracks: `banking_group_id`, `banking_group_name`, status, conversation_id, steps_completed
-- **AI Validation Step** (Normal mode only): After Steps 1–5, agent calls `validate_cb_structure` tool which makes a secondary gpt-4o call to validate entity plausibility, Onshore/Offshore classification, RTGS assignments, and missing entities. Results stored in `scan_summary` as JSON with `validationValid`, `issueCount`, `issues`, `missingEntities`, `notes`. UI shows green "Valid" or amber "X issues" badge on Coverage and Providers pages.
-
-### Market Coverage Scan (`job_type = "market_scan"`)
-- Breadth-first discovery: finds 8–15 CB providers in a market, creates banking groups / entities / BICs / one service per currency
-- Uses `market_country` and `market_currency` fields; `banking_group_id`/`banking_group_name` are NULL
-- No FMI memberships recorded (deferred to CB Setup)
-- Always runs in Normal mode with gpt-4o; max 20 iterations
-- Queued via `POST /api/jobs/market-scan`; UI panel in Providers page
-- COUNTRY_RTGS and CURRENCY_COUNTRY lookup maps exported from `server/services/cbDiscoveryService.ts` (backward-compat via `server/jobRunner.ts`)
-- Parent-company matching: prompt instructs the agent to search for parent groups before creating regional subsidiaries
-- **Dry-Run mode** (`dry_run: true`): Uses read-only tool set (`getDryRunTools()` — no create/update/delete). Agent produces a structured discovery report. No DB writes. Scan summary stores the full report. UI shows amber "Dry Run" badge + "Run for real →" button to re-queue as a live scan.
-
-### Common
-- Job runner starts automatically on server start; polls every 30s; 90s cooldown between jobs
-- Coverage page polls `/api/jobs` every 5s when active, 15s otherwise
-
-## Data Quality
-
-- All orphaned records cleaned (0 orphaned services/BICs/entities as of last audit)
-- Server-side FK validation: create_legal_entity checks group_id, create_bic checks legal_entity_id, create_correspondent_service validates bic_id is a real BIC UUID
-- RTGS canonical names enforced: TARGET2 (not T2), BOJ-NET, Fedwire, MEPS+
-
-## Auth
-
-- Token-based: `AUTH_USERNAME`/`AUTH_PASSWORD` env vars; token stored in localStorage as `auth_token`; sent as `X-Auth-Token` header on all API calls
-
-## Environment Variables
-
-| Secret | Purpose |
-|---|---|
-| `DATABASE_URL` | PostgreSQL connection string (provisioned by Replit) |
-| `OPENAI_API_KEY` | OpenAI API key for Research Assistant + Agent Chat + Job Runner |
-| `SESSION_SECRET` | Express session secret |
-| `AUTH_USERNAME` | Login username |
-| `AUTH_PASSWORD` | Login password |
-
-## Running
-
-The `Start application` workflow runs `npm run dev`, which starts Express (port 5000) and Vite (hot reload) together.
-
-Schema changes: use `executeSql` for direct SQL. **NEVER run `db:push --force`** — it drops the sessions table.
+- **PostgreSQL**: Primary database for all application data.
+- **OpenAI API**: Utilized for AI functionalities including:
+    - GPT-4o for chat completions and tool calling in the AI Research Assistant and Agent Chat.
+    - GPT-4o for autonomous background job processing (CB Setup and Market Coverage Scans).
+- **React-Leaflet / Leaflet**: For interactive geographical maps displaying coverage and other geo-referenced data.
+- **Recharts**: For rendering data visualizations such as bar and pie charts.
