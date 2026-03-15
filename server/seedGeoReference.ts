@@ -13,6 +13,7 @@ export async function seedGeoReference(pool: Pool) {
         ('Algeria','DZ','DZA',12,'People''s Democratic Republic of Algeria','Algiers','MENA'),
         ('Andorra','AD','AND',20,'Principality of Andorra','Andorra la Vella','SEPA'),
         ('Angola','AO','AGO',24,'Republic of Angola','Luanda','SSA'),
+        ('Anguilla','AI','AIA',660,'Anguilla','The Valley','Americas'),
         ('Antigua and Barbuda','AG','ATG',28,'Antigua and Barbuda','Saint John''s','Americas'),
         ('Argentina','AR','ARG',32,'Argentine Republic','Buenos Aires','Americas'),
         ('Armenia','AM','ARM',51,'Republic of Armenia','Yerevan','Asia-Pacific'),
@@ -125,6 +126,7 @@ export async function seedGeoReference(pool: Pool) {
         ('Monaco','MC','MCO',492,'Principality of Monaco','Monaco','SEPA'),
         ('Mongolia','MN','MNG',496,'Mongolia','Ulaanbaatar','Asia-Pacific'),
         ('Montenegro','ME','MNE',499,'Montenegro','Podgorica','EEA'),
+        ('Montserrat','MS','MSR',500,'Montserrat','Plymouth','Americas'),
         ('Morocco','MA','MAR',504,'Kingdom of Morocco','Rabat','MENA'),
         ('Mozambique','MZ','MOZ',508,'Republic of Mozambique','Maputo','SSA'),
         ('Myanmar','MM','MMR',104,'Republic of the Union of Myanmar','Naypyidaw','Asia-Pacific'),
@@ -374,7 +376,7 @@ export async function seedGeoReference(pool: Pool) {
 
     const primaryLinks: [string, string][] = [
       ['AF','AFN'],['AL','ALL'],['DZ','DZD'],['AD','EUR'],['AO','AOA'],
-      ['AG','XCD'],['AR','ARS'],['AM','AMD'],['AU','AUD'],['AT','EUR'],
+      ['AI','XCD'],['AG','XCD'],['AR','ARS'],['AM','AMD'],['AU','AUD'],['AT','EUR'],
       ['AZ','AZN'],['BS','BSD'],['BH','BHD'],['BD','BDT'],['BB','BBD'],
       ['BY','BYN'],['BE','EUR'],['BZ','BZD'],['BJ','XOF'],['BT','BTN'],
       ['BO','BOB'],['BA','BAM'],['BW','BWP'],['BR','BRL'],['BN','BND'],
@@ -397,7 +399,7 @@ export async function seedGeoReference(pool: Pool) {
       ['LU','EUR'],['MG','MGA'],['MW','MWK'],['MY','MYR'],['MV','MVR'],
       ['ML','XOF'],['MT','EUR'],['MH','USD'],['MR','MRU'],['MU','MUR'],
       ['MX','MXN'],['FM','USD'],['MD','MDL'],['MC','EUR'],['MN','MNT'],
-      ['ME','EUR'],['MA','MAD'],['MZ','MZN'],['MM','MMK'],['NA','NAD'],
+      ['ME','EUR'],['MS','XCD'],['MA','MAD'],['MZ','MZN'],['MM','MMK'],['NA','NAD'],
       ['NR','AUD'],['NP','NPR'],['NL','EUR'],
       ['NC','XPF'],
       ['NZ','NZD'],['NI','NIO'],
