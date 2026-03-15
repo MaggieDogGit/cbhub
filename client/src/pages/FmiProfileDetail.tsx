@@ -160,8 +160,10 @@ const STATUS_COLORS: Record<string, string> = {
   retired: "bg-slate-100 text-slate-500 border-slate-200",
 };
 
-function isSchemeType(categoryCode: string): boolean {
-  return categoryCode.startsWith("PS-SCH") || categoryCode.startsWith("FXS-PVP");
+function isSchemeType(categoryCode: string, domainCode?: string): boolean {
+  if (categoryCode.startsWith("PS-SCH") || categoryCode.startsWith("FXS-PVP")) return true;
+  if (domainCode === "PS" && categoryCode.includes("SCH")) return true;
+  return false;
 }
 
 function Field({ label, value }: { label: string; value?: string | null | boolean }) {
@@ -215,7 +217,7 @@ function parseJsonArray(val: string | null | undefined): string[] {
 }
 
 function BadgeList({ items }: { items: string[] }) {
-  if (!items.length) return <span className="text-sm text-slate-400">--</span>;
+  if (!items.length) return <span className="text-sm text-slate-400">&mdash;</span>;
   return (
     <div className="flex flex-wrap gap-1.5">
       {items.map((item, i) => (
@@ -231,7 +233,7 @@ function SpecField({ label, value }: { label: string; value?: string | null }) {
   return (
     <div>
       <p className="text-xs font-semibold text-slate-400 uppercase tracking-wider mb-1">{label}</p>
-      <p className="text-sm text-slate-700 leading-relaxed">{value || "--"}</p>
+      <p className="text-sm text-slate-700 leading-relaxed">{value || "\u2014"}</p>
     </div>
   );
 }
@@ -506,7 +508,7 @@ function ScenarioCapability({ fmiId, scenarioId }: { fmiId: string; scenarioId: 
   });
 
   if (isLoading) return <Skeleton className="h-5 w-16 rounded-full" />;
-  if (!data) return <span className="text-slate-400 text-xs">--</span>;
+  if (!data) return <span className="text-slate-400 text-xs">{"\u2014"}</span>;
 
   return (
     <div className="flex flex-col gap-1">
@@ -598,12 +600,12 @@ function ScenariosTab({ scenarios, fmiId }: { scenarios: Scenario[]; fmiId: stri
                           <p className="text-xs text-slate-500">{sc.message_format}</p>
                         )}
                         {!sc.message_standard && !sc.message_format && (
-                          <span className="text-xs text-slate-400">--</span>
+                          <span className="text-xs text-slate-400">{"\u2014"}</span>
                         )}
                       </div>
                     </TableCell>
                     <TableCell>
-                      <span className="text-sm text-slate-600">{sc.geography_scope || "--"}</span>
+                      <span className="text-sm text-slate-600">{sc.geography_scope || "\u2014"}</span>
                     </TableCell>
                     <TableCell>
                       <ScenarioCapability fmiId={fmiId} scenarioId={sc.id} />
@@ -653,13 +655,13 @@ export default function FmiProfileDetail() {
     enabled: !!id,
   });
 
-  const isScheme = entry ? isSchemeType(entry.category_code) : false;
+  const isScheme = entry ? isSchemeType(entry.category_code, entry.domain_code) : false;
 
   useEffect(() => {
     setActiveTab("overview");
   }, [id]);
 
-  const { data: specData, isLoading: specLoading } = useQuery<FmiSpec>({
+  const { data: specData, isLoading: specLoading, isError: specError } = useQuery<FmiSpec>({
     queryKey: ["/api/fmi-specifications", id],
     queryFn: async () => {
       const token = getAuthToken();
@@ -673,7 +675,7 @@ export default function FmiProfileDetail() {
     enabled: !!id && !!entry,
   });
 
-  const { data: schemeData, isLoading: schemeLoading } = useQuery<SchemeSpec>({
+  const { data: schemeData, isLoading: schemeLoading, isError: schemeError } = useQuery<SchemeSpec>({
     queryKey: ["/api/payment-scheme-specs", id],
     queryFn: async () => {
       const token = getAuthToken();
@@ -687,7 +689,7 @@ export default function FmiProfileDetail() {
     enabled: !!id && isScheme,
   });
 
-  const { data: scenariosData = [], isLoading: scenariosLoading } = useQuery<Scenario[]>({
+  const { data: scenariosData = [], isLoading: scenariosLoading, isError: scenariosError } = useQuery<Scenario[]>({
     queryKey: ["/api/payment-scheme-scenarios", id],
     queryFn: async () => {
       const token = getAuthToken();
@@ -892,6 +894,11 @@ export default function FmiProfileDetail() {
                 </Card>
               ))}
             </div>
+          ) : specError ? (
+            <div className="flex flex-col items-center justify-center py-16 text-red-400">
+              <AlertCircle className="w-8 h-8 mb-2 opacity-60" />
+              <p className="text-sm">Failed to load specifications. Please try again later.</p>
+            </div>
           ) : (
             <SpecificationsTab spec={specData ?? null} />
           )}
@@ -907,6 +914,11 @@ export default function FmiProfileDetail() {
                   <Skeleton className="h-4 w-1/2" />
                 </CardContent>
               </Card>
+            ) : schemeError ? (
+              <div className="flex flex-col items-center justify-center py-16 text-red-400">
+                <AlertCircle className="w-8 h-8 mb-2 opacity-60" />
+                <p className="text-sm">Failed to load scheme rules. Please try again later.</p>
+              </div>
             ) : (
               <SchemeRulesTab scheme={schemeData ?? null} />
             )}
@@ -923,6 +935,11 @@ export default function FmiProfileDetail() {
                   <Skeleton className="h-4 w-3/4" />
                 </CardContent>
               </Card>
+            ) : scenariosError ? (
+              <div className="flex flex-col items-center justify-center py-16 text-red-400">
+                <AlertCircle className="w-8 h-8 mb-2 opacity-60" />
+                <p className="text-sm">Failed to load scenarios. Please try again later.</p>
+              </div>
             ) : (
               <ScenariosTab scenarios={scenariosData} fmiId={entry.id} />
             )}
